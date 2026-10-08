@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock
-from app import App
-from notifications import batch_text
+from neto_incident_monitor.app import App
+from neto_incident_monitor.notifications import batch_text
 
 
 class NotificationTests(unittest.TestCase):

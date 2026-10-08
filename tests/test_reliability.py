@@ -7,10 +7,10 @@ import time
 import unittest
 from pathlib import Path
 
-from app import collect, empty_list, authentication_page, navigate, normalize_url, validate_urls
-from monitoring import Health, Schedule
-from pagination import read_all, first_page, AuthenticationRequired, Cancelled
-from single_instance import SingleInstance
+from neto_incident_monitor.app import collect, empty_list, authentication_page, navigate, normalize_url, validate_urls
+from neto_incident_monitor.monitoring import Health, Schedule
+from neto_incident_monitor.pagination import read_all, first_page, AuthenticationRequired, Cancelled
+from neto_incident_monitor.single_instance import SingleInstance
 
 URL = "https://example.com/incident_list.do?sysparm_query=active%3Dtrue&sysparm_first_row=21"
 
@@ -45,7 +45,7 @@ class ReliabilityTests(unittest.TestCase):
         query = parse_qs(urlparse(normalize_url(wrapped)).query)
         self.assertIn("STORE 003 GDAŃSK", query["sysparm_query"][0])
         self.assertEqual(query["sysparm_view"], ["default"])
-        from app import load_filters
+        from neto_incident_monitor.app import load_filters
         self.assertEqual(load_filters({"filters": [{"name": "Test", "url": wrapped}]}),
                          [{"name": "Test", "url": direct}])
         from unittest.mock import Mock
@@ -136,7 +136,7 @@ class ReliabilityTests(unittest.TestCase):
             primary = SingleInstance(folder)
             try:
                 self.assertTrue(primary.primary)
-                script = "from single_instance import SingleInstance; import sys; x=SingleInstance(sys.argv[1]); assert not x.primary; x.request_show(); x.close()"
+                script = "from neto_incident_monitor.single_instance import SingleInstance; import sys; x=SingleInstance(sys.argv[1]); assert not x.primary; x.request_show(); x.close()"
                 subprocess.run([sys.executable, "-c", script, folder], check=True, timeout=10)
                 self.assertTrue(primary.poll())
                 self.assertFalse(primary.poll())

@@ -89,7 +89,7 @@ Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończ
 
 Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybrać pojedyncze zapamiętane konto i zatwierdzić formularz, jeśli pole hasła jest już uzupełnione. Gdy wymagane jest podanie hasła, wybór spośród wielu kont, uwierzytelnianie wieloskładnikowe lub obsługa błędu, aplikacja oczekuje na działanie użytkownika. Nie zapisuje samodzielnie hasła. Korzysta z własnego profilu Chromium, niezależnego od profilu przeglądarki Chrome użytkownika.
 
-Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [instrukcja konfiguracji powiadomień Teams](INSTRUKCJA_TEAMS.md), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
+Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [instrukcja konfiguracji powiadomień Teams](docs/INSTRUKCJA_TEAMS.md), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
 
 ## Przechowywanie danych
 
@@ -107,7 +107,7 @@ Dane użytkownika, w tym adres webhook i dane sesji przeglądarki, nie powinny b
 Po utworzeniu środowiska `.venv` uruchom w PowerShell:
 
 ```powershell
-.\build_exe.ps1
+.\scripts\build_exe.ps1
 ```
 
 Skrypt instaluje narzędzia do budowania oraz Chromium, a następnie przygotowuje pakiet za pomocą PyInstaller:
@@ -126,7 +126,7 @@ Do dystrybucji wymagany jest cały katalog `Neto Incident Monitor`. Dane i konfi
 Uruchomienie testów automatycznych:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 Testy interfejsu wymagają aktywnej sesji pulpitu Windows. Testy odczytu danych korzystają z lokalnych stron testowych i Chromium; nie wymagają konta ServiceNow. Integrację z docelową instancją, filtrami i procesem logowania należy zweryfikować oddzielnie.
@@ -141,12 +141,21 @@ Raport potwierdza uruchomienie interfejsu i dołączonej przeglądarki Chromium.
 
 ## Struktura projektu
 
-| Pliki lub katalogi | Przeznaczenie |
-| --- | --- |
-| `app.py`, `ui.py`, `widgets.py`, `theme.py` | Logika aplikacji i interfejs użytkownika |
-| `automatic_login.py`, `pagination.py`, `monitoring.py` | Logowanie i odczyt list ServiceNow |
-| `history.py`, `notifications.py`, `teams_notifications.py`, `tray.py` | Historia, powiadomienia i zasobnik systemowy |
-| `runtime_paths.py`, `single_instance.py`, `launcher.pyw` | Katalogi danych, kontrola pojedynczej instancji i uruchamianie |
-| `assets/` | Zasoby graficzne i ikony |
-| `test_*.py`, `package_smoke.py`, `preview_ui.py` | Testy i narzędzia diagnostyczne |
-| `Neto Incident Monitor.spec`, `build_exe.ps1` | Konfiguracja i skrypt budowania pakietu |
+```text
+NetoIncidentMonitor/
+├── neto_incident_monitor/   # kod aplikacji
+├── tests/                  # testy automatyczne
+├── tools/                  # narzędzia diagnostyczne i podgląd interfejsu
+├── scripts/                # skrypt budowania i konfiguracja PyInstaller
+├── docs/                   # dokumentacja konfiguracji
+├── assets/                 # zasoby graficzne i ikony
+├── launcher.pyw            # punkt wejścia aplikacji
+├── start.bat               # przygotowanie środowiska i uruchomienie
+├── Neto Incident Monitor.vbs
+├── requirements.txt
+└── requirements-build.txt
+```
+
+Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia pomocnicze należy uruchamiać z katalogu głównego projektu, np. `python -m tools.preview_ui`.
+
+Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.

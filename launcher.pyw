@@ -5,7 +5,7 @@ from pathlib import Path
 import runpy
 import sys
 
-from runtime_paths import ROOT, DATA
+from neto_incident_monitor.runtime_paths import ROOT, DATA
 
 
 class LogStream:
@@ -41,10 +41,10 @@ def main():
         sys.stderr = LogStream(logging.ERROR)
         logging.info("Uruchomienie aplikacji bez konsoli")
         if "--smoke-test" in sys.argv:
-            from package_smoke import main as smoke_main
+            from tools.package_smoke import main as smoke_main
             smoke_main(Path(sys.argv[sys.argv.index("--smoke-test") + 1]))
         else:
-            from app import main as app_main
+            from neto_incident_monitor.app import main as app_main
             app_main()
     except Exception as exc:
         logging.exception("Błąd uruchomienia aplikacji")
