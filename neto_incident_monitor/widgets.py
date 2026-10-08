@@ -1,7 +1,7 @@
 """Small keyboard-accessible controls matching the application palette."""
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageTk
-from theme import SURFACE, TEXT, ACCENT
+from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
 class PriorityDots:
@@ -392,10 +392,10 @@ class FilterList(tk.Canvas):
 def confirm_dialog(parent, title, message):
     """Application-styled modal confirmation, with cancellation as the default."""
     from tkinter import ttk
-    from theme import BG, MUTED
+    from neto_incident_monitor.theme import BG, MUTED
     dialog = tk.Toplevel(parent)
     dialog.title(title)
-    from window_style import apply_window_style
+    from neto_incident_monitor.window_style import apply_window_style
     dialog.after_idle(lambda: apply_window_style(dialog))
     dialog.configure(background=BG)
     dialog.transient(parent)
@@ -452,7 +452,7 @@ class TabTooltip:
 
     def show(self):
         self.timer = None
-        from theme import BG
+        from neto_incident_monitor.theme import BG
         self.tip = tk.Toplevel(self.widget, background="#484e59")
         self.tip.overrideredirect(True)
         tk.Label(self.tip, text=self.text, background=BG, foreground=TEXT,
@@ -478,7 +478,7 @@ class TabTooltip:
 class ColumnWarning(tk.Canvas):
     """Small warning badge with a delayed, application-themed tooltip."""
     def __init__(self, parent, label):
-        from theme import BG
+        from neto_incident_monitor.theme import BG
         super().__init__(parent, width=20, height=22, bg=BG, bd=0,
                          highlightthickness=0, cursor="question_arrow")
         self.label, self.timer, self.tip = label, None, None
@@ -494,7 +494,7 @@ class ColumnWarning(tk.Canvas):
         self.timer = self.after(350, self.show)
 
     def show(self):
-        from theme import BG
+        from neto_incident_monitor.theme import BG
         self.timer = None
         if not self.winfo_exists():
             return

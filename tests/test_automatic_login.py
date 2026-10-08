@@ -1,6 +1,6 @@
 import unittest
 from playwright.sync_api import sync_playwright
-from automatic_login import AutomaticLogin
+from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):

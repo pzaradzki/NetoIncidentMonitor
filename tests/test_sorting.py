@@ -1,7 +1,7 @@
 import tkinter as tk
 import unittest
 from tkinter import ttk
-from app import App
+from neto_incident_monitor.app import App
 
 
 class SortingTests(unittest.TestCase):

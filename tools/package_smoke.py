@@ -11,10 +11,10 @@ def main(output):
     import plyer.platforms.win.notification
     from PIL import Image
     from playwright.sync_api import sync_playwright
-    from runtime_paths import DATA, ROOT
-    from app import App
-    from history import History
-    from tray import Tray
+    from neto_incident_monitor.runtime_paths import DATA, ROOT
+    from neto_incident_monitor.app import App
+    from neto_incident_monitor.history import History
+    from neto_incident_monitor.tray import Tray
     result = {"frozen": bool(getattr(sys, "frozen", False)),
               "data": str(DATA), "bundle": str(ROOT)}
     try:
