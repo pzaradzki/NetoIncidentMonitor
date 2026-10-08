@@ -8,7 +8,9 @@ Aplikacja dla Windows do monitorowania list incydentów w ServiceNow. Odczytuje 
 2. Uruchom `Neto Incident Monitor.exe`.
 3. Zachowaj folder `_internal` obok EXE — zawiera biblioteki, grafiki i Chromium.
 
-Ustawienia, historia, logi i profil przeglądarki wersji EXE są w `%LOCALAPPDATA%\NetoIncidentMonitor`. Aktualizacja polega na wymianie folderu aplikacji po jej zamknięciu; dane w LocalAppData pozostają zachowane.
+Aplikacja uruchamiana z EXE zapisuje ustawienia, historię incydentów, logi i profil przeglądarki w `%LOCALAPPDATA%\NetoIncidentMonitor`.
+
+Aby zaktualizować aplikację, zamknij ją i zastąp jej folder nową wersją. Twoje ustawienia i historia pozostaną zachowane, ponieważ są przechowywane osobno.
 
 Gotowych plików EXE, Chromium i folderu `dist` nie przechowujemy w repozytorium kodu.
 
