@@ -1,26 +1,42 @@
 # Neto Incident Monitor
 
-Aplikacja dla Windows do monitorowania list incydentów w ServiceNow. Odczytuje strony w Chromium przez Playwright, bez używania API ServiceNow.
+Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monitoruje listy incydentów w ServiceNow i powiadamia o nowych zgłoszeniach. Dane są odczytywane z interfejsu internetowego ServiceNow za pomocą Playwright i przeglądarki Chromium. Aplikacja nie korzysta z API ServiceNow.
 
-## Uruchomienie gotowej aplikacji
+## Główne funkcje
 
-1. Rozpakuj **cały** folder wersji folderowej.
-2. Uruchom `Neto Incident Monitor.exe`.
-3. Zachowaj folder `_internal` obok EXE — zawiera biblioteki, grafiki i Chromium.
+- Monitorowanie wielu filtrów z możliwością ich włączania i wyłączania podczas pracy.
+- Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams.
+- Historia wykrytych incydentów i lokalne oznaczanie ich jako przeczytanych.
+- Otwieranie incydentów oraz kopiowanie ich numerów i adresów z menu kontekstowego.
+- Konfigurowanie widoczności, kolejności i szerokości kolumn.
+- Zapamiętywanie układu interfejsu, rozmiaru okna i stanu maksymalizacji.
+- Praca w zasobniku systemowym oraz obsługa wybranych scenariuszy automatycznego logowania.
 
-Aplikacja uruchamiana z EXE zapisuje ustawienia, historię incydentów, logi i profil przeglądarki w `%LOCALAPPDATA%\NetoIncidentMonitor`.
+## Wymagania
 
-Aby zaktualizować aplikację, zamknij ją i zastąp jej folder nową wersją. Twoje ustawienia i historia pozostaną zachowane, ponieważ są przechowywane osobno.
+- Windows 10 lub Windows 11 w wersji 64-bitowej.
+- Dostęp sieciowy do instancji ServiceNow i uprawnienia do odczytu monitorowanych list.
+- Python 3.12 w przypadku uruchamiania aplikacji z kodu źródłowego.
 
-Gotowych plików EXE, Chromium i folderu `dist` nie przechowujemy w repozytorium kodu.
+Pakiet aplikacji udostępniany w Releases zawiera wymagane biblioteki i przeglądarkę Chromium. Nie wymaga instalacji Pythona. Instalacja zależności dla kodu źródłowego wymaga dostępu do internetu.
 
-## Uruchomienie z kodu
+## Instalacja i uruchomienie
 
-Wymagania: Windows 10/11 x64, Python 3.12 oraz dostęp do docelowego ServiceNow. Pierwsza instalacja wymaga internetu do pobrania bibliotek i Chromium.
+### Gotowy pakiet dla Windows
 
-Najprościej uruchomić `start.bat`. Skrypt tworzy `.venv`, instaluje zależności i Chromium, następnie uruchamia aplikację.
+1. Pobierz plik `Neto.Incident.Monitor.zip` z [najnowszego wydania](https://github.com/pzaradzki/NetoIncidentMonitor/releases/latest).
+2. Rozpakuj całe archiwum do wybranego katalogu.
+3. Uruchom `Neto Incident Monitor.exe`.
 
-Alternatywnie w PowerShell, w katalogu projektu:
+Katalog `_internal` musi znajdować się obok pliku wykonywalnego. Zawiera biblioteki, zasoby graficzne i przeglądarkę niezbędne do działania aplikacji.
+
+Aby zainstalować aktualizację, zamknij aplikację i zastąp jej katalog zawartością nowego pakietu. Ustawienia i historia pozostaną zachowane, ponieważ są przechowywane poza katalogiem instalacji.
+
+### Uruchomienie z kodu źródłowego
+
+W katalogu projektu uruchom `start.bat`. Skrypt tworzy środowisko wirtualne `.venv`, instaluje zależności i Chromium, a następnie uruchamia aplikację.
+
+Środowisko można również przygotować ręcznie w PowerShell:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -29,40 +45,72 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe launcher.pyw
 ```
 
-Po instalacji można uruchamiać `Neto Incident Monitor.vbs`, aby otworzyć aplikację bez konsoli. Wersja uruchamiana z kodu używa lokalnego folderu `data`, niezależnego od danych wersji EXE.
+Po przygotowaniu środowiska plik `Neto Incident Monitor.vbs` umożliwia uruchamianie aplikacji bez okna konsoli.
 
-## Krótka instrukcja obsługi
+## Obsługa aplikacji
 
-1. Kliknij **Dodaj filtr**, wpisz nazwę i pełny adres listy ServiceNow z wybranym filtrem.
-2. Kliknij **Uruchom monitoring** i zaloguj się w otwartym Chromium. Aplikacja sama wykryje zakończenie logowania.
-3. Pierwszy poprawny odczyt nowego filtra tworzy punkt odniesienia. Powiadomienia dotyczą incydentów wykrytych dopiero w kolejnych odczytach.
-4. Przełączniki przy filtrach pozwalają włączać i wyłączać je podczas pracy. Ten sam INC w kilku filtrach ma jeden wiersz, z połączonymi nazwami filtrów.
-5. **Bieżące incydenty** pokazują ostatni odczyt aktywnych filtrów. **Historia zgłoszeń** zawiera wcześniej wykryte incydenty; zapisane dane mogą różnić się od aktualnych w ServiceNow. Zmiana stanu istniejącego INC nie jest nowym incydentem.
-6. Dwuklik otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Prawy klik udostępnia otwieranie, kopiowanie numeru/linku i oznaczanie przeczytania. Te oznaczenia są lokalne.
-7. **Przeczytaj wszystkie** oznacza całą historię jako przeczytaną. **Wyczyść historię** usuwa historię po potwierdzeniu, zachowując pamięć wcześniej widzianych numerów.
-8. **Kolumny** pozwala wybrać widoczne pola. Brakujące pola są automatycznie ukrywane po odczycie. Kolejność i szerokości wspólnych kolumn synchronizują się między zakładkami; kolumna „Wykryto (historia)” pozostaje na końcu historii.
-9. Przeciągaj nagłówki, aby zmieniać kolejność, a ich krawędzie, aby zmieniać szerokość. Kliknięcie nagłówka przełącza sortowanie: rosnąco, malejąco, domyślnie.
-10. **Ustawienia** (zębatka) zawierają częstotliwość odczytu, powiadomienia, automatyczne logowanie i minimalizację. Częstotliwość i powiadomienia Windows są blokowane podczas monitorowania; zmień je po zatrzymaniu i uruchom ponownie monitoring.
+### Konfiguracja monitorowania
 
-Rozmiar i maksymalizacja okna, szerokość panelu filtrów oraz układ kolumn są zapamiętywane. Separator między panelami można przeciągać. **Zatrzymaj** kończy monitoring, a zamknięcie głównego okna kończy aplikację. Przy minimalizacji do zasobnika monitoring pozostaje aktywny.
+1. Wybierz **Dodaj filtr** i wprowadź nazwę oraz pełny adres listy ServiceNow z zastosowanym filtrem.
+2. Wybierz **Uruchom monitoring** i zaloguj się w otwartym oknie Chromium. Aplikacja automatycznie rozpoznaje zakończenie logowania.
+3. Korzystaj z przełączników przy filtrach, aby włączać lub wyłączać poszczególne listy, również podczas monitorowania.
 
-## Logowanie i Teams
+Pierwszy poprawny odczyt nowego filtra ustala zestaw początkowy. Powiadomienia dotyczą incydentów wykrytych w kolejnych odczytach. Zmiana danych istniejącego incydentu, na przykład jego stanu, nie powoduje uznania go za nowy incydent.
 
-Automatyczne logowanie obsługuje rozpoznane strony ADEO: wybiera jedno zapamiętane konto i wysyła formularz tylko przy już uzupełnionym haśle. Przy pustym haśle, wielu kontach, błędzie lub MFA aplikacja czeka na użytkownika. Nie zapisuje samodzielnie hasła. Profil Chromium bota jest osobny od zwykłego Chrome.
+Jeśli ten sam incydent występuje w kilku filtrach, jest prezentowany w jednym wierszu. Kolumna **Monitorowany filtr** zawiera nazwy wszystkich powiązanych filtrów.
 
-Powiadomienia Teams wymagają własnego webhooka Power Automate. Szczegółowa instrukcja: [INSTRUKCJA_TEAMS.md](INSTRUKCJA_TEAMS.md), dostępna również przez przycisk **Instrukcja** w konfiguracji Teams. Wygaśnięcie sesji może wysłać alert Teams, jeśli powiadomienia są skonfigurowane i włączone.
+### Bieżące incydenty i historia
 
-Foldery `data` i LocalAppData zawierają dane użytkownika, w tym webhook i sesję przeglądarki. Nie dodawaj ich do repozytorium ani do paczek aplikacji.
+Zakładka **Bieżące incydenty** przedstawia wyniki ostatniego odczytu aktywnych filtrów. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
 
-## Budowanie wersji folderowej
+Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.
 
-W PowerShell:
+Przycisk **Przeczytaj wszystkie** oznacza całą historię jako przeczytaną. **Wyczyść historię** usuwa zapisane wpisy po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
+
+### Kolumny i układ interfejsu
+
+Przycisk **Kolumny** otwiera konfigurację widocznych pól. Pola niedostępne w monitorowanych listach ServiceNow są automatycznie ukrywane po odczycie danych.
+
+- Przeciągnięcie nagłówka zmienia kolejność kolumn.
+- Przeciągnięcie krawędzi nagłówka zmienia szerokość kolumny.
+- Kliknięcie nagłówka przełącza sortowanie pomiędzy kolejnością rosnącą, malejącą i domyślną.
+
+Kolejność i szerokości wspólnych kolumn są synchronizowane między zakładkami. Kolumna **Wykryto (historia)** występuje wyłącznie w historii i pozostaje na końcu tabeli.
+
+Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości panelu. Układ kolumn, szerokość panelu oraz rozmiar i stan maksymalizacji okna są zapamiętywane między uruchomieniami.
+
+### Ustawienia i praca w tle
+
+Przycisk **Ustawienia**, oznaczony ikoną koła zębatego, otwiera konfigurację częstotliwości odczytu, powiadomień, logowania i minimalizacji. Zmiana częstotliwości odczytu oraz ustawień powiadomień Windows wymaga zatrzymania monitorowania i ponownego jego uruchomienia.
+
+Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończy działanie aplikacji. Przy włączonej minimalizacji do zasobnika systemowego monitoring pozostaje aktywny po zminimalizowaniu okna.
+
+## Logowanie i powiadomienia Microsoft Teams
+
+Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybrać pojedyncze zapamiętane konto i zatwierdzić formularz, jeśli pole hasła jest już uzupełnione. Gdy wymagane jest podanie hasła, wybór spośród wielu kont, uwierzytelnianie wieloskładnikowe lub obsługa błędu, aplikacja oczekuje na działanie użytkownika. Nie zapisuje samodzielnie hasła. Korzysta z własnego profilu Chromium, niezależnego od profilu przeglądarki Chrome użytkownika.
+
+Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [instrukcja konfiguracji powiadomień Teams](INSTRUKCJA_TEAMS.md), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
+
+## Przechowywanie danych
+
+| Sposób uruchomienia | Katalog danych |
+| --- | --- |
+| Pakiet z plikiem EXE | `%LOCALAPPDATA%\NetoIncidentMonitor` |
+| Kod źródłowy | `data` w katalogu projektu |
+
+Katalog danych zawiera ustawienia, historię, logi i profil przeglądarki. Wersja wykonywalna i wersja uruchamiana z kodu źródłowego korzystają z oddzielnych katalogów danych.
+
+Dane użytkownika, w tym adres webhook i dane sesji przeglądarki, nie powinny być dodawane do repozytorium ani do pakietów dystrybucyjnych. Repozytorium zawiera kod źródłowy; pliki wykonywalne, Chromium i katalog `dist` są udostępniane jako pakiety wydań.
+
+## Przygotowanie pakietu dystrybucyjnego
+
+Po utworzeniu środowiska `.venv` uruchom w PowerShell:
 
 ```powershell
 .\build_exe.ps1
 ```
 
-Skrypt wymaga wcześniej utworzonego `.venv`, instaluje narzędzia budowania i Chromium oraz tworzy:
+Skrypt instaluje narzędzia do budowania oraz Chromium, a następnie przygotowuje pakiet za pomocą PyInstaller:
 
 ```text
 dist/
@@ -71,30 +119,34 @@ dist/
     _internal/
 ```
 
-Folder należy udostępniać w całości. Konfiguracja użytkownika nie jest częścią pakietu.
+Do dystrybucji wymagany jest cały katalog `Neto Incident Monitor`. Dane i konfiguracja użytkownika nie są częścią pakietu.
 
 ## Testy i diagnostyka
+
+Uruchomienie testów automatycznych:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -v
 ```
 
-Testy interfejsu wymagają sesji Windows z pulpitem. Testy odczytu używają lokalnych stron testowych i Chromium; nie wymagają konta ServiceNow. Integrację z docelowym logowaniem i filtrami należy sprawdzić oddzielnie.
+Testy interfejsu wymagają aktywnej sesji pulpitu Windows. Testy odczytu danych korzystają z lokalnych stron testowych i Chromium; nie wymagają konta ServiceNow. Integrację z docelową instancją, filtrami i procesem logowania należy zweryfikować oddzielnie.
 
-Test gotowej aplikacji bez łączenia z ServiceNow:
+Podstawowy test uruchomienia pakietu, bez połączenia z ServiceNow:
 
 ```powershell
 & '.\dist\Neto Incident Monitor\Neto Incident Monitor.exe' --smoke-test "$PWD\smoke-result.json"
 ```
 
-Raport potwierdza uruchomienie interfejsu i dołączonego Chromium. Logi błędów są w `monitor.log` w folderze danych, z rotacją do trzech kopii.
+Raport potwierdza uruchomienie interfejsu i dołączonej przeglądarki Chromium. Log błędów `monitor.log` znajduje się w katalogu danych aplikacji. Rotacja logów zachowuje do trzech plików archiwalnych.
 
-## Pliki projektu
+## Struktura projektu
 
-- `app.py`, `ui.py`, `widgets.py`, `theme.py` — aplikacja i interfejs.
-- `automatic_login.py`, `pagination.py`, `monitoring.py` — logowanie i odczyt list.
-- `history.py`, `notifications.py`, `teams_notifications.py`, `tray.py` — historia i powiadomienia.
-- `runtime_paths.py`, `single_instance.py`, `launcher.pyw` — ścieżki, pojedyncza instancja i uruchamianie.
-- `assets/` — grafiki i ikony wymagane przez aplikację.
-- `test_*.py`, `package_smoke.py`, `preview_ui.py` — testy i narzędzia diagnostyczne.
-- `Neto Incident Monitor.spec`, `build_exe.ps1` — budowanie wersji folderowej.
+| Pliki lub katalogi | Przeznaczenie |
+| --- | --- |
+| `app.py`, `ui.py`, `widgets.py`, `theme.py` | Logika aplikacji i interfejs użytkownika |
+| `automatic_login.py`, `pagination.py`, `monitoring.py` | Logowanie i odczyt list ServiceNow |
+| `history.py`, `notifications.py`, `teams_notifications.py`, `tray.py` | Historia, powiadomienia i zasobnik systemowy |
+| `runtime_paths.py`, `single_instance.py`, `launcher.pyw` | Katalogi danych, kontrola pojedynczej instancji i uruchamianie |
+| `assets/` | Zasoby graficzne i ikony |
+| `test_*.py`, `package_smoke.py`, `preview_ui.py` | Testy i narzędzia diagnostyczne |
+| `Neto Incident Monitor.spec`, `build_exe.ps1` | Konfiguracja i skrypt budowania pakietu |
