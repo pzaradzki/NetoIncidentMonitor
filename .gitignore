@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+data/
+*.log
+build/
+dist/
+
+*.pyc
+.env
+.env.*
+smoke-result.json
+.pytest_cache/
