@@ -1067,7 +1067,7 @@ class App:
         dialog.grab_set()
         content = ttk.Frame(dialog, padding=20)
         content.pack(fill="both", expand=True)
-        ttk.Label(content, text="Adres webhooka Power Automate").pack(anchor="w")
+        ttk.Label(content, text="Adres Webhook").pack(anchor="w")
         address = tk.StringVar(value=self.teams_webhook)
         field = ttk.Entry(content, textvariable=address, show="•", width=65)
         field.pack(fill="x", pady=8)
@@ -1109,47 +1109,11 @@ class App:
 
     def show_teams_instruction(self, parent):
         try:
-            instruction = (ROOT / "docs" / "INSTRUKCJA_TEAMS.md").read_text(encoding="utf-8")
-        except OSError:
-            messagebox.showerror("Instrukcja Teams", "Nie znaleziono instrukcji w tej wersji aplikacji.", parent=parent)
-            return
-        window = tk.Toplevel(parent)
-        window.configure(background=BG)
-        window.title("Instrukcja konfiguracji Teams")
-        window.geometry("850x650")
-        window.minsize(550, 400)
-        window.transient(parent)
-        window.grab_set()
-        frame = ttk.Frame(window, padding=16)
-        frame.pack(fill="both", expand=True)
-        text = tk.Text(frame, wrap="word", font=("Segoe UI", 10), background=SURFACE,
-                       foreground=TEXT, insertbackground=TEXT, selectbackground="#513039", selectforeground=TEXT, relief="flat", padx=18, pady=16)
-        scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
-        text.configure(yscrollcommand=scroll.set)
-        scroll.pack(side="right", fill="y")
-        text.pack(fill="both", expand=True)
-        text.tag_configure("title", font=("Segoe UI", 16, "bold"), spacing1=12, spacing3=10)
-        text.tag_configure("heading", font=("Segoe UI", 12, "bold"), spacing1=16, spacing3=8)
-        text.tag_configure("code", font=("Consolas", 10), background="#392930")
-        code = False
-        for line in instruction.splitlines():
-            if line.startswith("```"):
-                code = not code
-                continue
-            tag = "code" if code else "title" if line.startswith("# ") else "heading" if line.startswith("## ") else ""
-            if tag in ("title", "heading"):
-                line = line.lstrip("# ")
-            if not code:
-                line = line.replace("**", "").replace("`", "")
-                line = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", line)
-            text.insert("end", line + "\n", tag)
-        text.configure(state="disabled")
-        def close():
-            window.destroy()
-            if parent.winfo_exists():
-                parent.grab_set()
-        window.protocol("WM_DELETE_WINDOW", close)
-        ttk.Button(window, text="Zamknij", command=close).pack(anchor="e", padx=16, pady=(0, 12))
+            if webbrowser.open('https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr'):
+                return
+        except Exception:
+            LOG.exception("Nie udało się otworzyć filmu instruktażowego Teams")
+        messagebox.showerror("Instrukcja Teams", "Nie udało się otworzyć filmu w przeglądarce.", parent=parent)
 
     def notify_batch(self, incidents):
         records = self.history.snapshot(self.selected_filter_url())

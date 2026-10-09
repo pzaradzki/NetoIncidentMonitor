@@ -9,7 +9,7 @@ package = Path(playwright.__file__).parent / "driver" / "package"
 metadata = json.loads((package / "browsers.json").read_text(encoding="utf-8"))
 cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or
              str(Path(os.environ["LOCALAPPDATA"]) / "ms-playwright"))
-browser_data = [(str(root / "docs" / "INSTRUKCJA_TEAMS.md"), "docs"), (str(root / "assets"), "assets")]
+browser_data = [(str(root / "assets"), "assets")]
 for name in ("chromium", "ffmpeg"):
     info = next(entry for entry in metadata["browsers"] if entry["name"] == name)
     folder = name + "-" + info["revision"]
