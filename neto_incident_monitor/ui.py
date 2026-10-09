@@ -220,10 +220,14 @@ def build_ui(app, settings):
     root.after_idle(align_header_title)
     main.columnconfigure(0, weight=1)
     main.rowconfigure(2, weight=1)
-    app.phase = tk.StringVar(value="● Gotowy do uruchomienia")
+    app.phase = tk.StringVar(value="Gotowy do uruchomienia")
     state = ttk.Frame(main, padding=(0, 0, 0, 12))
     state.grid(row=0, column=0, sticky="ew")
-    app.phase_label = ttk.Label(state, textvariable=app.phase, font=("Segoe UI", 10, "bold"), foreground=MUTED)
+    app.selected_filter_name = tk.StringVar()
+    ttk.Label(state, textvariable=app.selected_filter_name, font=("Segoe UI", 10, "bold"),
+              foreground=TEXT).pack(side="left", padx=(0, 12))
+    from neto_incident_monitor.widgets import StatusPill
+    app.phase_label = StatusPill(state)
     app.phase_label.pack(side="left")
     app.update_phase_text()
     app.countdown = tk.StringVar(value="Następne sprawdzenie: —")
