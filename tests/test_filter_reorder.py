@@ -81,3 +81,19 @@ class FilterReorderTests(unittest.TestCase):
                 self.assertEqual([f["name"] for f in app.filters], ["B", "C", "A"])
                 self.assertEqual(app.selected_filter_url(), url)
                 error.assert_called_once()
+
+    def test_drag_above_short_list_keeps_rows_at_top(self):
+        table = FilterList(self.root)
+        table.configure(height=16)
+        table.pack()
+        for i in range(2):
+            table.insert("", "end", str(i), (f"Filter {i}",))
+        self.root.update()
+        table.select_at(SimpleNamespace(x=30, y=60))
+        for y in (10, -10, -50, -100):
+            table.drag_motion(SimpleNamespace(x=30, y=y))
+            self.assertEqual(table.canvasy(0), 0)
+            self.assertEqual(table.drag["slot"], 0)
+        table.drag_cancel()
+        table.yview_scroll(-1, "units")
+        self.assertEqual(table.canvasy(0), 0)
