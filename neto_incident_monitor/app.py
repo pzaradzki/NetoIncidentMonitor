@@ -615,6 +615,8 @@ class App:
         return self.filters[index - 1]["url"] if index else ""
 
     def filter_selected(self):
+        if hasattr(self, "phase"):
+            self.update_phase_text()
         if hasattr(self, "current_table"):
             self.refresh_current()
             self.refresh_history()
@@ -782,10 +784,17 @@ class App:
             self.column_availability.clear()
             self.refresh_filters()
 
+    def update_phase_text(self):
+        phase = getattr(self, "monitoring_phase", "Gotowy do uruchomienia")
+        index = self.selected_filter_index()
+        name = self.filters[index - 1]["name"] if index else ""
+        self.phase.set(f"{name} • {phase}" if name else f"• {phase}")
+
     def set_phase(self, phase):
         colors = {"Monitoring aktywny": "#7ac99e", "Oczekiwanie na logowanie": "#e9bc70",
                   "Błąd odczytu": "#ff7a85", "Błąd uruchomienia": "#ff7a85"}
-        self.phase.set("● " + phase)
+        self.monitoring_phase = phase
+        self.update_phase_text()
         self.phase_label.configure(foreground=colors.get(phase, MUTED))
         self.auth_waiting = phase in ("Oczekiwanie na logowanie", "Uruchamianie przeglądarki")
         self.check_button.configure(state="disabled" if self.auth_waiting or not self.worker or not self.worker.is_alive() or self.quitting else "normal")
@@ -803,7 +812,7 @@ class App:
     def update_tray(self):
         if self.tray and self.tray_ready:
             try:
-                self.tray.update(self.history.unread(), self.phase.get().removeprefix("● "))
+                self.tray.update(self.history.unread(), getattr(self, "monitoring_phase", "Gotowy do uruchomienia"))
             except Exception:
                 LOG.exception("Błąd aktualizacji zasobnika")
 
