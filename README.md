@@ -100,7 +100,7 @@ Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończ
 
 Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybrać pojedyncze zapamiętane konto i zatwierdzić formularz, jeśli pole hasła jest już uzupełnione. Gdy wymagane jest podanie hasła, wybór spośród wielu kont, uwierzytelnianie wieloskładnikowe lub obsługa błędu, aplikacja oczekuje na działanie użytkownika. Nie zapisuje samodzielnie hasła. Korzysta z własnego profilu Chromium, niezależnego od profilu przeglądarki Chrome użytkownika.
 
-Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [instrukcja konfiguracji powiadomień Teams](docs/INSTRUKCJA_TEAMS.md), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
+Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [film instruktażowy konfiguracji powiadomień Teams](https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
 
 ## Przechowywanie danych
 
