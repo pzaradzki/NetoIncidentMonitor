@@ -4,6 +4,23 @@ from PIL import Image, ImageDraw, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
+def draw_gear(draw, x, y, color, size=16):
+    """Shared gear outline, rendered at 4x resolution for smooth edges."""
+    import math
+    scale = size / 16
+    outline = []
+    for i in range(32):
+        angle = i * math.pi / 16
+        radius = 7.5 if i % 4 in (1, 2) else 5.5
+        outline.append((round((x + (8 + math.cos(angle) * radius) * scale) * 4),
+                        round((y + (8 + math.sin(angle) * radius) * scale) * 4)))
+    stroke = round(6 * scale)
+    draw.line(outline + [outline[0]], fill=color, width=stroke, joint="curve")
+    draw.ellipse((round((x + 5 * scale) * 4), round((y + 5 * scale) * 4),
+                  round((x + 11 * scale) * 4), round((y + 11 * scale) * 4)),
+                 outline=color, width=stroke)
+
+
 class StatusPill(tk.Canvas):
     """Compact status badge with smooth rounded edges."""
     def __init__(self, parent):
@@ -294,14 +311,7 @@ class RoundedButton(tk.Canvas):
             line([(6, 2), (6, 14)])
             line([(10, 2), (10, 14)])
         elif self.icon == "gear":
-            import math
-            outline = []
-            for i in range(32):
-                angle = i * math.pi / 16
-                radius = 7.5 if i % 4 in (1, 2) else 5.5
-                outline.append((8 + math.cos(angle)*radius, 8 + math.sin(angle)*radius))
-            line(outline + [outline[0]])
-            draw.ellipse(box(5, 5, 11, 11), outline=color, width=6)
+            draw_gear(draw, x, y, color)
 
     def configure(self, cnf=None, **kwargs):
         state = kwargs.pop("state", None)
@@ -450,6 +460,7 @@ class FilterList(tk.Canvas):
                                    fill=ACCENT if enabled else "#555c68")
             center = left + (21 if enabled else 9)
             draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
+            draw_gear(draw, width - 65, 13, TEXT, size=18)
             photo = ImageTk.PhotoImage(picture.resize((width, self.ROW), Image.Resampling.LANCZOS), master=self)
             self.pictures.append(photo)
             y = index * self.ROW
@@ -464,7 +475,6 @@ class FilterList(tk.Canvas):
             if label != name:
                 label = label[:-1] + "…"
             self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
-            self.create_text(width - 56, y + 22, text="⚙", fill=TEXT if chosen else "#a8b0bd", font=("Segoe UI Symbol", 13))
         # A scroll region shorter than the viewport lets Tk shift the rows
         # down when scrolling upward, leaving empty space above them.
         self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))
