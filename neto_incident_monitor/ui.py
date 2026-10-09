@@ -225,6 +225,7 @@ def build_ui(app, settings):
     state.grid(row=0, column=0, sticky="ew")
     app.phase_label = ttk.Label(state, textvariable=app.phase, font=("Segoe UI", 10, "bold"), foreground=MUTED)
     app.phase_label.pack(side="left")
+    app.update_phase_text()
     app.countdown = tk.StringVar(value="Następne sprawdzenie: —")
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
