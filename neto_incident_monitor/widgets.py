@@ -325,8 +325,13 @@ class FilterList(tk.Canvas):
         self.on_toggle = None
         self.on_select = None
         self.on_settings = None
+        self.on_reorder = None
+        self.drag = None
         self.bind("<Configure>", self.redraw)
         self.bind("<Button-1>", self.select_at)
+        self.bind("<B1-Motion>", self.drag_motion)
+        self.bind("<ButtonRelease-1>", self.drag_end)
+        self.bind("<Escape>", self.drag_cancel)
         self.bind("<Up>", lambda _: self.move(-1))
         self.bind("<Down>", lambda _: self.move(1))
         self.bind("<MouseWheel>", lambda event: self.yview_scroll(-int(event.delta / 120), "units"))
@@ -356,6 +361,7 @@ class FilterList(tk.Canvas):
             self.on_select()
 
     def select_at(self, event):
+        self.drag_cancel()
         index = int(self.canvasy(event.y) // self.ROW)
         items = self.get_children()
         if 0 <= index < len(items):
@@ -367,6 +373,44 @@ class FilterList(tk.Canvas):
                 return "break"
             self.selection_set(items[index])
             self.focus_set()
+            self.drag = {"item": items[index], "y": event.y, "active": False, "slot": index}
+
+    def drag_motion(self, event):
+        if not self.drag:
+            return
+        if not self.drag["active"] and abs(event.y - self.drag["y"]) < 6:
+            return
+        self.drag["active"] = True
+        self.configure(cursor="fleur")
+        if event.y < 16:
+            self.yview_scroll(-1, "units")
+        elif event.y > self.winfo_height() - 16:
+            self.yview_scroll(1, "units")
+        self.drag["slot"] = max(0, min(len(self.rows), int((self.canvasy(event.y) + self.ROW / 2) // self.ROW)))
+        self.draw_drop_marker()
+        return "break"
+
+    def draw_drop_marker(self):
+        super().delete("drop_marker")
+        if self.drag and self.drag["active"]:
+            y = self.drag["slot"] * self.ROW
+            y = max(self.canvasy(0) + 3, min(self.canvasy(self.winfo_height()) - 3, y))
+            width = self.winfo_width()
+            self.create_line(7, y, width - 7, y, fill=ACCENT, width=3, tags="drop_marker")
+            for x in (7, width - 7):
+                self.create_oval(x - 3, y - 3, x + 3, y + 3, fill=ACCENT, outline=ACCENT, tags="drop_marker")
+
+    def drag_cancel(self, event=None):
+        self.drag = None
+        super().delete("drop_marker")
+        self.configure(cursor="hand2")
+
+    def drag_end(self, event):
+        drag = self.drag
+        self.drag_cancel()
+        if drag and drag["active"] and self.on_reorder and 0 <= event.x <= self.winfo_width() and 0 <= event.y <= self.winfo_height():
+            self.on_reorder(drag["item"], drag["slot"])
+        return "break"
 
     def move(self, direction):
         items = self.get_children()
@@ -420,6 +464,7 @@ class FilterList(tk.Canvas):
             self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
             self.create_text(width - 56, y + 22, text="⚙", fill=TEXT if chosen else "#a8b0bd", font=("Segoe UI Symbol", 13))
         self.configure(scrollregion=(0, 0, width, len(self.rows) * self.ROW))
+        self.draw_drop_marker()
 
     def delete_canvas(self):
         super().delete("all")
