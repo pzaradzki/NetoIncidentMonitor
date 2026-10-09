@@ -57,6 +57,8 @@ Po przygotowaniu środowiska plik `Neto Incident Monitor.vbs` umożliwia urucham
 
 Każdy filtr ma własną listę bieżących incydentów i własną historię. Czerwone zaznaczenie w panelu filtrów określa zawartość obu zakładek. Ten sam numer incydentu może być niezależnie wykryty w kilku filtrach.
 
+Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
+
 Ikona koła zębatego przy filtrze otwiera ustawienia jego powiadomień:
 
 - **Powiadomienia Windows** i **Powiadomienia Microsoft Teams** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.

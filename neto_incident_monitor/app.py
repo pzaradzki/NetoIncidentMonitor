@@ -653,6 +653,7 @@ class App:
         self.filter_table.on_toggle = self.toggle_filter
         self.filter_table.on_settings = self.configure_filter_notifications
         self.filter_table.on_select = self.filter_selected
+        self.filter_table.on_reorder = self.reorder_filter
         selected = self.filter_table.selection()
         self.filter_table.delete(*self.filter_table.get_children())
         for index, entry in enumerate(self.filters):
@@ -667,6 +668,34 @@ class App:
             self.filter_table.selection_set(selected[0] if selected and selected[0] in self.filter_table.get_children() else "0")
         else:
             self.filter_selected()
+
+    def reorder_filter(self, item, slot):
+        source = int(item)
+        target = slot - (1 if slot > source else 0)
+        if target == source or self.quitting:
+            return
+        old = self.filters
+        selected_url = self.selected_filter_url()
+        proposed = list(old)
+        moved = proposed.pop(source)
+        proposed.insert(target, moved)
+        self.filters = proposed
+        try:
+            self.persist_filters()
+        except (OSError, ValueError) as error:
+            self.filters = old
+            messagebox.showerror("Kolejność filtrów", f"Nie udało się zapisać kolejności: {error}", parent=self.root)
+            return
+        positions = {entry["url"]: i for i, entry in enumerate(proposed, 1)}
+        self.snapshots = {positions[old[i - 1]["url"]]: value for i, value in self.snapshots.items()}
+        self.column_availability = {positions[old[i - 1]["url"]]: value for i, value in self.column_availability.items()}
+        self.refresh_filters()
+        self.filter_table.selection_set(str(positions[selected_url] - 1))
+
+    def event_filter_index(self, identity):
+        if isinstance(identity, int):
+            return identity
+        return next((i for i, entry in enumerate(self.filters, 1) if entry["url"] == identity), None)
 
     def persist_filters(self):
         settings = read_json(CONFIG, {})
@@ -1228,7 +1257,7 @@ class App:
                                     continue
                                 for incident in incidents.values():
                                     incident["_available_columns"] = sorted(available)
-                                self.events.put(("columns", (filter_index, available)))
+                                self.events.put(("columns", (url, available)))
                                 options = next((entry for entry in self.filters if entry["url"] == url), {})
                                 arrivals = membership.arrivals(url, incidents)
                                 new = membership.arrivals(url, incidents, options.get("first_only", False))
@@ -1236,7 +1265,7 @@ class App:
                                     self.history.add(incidents[number], filter_name, url, reappeared=True)
                                 membership.commit(url, incidents)
                                 health.success(url)
-                                self.events.put(("snapshot", (filter_index, incidents)))
+                                self.events.put(("snapshot", (url, incidents)))
                                 if new:
                                     self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)])))
                                 self.events.put(("read", (time.time(), filter_name)))
@@ -1333,6 +1362,9 @@ class App:
                     self.last_read.set(f"Ostatnia aktualizacja: {time.strftime('%H:%M:%S', time.localtime(timestamp))} • {name}")
                 elif kind == "columns":
                     index, available = value
+                    index = self.event_filter_index(index)
+                    if index is None:
+                        continue
                     if not self.filters[index - 1].get("enabled", True):
                         continue
                     if available:
@@ -1340,6 +1372,9 @@ class App:
                     self.apply_visible_columns()
                 elif kind == "snapshot":
                     filter_index, incidents = value
+                    filter_index = self.event_filter_index(filter_index)
+                    if filter_index is None:
+                        continue
                     if not self.filters[filter_index - 1].get("enabled", True):
                         continue
                     self.snapshots[filter_index] = incidents
