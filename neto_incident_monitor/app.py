@@ -289,7 +289,7 @@ class App:
                 self.status.set("Zasobnik niedostępny. Monitoring działa w oknie; błędy zapisano w logu.")
 
     def make_table(self, parent, history):
-        columns = [("read", "Przeczytanie", 145), ("filter", "Monitorowany filtr", 155),
+        columns = [("read", "Przeczytanie", 145),
                    *[(key, label, width) for key, label, width in FIELDS if key == "number" or key in DATA_FIELDS]]
         if history:
             columns.insert(0, ("time", "Wykryto", 150))
@@ -474,16 +474,15 @@ class App:
 
     def available_columns(self, history=False):
         if history:
-            incidents = [record["incident"] for record in self.history.snapshot().values()]
+            incidents = [record["incident"] for record in self.history.snapshot(self.selected_filter_url()).values()]
             if not incidents:
                 return None
             available = set()
             for incident in incidents:
                 available.update(incident.get("_available_columns", [key for key in DATA_FIELDS if key in incident]))
             return available | LOCAL
-        if not self.column_availability:
-            return None
-        return set().union(*self.column_availability.values()) | LOCAL
+        available = self.column_availability.get(self.selected_filter_index())
+        return available | LOCAL if available is not None else None
 
     def apply_visible_columns(self):
         for table, history in ((self.current_table, False), (self.table, True)):
@@ -607,10 +606,52 @@ class App:
             if "unread" not in table.item(item, "tags"):
                 table.item(item, tags=("alternate",) if index % 2 else ())
 
+    def selected_filter_index(self):
+        selected = self.filter_table.selection() if hasattr(self, "filter_table") else ()
+        return int(selected[0]) + 1 if selected else None
+
+    def selected_filter_url(self):
+        index = self.selected_filter_index()
+        return self.filters[index - 1]["url"] if index else ""
+
+    def filter_selected(self):
+        if hasattr(self, "current_table"):
+            self.refresh_current()
+            self.refresh_history()
+            self.apply_visible_columns()
+            self.update_counts()
+
+    def configure_filter_notifications(self, item):
+        from neto_incident_monitor.filter_settings import show_filter_settings
+        show_filter_settings(self, int(item))
+
+    def notify_filter(self, url, incidents):
+        entry = next((entry for entry in self.filters if entry["url"] == url), None)
+        if not entry or not entry.get("enabled", True) or not incidents:
+            return
+        from neto_incident_monitor.teams_notifications import incident_text
+        _, message = incident_text(incidents)
+        heading = "Wykryto incydent" if len(incidents) == 1 else f"Wykryto incydenty: {len(incidents)}"
+        title = entry["name"]
+        message = heading + "\n" + message
+        if self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook:
+            self.teams_sender.submit(self.teams_webhook, title, message)
+        if self.notify.get() and entry.get("notify_windows", True):
+            try:
+                from plyer import notification
+                self.root.bell()
+                notification.notify(title=title, message=message, app_name="Neto Incident Monitor", timeout=10)
+            except Exception:
+                LOG.exception("Błąd powiadomienia filtra")
+                self.status.set("Incydenty zapisano. Nie udało się wysłać powiadomienia Windows.")
+
     def refresh_filters(self):
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.filter_table.enabled_rows = {str(i): entry.get("enabled", True) for i, entry in enumerate(self.filters)}
         self.filter_table.on_toggle = self.toggle_filter
+        self.filter_table.on_settings = self.configure_filter_notifications
+        self.filter_table.on_select = self.filter_selected
+        selected = self.filter_table.selection()
         self.filter_table.delete(*self.filter_table.get_children())
         for index, entry in enumerate(self.filters):
             self.filter_table.insert("", "end", iid=str(index), values=(entry["name"], urlparse(entry["url"]).hostname))
@@ -621,7 +662,9 @@ class App:
         else:
             self.filter_scroll.grid_remove()
         if self.filters:
-            self.filter_table.selection_set("0")
+            self.filter_table.selection_set(selected[0] if selected and selected[0] in self.filter_table.get_children() else "0")
+        else:
+            self.filter_selected()
 
     def persist_filters(self):
         settings = read_json(CONFIG, {})
@@ -693,7 +736,7 @@ class App:
                     raise ValueError("Podaj nazwę i jeden adres filtra.")
                 if any(normalize_url(other["url"]) == urls[0] for i, other in enumerate(self.filters) if i != index):
                     raise ValueError("Ten adres jest już zapisany jako inny filtr.")
-                updated = {"name": name.get().strip(), "url": urls[0], "enabled": entry.get("enabled", True)}
+                updated = {**entry, "name": name.get().strip(), "url": urls[0], "enabled": entry.get("enabled", True)}
                 proposed = [dict(item) for item in self.filters]
                 if edit:
                     proposed[index] = updated
@@ -706,6 +749,9 @@ class App:
                 except Exception:
                     self.filters = old
                     raise
+                if edit and entry["url"] != updated["url"]:
+                    self.snapshots.pop(index + 1, None)
+                    self.column_availability.pop(index + 1, None)
                 self.refresh_filters()
                 dialog.destroy()
             except (ValueError, OSError) as exc:
@@ -732,6 +778,8 @@ class App:
                 self.filters = old
                 messagebox.showerror("Filtry", str(exc))
                 return
+            self.snapshots.clear()
+            self.column_availability.clear()
             self.refresh_filters()
 
     def set_phase(self, phase):
@@ -744,10 +792,10 @@ class App:
         self.update_tray()
 
     def update_counts(self):
-        numbers = {number for snapshot in self.snapshots.values() for number in snapshot}
+        numbers = set(self.snapshots.get(self.selected_filter_index(), {}))
         self.current_count.set(str(len(numbers)))
         self.new_count.set(str(len(self.new_numbers)))
-        unread = self.history.unread()
+        unread = sum(not record["read"] for record in self.history.snapshot(self.selected_filter_url()).values())
         self.unread_count.set(str(unread))
         self.tabs.tab(1, text="Historia zgłoszeń")
         self.update_tray()
@@ -768,13 +816,13 @@ class App:
     def refresh_history(self):
         selected = {self.row_numbers.get((self.table, item)) for item in self.table.selection()}
         self.clear_table(self.table)
-        records = self.history.snapshot()
+        records = self.history.snapshot(self.selected_filter_url())
         for number, record in sorted(records.items(), key=lambda pair: pair[1]["detected"], reverse=True):
             incident = record["incident"]
             label = "Nieprzeczytany" if not record["read"] else "Przeczytany"
             item = self.table.insert("", "end", values=(
                 time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"])), label,
-                ", ".join(dict.fromkeys(record["filters"].values())), *incident_values(incident)),
+                *incident_values(incident)),
                 tags=("unread",) if not record["read"] else ("alternate",) if len(self.table.get_children()) % 2 else ())
             self.items[(self.table, item)] = incident["url"]
             self.row_numbers[(self.table, item)] = number
@@ -785,10 +833,12 @@ class App:
 
     def refresh_current(self):
         selected = {self.row_numbers.get((self.current_table, item)) for item in self.current_table.selection()}
-        records = self.history.snapshot()
+        records = self.history.snapshot(self.selected_filter_url())
         self.clear_table(self.current_table)
         combined = {}
         for index, snapshot in sorted(self.snapshots.items()):
+            if index != self.selected_filter_index():
+                continue
             for number, incident in snapshot.items():
                 entry = combined.setdefault(number, {"incident": {}, "filters": []})
                 # Lists may expose different columns; retain nonempty fields.
@@ -801,7 +851,7 @@ class App:
             unread = number in records and not records[number]["read"]
             label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
             item = self.current_table.insert("", "end", values=(label,
-                ", ".join(entry["filters"]), *incident_values(incident)),
+                *incident_values(incident)),
                 tags=("unread",) if unread else ("alternate",) if len(self.current_table.get_children()) % 2 else ())
             self.items[(self.current_table, item)] = incident["url"]
             self.row_numbers[(self.current_table, item)] = number
@@ -815,23 +865,23 @@ class App:
         self.mark_read([self.row_numbers[(table, item)] for item in table.selection()])
 
     def mark_all(self):
-        self.mark_read(list(self.history.snapshot()))
+        self.mark_read(list(self.history.snapshot(self.selected_filter_url())))
 
     def clear_history(self):
         from neto_incident_monitor.widgets import confirm_dialog
-        if not self.history.snapshot():
+        if not self.history.snapshot(self.selected_filter_url()):
             messagebox.showinfo("Historia zgłoszeń", "Historia jest już pusta.", parent=self.root)
             return
         confirmed = confirm_dialog(
             self.root,
             "Wyczyść historię zgłoszeń",
-            "Czy usunąć całą historię zgłoszeń i oznaczenia przeczytania?\n\n"
+            "Czy usunąć historię wybranego filtra i jego oznaczenia przeczytania?\n\n"
             "Tej operacji nie można cofnąć. Bieżąca lista i pamięć wcześniej widzianych incydentów pozostaną zachowane.",
             )
         if not confirmed:
             return
         try:
-            self.history.clear()
+            self.history.clear(self.selected_filter_url())
         except OSError as exc:
             LOG.exception("Nie udało się wyczyścić historii")
             messagebox.showerror("Historia zgłoszeń", f"Nie udało się zapisać zmiany: {exc}", parent=self.root)
@@ -845,7 +895,7 @@ class App:
         if not numbers:
             return
         try:
-            self.history.mark_read(numbers)
+            self.history.mark_read(numbers, self.selected_filter_url())
         except OSError as exc:
             LOG.exception("Błąd zapisu oznaczeń przeczytania")
             self.show_window()
@@ -1065,7 +1115,7 @@ class App:
         ttk.Button(window, text="Zamknij", command=close).pack(anchor="e", padx=16, pady=(0, 12))
 
     def notify_batch(self, incidents):
-        records = self.history.snapshot()
+        records = self.history.snapshot(self.selected_filter_url())
         unread = [incident for incident in incidents
                   if incident["number"] in records and not records[incident["number"]]["read"]]
         text = batch_text(unread)
@@ -1130,12 +1180,8 @@ class App:
         health = Health()
         try:
             from playwright.sync_api import sync_playwright
-            seen = read_json(STATE, {})
-            normalized_seen = {}
-            for previous_url, numbers in seen.items():
-                key = normalize_url(previous_url)
-                normalized_seen[key] = sorted(set(normalized_seen.get(key, [])) | set(numbers))
-            seen = normalized_seen
+            from neto_incident_monitor.filter_state import FilterState
+            membership = FilterState(STATE, normalize_url)
             with sync_playwright() as playwright:
                 context = playwright.chromium.launch_persistent_context(str(DATA / "browser-profile"), headless=False, no_viewport=True)
                 try:
@@ -1147,7 +1193,6 @@ class App:
                     if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
                         return
                     while not self.stop.is_set():
-                        batch = {}
                         self.events.put(("checking", None))
                         cycle_error = False
                         for filter_index, url in enumerate(settings["urls"], 1):
@@ -1176,33 +1221,21 @@ class App:
                                 for incident in incidents.values():
                                     incident["_available_columns"] = sorted(available)
                                 self.events.put(("columns", (filter_index, available)))
-                                previous = set(seen.get(url, []))
-                                new = set(incidents) - previous if url in seen else set()
-                                notifications = {}
-                                for number in sorted(new):
-                                    # Persist before seen.json so a failed write cannot
-                                    # permanently lose a newly detected incident.
-                                    notifications[number] = self.history.add(incidents[number], filter_name, url)
-                                updated_seen = dict(seen)
-                                updated_seen[url] = sorted(previous | set(incidents))
-                                save_json(STATE, updated_seen)
-                                seen = updated_seen
+                                options = next((entry for entry in self.filters if entry["url"] == url), {})
+                                arrivals = membership.arrivals(url, incidents)
+                                new = membership.arrivals(url, incidents, options.get("first_only", False))
+                                for number in sorted(arrivals):
+                                    self.history.add(incidents[number], filter_name, url, reappeared=True)
+                                membership.commit(url, incidents)
                                 health.success(url)
                                 self.events.put(("snapshot", (filter_index, incidents)))
-                                for number in sorted(new):
-                                    self.events.put(("incident", (filter_name, incidents[number], False)))
-                                    if notifications[number]:
-                                        batch[number] = incidents[number]
+                                if new:
+                                    self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)])))
                                 self.events.put(("read", (time.time(), filter_name)))
                                 self.events.put(("status", f"{filter_name}: {len(incidents)} incydentów na {page_count} stronach; nowych w tym odczycie: {len(new)}."))
                             except Cancelled:
-                                if batch:
-                                    self.events.put(("batch_notification", list(batch.values())))
                                 return
                             except AuthenticationRequired:
-                                if batch:
-                                    self.events.put(("batch_notification", list(batch.values())))
-                                    batch.clear()
                                 self.events.put(("phase", "Oczekiwanie na logowanie"))
                                 message = "Sesja ServiceNow wygasła. Zaloguj się w przeglądarce — monitoring wznowi się automatycznie."
                                 self.events.put(("status", message))
@@ -1221,8 +1254,6 @@ class App:
                                 self.events.put(("status", f"Błąd odczytu: {exc}. Próba ponownie w kolejnym cyklu."))
                                 if health.failure(url):
                                     self.events.put(("interruption", f"Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane."))
-                        if batch:
-                            self.events.put(("batch_notification", list(batch.values())))
                         self.events.put(("waiting", (time.monotonic() + settings["interval"], cycle_error)))
                         if self.schedule.wait(settings["interval"], self.stop):
                             break
@@ -1260,6 +1291,9 @@ class App:
                     self.interruption(value)
                 elif kind == "session_expired":
                     self.session_expired(value)
+                elif kind == "filter_notification":
+                    url, incidents = value
+                    self.notify_filter(url, incidents)
                 elif kind == "batch_notification":
                     self.notify_batch(value)
                 elif kind == "teams_result":
@@ -1324,7 +1358,7 @@ class App:
                     # A confirmed clear can happen after the worker persisted
                     # a record but before this queued event is processed.
                     # Do not resurrect a record that the user just removed.
-                    if incident["number"] not in self.history.snapshot():
+                    if incident["number"] not in self.history.snapshot(self.selected_filter_url()):
                         continue
                     self.refresh_history()
                     self.refresh_current()

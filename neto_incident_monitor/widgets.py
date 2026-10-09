@@ -294,6 +294,8 @@ class FilterList(tk.Canvas):
         self.rows, self.selected, self.pictures = {}, None, []
         self.enabled_rows = {}
         self.on_toggle = None
+        self.on_select = None
+        self.on_settings = None
         self.bind("<Configure>", self.redraw)
         self.bind("<Button-1>", self.select_at)
         self.bind("<Up>", lambda _: self.move(-1))
@@ -321,11 +323,16 @@ class FilterList(tk.Canvas):
     def selection_set(self, item):
         self.selected = item
         self.redraw()
+        if self.on_select:
+            self.on_select()
 
     def select_at(self, event):
         index = int(self.canvasy(event.y) // self.ROW)
         items = self.get_children()
         if 0 <= index < len(items):
+            if self.winfo_width() - 70 <= event.x < self.winfo_width() - 42 and self.on_settings:
+                self.on_settings(items[index])
+                return "break"
             if event.x >= self.winfo_width() - 42 and self.on_toggle is not None:
                 self.on_toggle(items[index])
                 return "break"
@@ -377,11 +384,12 @@ class FilterList(tk.Canvas):
             from tkinter.font import Font
             font = Font(self, font=("Segoe UI", 9))
             label = name
-            while label and font.measure(label) > width - 72:
+            while label and font.measure(label) > width - 100:
                 label = label[:-1]
             if label != name:
                 label = label[:-1] + "…"
             self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            self.create_text(width - 56, y + 22, text="⚙", fill=TEXT if chosen else "#a8b0bd", font=("Segoe UI Symbol", 13))
         self.configure(scrollregion=(0, 0, width, len(self.rows) * self.ROW))
 
     def delete_canvas(self):

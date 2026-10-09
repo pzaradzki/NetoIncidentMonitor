@@ -36,6 +36,8 @@ class ColumnTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
                 with patch('neto_incident_monitor.app.read_json', return_value={'visible_columns': [*DEFAULT, 'state', 'description']}):
                     app = App(root, history_path=Path(folder)/'history.json', enable_tray=False)
+                app.filters = [{'name':'A','url':'https://example.com'}, {'name':'B','url':'https://example.org'}]
+                app.refresh_filters()
                 app.column_availability = {1: {'number', 'short_description', 'state'}}
                 app.apply_visible_columns()
                 self.assertIn('state', app.current_table['displaycolumns'])
@@ -43,7 +45,10 @@ class ColumnTests(unittest.TestCase):
                 self.assertIn('description', app.visible_columns)
                 app.column_availability[2] = {'number', 'description'}
                 app.apply_visible_columns()
+                self.assertNotIn('description', app.current_table['displaycolumns'])
+                app.filter_table.selection_set('1')
                 self.assertIn('description', app.current_table['displaycolumns'])
+                app.filter_table.selection_set('0')
                 app.column_availability[1].remove('state')
                 app.apply_visible_columns()
                 self.assertNotIn('state', app.current_table['displaycolumns'])
@@ -65,6 +70,8 @@ class ColumnTests(unittest.TestCase):
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
                 with patch('neto_incident_monitor.app.read_json', return_value={}):
                     app = App(root, history_path=Path(folder)/'history.json', enable_tray=False)
+                app.filters = [{'name':'A','url':'https://example.com'}, {'name':'B','url':'https://example.org'}]
+                app.refresh_filters()
                 app.column_availability = {1: {'number', 'short_description', 'state'}}
                 app.configure_columns()
                 root.update()
