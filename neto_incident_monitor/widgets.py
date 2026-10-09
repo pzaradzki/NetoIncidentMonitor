@@ -4,6 +4,35 @@ from PIL import Image, ImageDraw, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
+class StatusPill(tk.Canvas):
+    """Compact status badge with smooth rounded edges."""
+    def __init__(self, parent):
+        from neto_incident_monitor.theme import BG
+        super().__init__(parent, height=28, bg=BG, bd=0, highlightthickness=0)
+
+    def set_status(self, text):
+        from tkinter.font import Font
+        colors = {
+            "Monitoring aktywny": ("#243d33", "#85d6aa"),
+            "Oczekiwanie na logowanie": ("#433923", "#efc778"),
+            "Sprawdzanie list": ("#27364a", "#9ac4f4"),
+            "Uruchamianie przeglądarki": ("#27364a", "#9ac4f4"),
+            "Błąd odczytu": ("#472c33", "#ff929e"),
+            "Błąd uruchomienia": ("#472c33", "#ff929e"),
+        }
+        background, foreground = colors.get(text, ("#343942", "#c8cdd6"))
+        font = Font(self, font=("Segoe UI", 9, "bold"))
+        width = font.measure(text) + 24
+        self.configure(width=width)
+        picture = Image.new("RGB", (width * 4, 28 * 4), self.cget("bg"))
+        ImageDraw.Draw(picture).rounded_rectangle((0, 0, width * 4 - 1, 28 * 4 - 1),
+                                                  radius=14 * 4, fill=background)
+        self.picture = ImageTk.PhotoImage(picture.resize((width, 28), Image.Resampling.LANCZOS), master=self)
+        self.delete("all")
+        self.create_image(0, 0, image=self.picture, anchor="nw")
+        self.create_text(width / 2, 14, text=text, fill=foreground, font=("Segoe UI", 9, "bold"))
+
+
 class PriorityDots:
     """Small cell overlays, following scrolling and column rearrangements."""
     COLORS = {"1": "#ef4858", "2": "#f59b45", "3": "#e6c44b", "4": "#69bf91", "5": "#919aa8"}

@@ -788,14 +788,13 @@ class App:
         phase = getattr(self, "monitoring_phase", "Gotowy do uruchomienia")
         index = self.selected_filter_index()
         name = self.filters[index - 1]["name"] if index else ""
-        self.phase.set(f"{name} • {phase}" if name else f"• {phase}")
+        self.phase.set(phase)
+        self.selected_filter_name.set(name)
+        self.phase_label.set_status(phase)
 
     def set_phase(self, phase):
-        colors = {"Monitoring aktywny": "#7ac99e", "Oczekiwanie na logowanie": "#e9bc70",
-                  "Błąd odczytu": "#ff7a85", "Błąd uruchomienia": "#ff7a85"}
         self.monitoring_phase = phase
         self.update_phase_text()
-        self.phase_label.configure(foreground=colors.get(phase, MUTED))
         self.auth_waiting = phase in ("Oczekiwanie na logowanie", "Uruchamianie przeglądarki")
         self.check_button.configure(state="disabled" if self.auth_waiting or not self.worker or not self.worker.is_alive() or self.quitting else "normal")
         self.update_tray()
