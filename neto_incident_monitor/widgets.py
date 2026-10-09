@@ -382,7 +382,9 @@ class FilterList(tk.Canvas):
             return
         self.drag["active"] = True
         self.configure(cursor="fleur")
-        if event.y < 16:
+        if len(self.rows) * self.ROW <= self.winfo_height():
+            self.yview_moveto(0)
+        elif event.y < 16:
             self.yview_scroll(-1, "units")
         elif event.y > self.winfo_height() - 16:
             self.yview_scroll(1, "units")
@@ -463,7 +465,9 @@ class FilterList(tk.Canvas):
                 label = label[:-1] + "…"
             self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
             self.create_text(width - 56, y + 22, text="⚙", fill=TEXT if chosen else "#a8b0bd", font=("Segoe UI Symbol", 13))
-        self.configure(scrollregion=(0, 0, width, len(self.rows) * self.ROW))
+        # A scroll region shorter than the viewport lets Tk shift the rows
+        # down when scrolling upward, leaving empty space above them.
+        self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))
         self.draw_drop_marker()
 
     def delete_canvas(self):
