@@ -17,7 +17,7 @@ class SortingTests(unittest.TestCase):
                     ("INC0000003", "10 — test", "2026-10-07 11:00:00"),
                     ("INC0000001", "2 — wysokie", "2026-10-06 11:00:00"),
                     ("INC0000002", "—", "—")]):
-                    values = ("Przeczytany", "Filtr", number, "Opis", priority, "Gdańsk", created)
+                    values = ("Przeczytany", number, "Opis", priority, "Gdańsk", created)
                     if history:
                         values = ("07.10.2026 11:00", *values)
                     table.insert("", "end", iid=str(index), values=values)

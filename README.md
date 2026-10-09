@@ -6,7 +6,7 @@ Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monito
 
 - Monitorowanie wielu filtrów z możliwością ich włączania i wyłączania podczas pracy.
 - Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams.
-- Historia wykrytych incydentów i lokalne oznaczanie ich jako przeczytanych.
+- Oddzielna historia każdego filtra i lokalne oznaczanie incydentów jako przeczytanych.
 - Otwieranie incydentów oraz kopiowanie ich numerów i adresów z menu kontekstowego.
 - Konfigurowanie widoczności, kolejności i szerokości kolumn.
 - Zapamiętywanie układu interfejsu, rozmiaru okna i stanu maksymalizacji.
@@ -55,17 +55,26 @@ Po przygotowaniu środowiska plik `Neto Incident Monitor.vbs` umożliwia urucham
 2. Wybierz **Uruchom monitoring** i zaloguj się w otwartym oknie Chromium. Aplikacja automatycznie rozpoznaje zakończenie logowania.
 3. Korzystaj z przełączników przy filtrach, aby włączać lub wyłączać poszczególne listy, również podczas monitorowania.
 
-Pierwszy poprawny odczyt nowego filtra ustala zestaw początkowy. Powiadomienia dotyczą incydentów wykrytych w kolejnych odczytach. Zmiana danych istniejącego incydentu, na przykład jego stanu, nie powoduje uznania go za nowy incydent.
+Każdy filtr ma własną listę bieżących incydentów i własną historię. Czerwone zaznaczenie w panelu filtrów określa zawartość obu zakładek. Ten sam numer incydentu może być niezależnie wykryty w kilku filtrach.
 
-Jeśli ten sam incydent występuje w kilku filtrach, jest prezentowany w jednym wierszu. Kolumna **Monitorowany filtr** zawiera nazwy wszystkich powiązanych filtrów.
+Ikona koła zębatego przy filtrze otwiera ustawienia jego powiadomień:
+
+- **Powiadomienia Windows** i **Powiadomienia Microsoft Teams** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
+- **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
+
+Powrót oznacza ponowne pojawienie się incydentu po poprawnym odczycie, który potwierdził jego nieobecność. Błąd odczytu, wyłączenie filtra i ponowne uruchomienie aplikacji nie stanowią potwierdzenia zniknięcia. Ostatnia potwierdzona obecność i wcześniejsze wystąpienia są zachowywane między uruchomieniami.
+
+Pierwszy odczyt nowego filtra wykrywa znajdujące się w nim incydenty i może wysłać powiadomienia zgodnie z ustawieniami kanałów. Przy aktualizacji istniejące dane wykrywania są zachowywane, aby uniknąć ponownych alertów tylko z powodu aktualizacji.
+
+Powiadomienie zawiera nazwę filtra, liczbę wykrytych incydentów oraz ich numery, lokalizacje i krótkie opisy. Zmiana danych incydentu pozostającego na liście nie powoduje nowego powiadomienia o pojawieniu się.
 
 ### Bieżące incydenty i historia
 
-Zakładka **Bieżące incydenty** przedstawia wyniki ostatniego odczytu aktywnych filtrów. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
+Zakładka **Bieżące incydenty** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
 
 Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.
 
-Przycisk **Przeczytaj wszystkie** oznacza całą historię jako przeczytaną. **Wyczyść historię** usuwa zapisane wpisy po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
+Przycisk **Przeczytaj wszystkie** oznacza historię wybranego filtra jako przeczytaną. **Wyczyść historię** usuwa wpisy tego filtra po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
 
 ### Kolumny i układ interfejsu
 

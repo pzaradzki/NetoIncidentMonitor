@@ -8,9 +8,9 @@ FIELDS = [
     ("parent_incident", "Incydent nadrzędny", 160),
     ("configuration_item", "Objęty element konfiguracji", 230),
     ("assignment_group", "Grupa przypisania", 200),
-    ("filter", "Monitorowany filtr", 155), ("read", "Przeczytanie", 145),
+    ("read", "Przeczytanie", 145),
     ("time", "Wykryto (historia)", 150),
 ]
 DEFAULT = ["number", "state", "caller", "priority", "short_description", "location", "created"]
-DATA_FIELDS = [key for key, _, _ in FIELDS if key not in ("number", "filter", "read", "time")]
-LOCAL = {"number", "filter", "read", "time"}
+DATA_FIELDS = [key for key, _, _ in FIELDS if key not in ("number", "read", "time")]
+LOCAL = {"number", "read", "time"}
