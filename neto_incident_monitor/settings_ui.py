@@ -63,7 +63,7 @@ def build_settings(app, settings):
         ttk.Label(container, text=title, style="White.TLabel",
                   font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(container, text=description, style="WhiteMuted.TLabel",
-                  font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=(3, 0))
+                  font=("Segoe UI", 9), wraplength=440, justify="left").grid(row=1, column=0, sticky="w", pady=(3, 0))
         controls = ttk.Frame(container, style="White.TFrame")
         controls.grid(row=0, column=1, rowspan=2, sticky="e", padx=(20, 0))
         return controls
@@ -76,6 +76,8 @@ def build_settings(app, settings):
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     notifications = section("POWIADOMIENIA")
+    ttk.Label(notifications, text="Przełączniki globalne. Powiadomienia poszczególnych filtrów ustawisz\nprzez ikonę koła zębatego przy filtrze.",
+              style="WhiteMuted.TLabel").pack(anchor="w", pady=(8, 2))
     controls = row(notifications, "Powiadomienia Windows", "Powiadomienia systemowe i sygnał dźwiękowy.")
     app.notify = tk.BooleanVar(value=settings.get("notify", True))
     app.notify_check = Toggle(controls, app.notify)
@@ -91,27 +93,27 @@ def build_settings(app, settings):
     app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", True))
     Toggle(controls, app.highlight_unread).pack(side="right")
 
-    application = section("APLIKACJA I LOGOWANIE")
-    controls = row(application, "Minimalizacja do zasobnika", "Kontynuuj pracę w tle po zminimalizowaniu okna.")
-    app.minimize_to_tray = tk.BooleanVar(value=settings.get("minimize_to_tray", False))
-    app.minimize_check = Toggle(controls, app.minimize_to_tray)
-    app.minimize_check.pack(side="right")
-    controls = row(application, "Automatyczne logowanie", "Używaj zapamiętanego konta, gdy jest to możliwe.")
-    app.auto_login = tk.BooleanVar(value=settings.get("auto_login", False))
-    app.auto_login_check = Toggle(controls, app.auto_login)
-    app.auto_login_check.pack(side="right")
-    controls = row(application, "Minimalizacja przeglądarki", "Minimalizuj okno Chromium po zalogowaniu.")
-    app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", settings.get("auto_login", False)))
-    app.minimize_browser_check = Toggle(controls, app.minimize_browser)
-    app.minimize_browser_check.pack(side="right")
-
-    startup = section("URUCHAMIANIE")
+    startup = section("URUCHAMIANIE I OKNO APLIKACJI")
     for key, title, description in (
-        ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Automatycznie sprawdzaj włączone filtry po uruchomieniu."),
         ("start_with_windows", "Uruchom aplikację przy starcie systemu", "Uruchamiaj aplikację po zalogowaniu do Windows."),
+        ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Wymaga włączonego filtra; może wymagać zalogowania do ServiceNow."),
         ("start_minimized", "Uruchom aplikację zminimalizowaną", "Rozpoczynaj pracę ze zminimalizowanym oknem."),
     ):
         controls = row(startup, title, description)
         variable = tk.BooleanVar(value=settings.get(key, False))
         setattr(app, key, variable)
         Toggle(controls, variable).pack(side="right")
+    controls = row(startup, "Minimalizacja do zasobnika", "Ukrywaj zminimalizowane okno w zasobniku systemowym.")
+    app.minimize_to_tray = tk.BooleanVar(value=settings.get("minimize_to_tray", False))
+    app.minimize_check = Toggle(controls, app.minimize_to_tray)
+    app.minimize_check.pack(side="right")
+
+    browser = section("PRZEGLĄDARKA I LOGOWANIE")
+    controls = row(browser, "Automatyczne logowanie", "Używaj zapamiętanego konta, gdy jest to możliwe.")
+    app.auto_login = tk.BooleanVar(value=settings.get("auto_login", False))
+    app.auto_login_check = Toggle(controls, app.auto_login)
+    app.auto_login_check.pack(side="right")
+    controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj okno Chromium po zalogowaniu.")
+    app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", settings.get("auto_login", False)))
+    app.minimize_browser_check = Toggle(controls, app.minimize_browser)
+    app.minimize_browser_check.pack(side="right")
