@@ -111,7 +111,7 @@ Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power A
 
 Katalog danych zawiera ustawienia, historię, logi i profil przeglądarki. Wersja wykonywalna i wersja uruchamiana z kodu źródłowego korzystają z oddzielnych katalogów danych.
 
-W ustawieniach, w sekcji **Uruchamianie**, można włączyć automatyczny monitoring po uruchomieniu aplikacji, start aplikacji po zalogowaniu do Windows oraz uruchamianie ze zminimalizowanym oknem. Opcje są domyślnie wyłączone. Automatyczny monitoring wymaga przynajmniej jednego włączonego filtra; logowanie do ServiceNow działa zgodnie z ustawieniami logowania. Autostart dotyczy bieżącego użytkownika i zapisuje ścieżkę do aplikacji, dlatego po przeniesieniu jej katalogu należy wyłączyć i ponownie włączyć tę opcję.
+W ustawieniach, w sekcji **Uruchamianie i okno aplikacji**, można włączyć automatyczny monitoring po uruchomieniu aplikacji, start aplikacji po zalogowaniu do Windows oraz uruchamianie ze zminimalizowanym oknem. Opcje są domyślnie wyłączone. Automatyczny monitoring wymaga przynajmniej jednego włączonego filtra; logowanie do ServiceNow działa zgodnie z ustawieniami logowania. Autostart dotyczy bieżącego użytkownika i zapisuje ścieżkę do aplikacji, dlatego po przeniesieniu jej katalogu należy wyłączyć i ponownie włączyć tę opcję.
 
 Dane użytkownika, w tym adres webhook i dane sesji przeglądarki, nie powinny być dodawane do repozytorium ani do pakietów dystrybucyjnych. Repozytorium zawiera kod źródłowy; pliki wykonywalne, Chromium i katalog `dist` są udostępniane jako pakiety wydań.
 
