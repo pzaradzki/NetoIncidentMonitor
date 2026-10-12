@@ -258,6 +258,7 @@ class App:
         self.column_widths = settings.get("column_widths", {})
         from neto_incident_monitor.ui import build_ui
         build_ui(self, settings)
+        self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
         self.auto_login.trace_add("write", self.save_auto_login)
         self.minimize_browser.trace_add("write", self.save_browser_minimize)
@@ -317,6 +318,33 @@ class App:
                 except Exception:
                     LOG.exception("Nie udało się przywrócić ustawienia autostartu")
             messagebox.showerror("Uruchamianie aplikacji", f"Nie udało się zapisać ustawienia: {error}", parent=self.settings_window)
+
+    def unread_highlighting_enabled(self):
+        preference = getattr(self, "highlight_unread", None)
+        return preference.get() if preference is not None else True
+
+    def change_unread_highlighting(self, *_):
+        try:
+            settings = read_json(CONFIG, {})
+            settings["highlight_unread"] = self.highlight_unread.get()
+            save_json(CONFIG, settings)
+        except (OSError, ValueError) as error:
+            self.highlight_unread.trace_remove("write", self.highlight_unread.trace_info()[0][1])
+            self.highlight_unread.set(not self.highlight_unread.get())
+            self.highlight_unread.trace_add("write", self.change_unread_highlighting)
+            messagebox.showerror("Ustawienia", f"Nie udało się zapisać ustawienia: {error}", parent=self.settings_window)
+            return
+        if self.highlight_unread.get():
+            self.mark_all_button.pack(side="right")
+        else:
+            self.mark_all_button.pack_forget()
+        menu = getattr(self, "incident_menu", None)
+        if menu is not None and menu.winfo_exists():
+            menu.destroy()
+        self.refresh_history()
+        self.refresh_current()
+        self.apply_visible_columns()
+        self.update_counts()
 
     def make_table(self, parent, history):
         columns = [("read", "Przeczytanie", 145),
@@ -518,7 +546,7 @@ class App:
         for table, history in ((self.current_table, False), (self.table, True)):
             available = self.available_columns(history)
             order = self.column_order(table)
-            visible = [key for key in order if key in self.visible_columns and (available is None or key in available)]
+            visible = [key for key in order if key in self.visible_columns and (key != "read" or self.unread_highlighting_enabled()) and (available is None or key in available)]
             table.configure(displaycolumns=tuple(visible))
             if table.sort_column and table.sort_column not in visible:
                 table.sort_column = None
@@ -870,7 +898,7 @@ class App:
     def update_tray(self):
         if self.tray and self.tray_ready:
             try:
-                self.tray.update(self.history.unread(), getattr(self, "monitoring_phase", "Gotowy do uruchomienia"))
+                self.tray.update(self.history.unread() if self.unread_highlighting_enabled() else 0, getattr(self, "monitoring_phase", "Gotowy do uruchomienia"))
             except Exception:
                 LOG.exception("Błąd aktualizacji zasobnika")
 
@@ -890,7 +918,7 @@ class App:
             item = self.table.insert("", "end", values=(
                 time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"])), label,
                 *incident_values(incident)),
-                tags=("unread",) if not record["read"] else ("alternate",) if len(self.table.get_children()) % 2 else ())
+                tags=("unread",) if self.unread_highlighting_enabled() and not record["read"] else ("alternate",) if len(self.table.get_children()) % 2 else ())
             self.items[(self.table, item)] = incident["url"]
             self.row_numbers[(self.table, item)] = number
             if number in selected:
@@ -919,7 +947,7 @@ class App:
             label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
             item = self.current_table.insert("", "end", values=(label,
                 *incident_values(incident)),
-                tags=("unread",) if unread else ("alternate",) if len(self.current_table.get_children()) % 2 else ())
+                tags=("unread",) if self.unread_highlighting_enabled() and unread else ("alternate",) if len(self.current_table.get_children()) % 2 else ())
             self.items[(self.current_table, item)] = incident["url"]
             self.row_numbers[(self.current_table, item)] = number
             if number in selected:
@@ -959,7 +987,7 @@ class App:
         self.status.set("Historia wyczyszczona. Pamięć wcześniej widzianych incydentów została zachowana.")
 
     def mark_read(self, numbers):
-        if not numbers:
+        if not numbers or not self.unread_highlighting_enabled():
             return
         try:
             self.history.mark_read(numbers, self.selected_filter_url())
@@ -1445,8 +1473,9 @@ class App:
         menu.add_separator()
         menu.add_command(label="Kopiuj numer", command=lambda: copy(number))
         menu.add_command(label="Kopiuj link", command=lambda: copy(url))
-        menu.add_separator()
-        menu.add_command(label="Oznacz jako przeczytany", command=lambda: self.mark_read([number]))
+        if self.unread_highlighting_enabled():
+            menu.add_separator()
+            menu.add_command(label="Oznacz jako przeczytany", command=lambda: self.mark_read([number]))
         menu.show(event.x_root, event.y_root)
         return "break"
 

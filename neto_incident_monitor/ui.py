@@ -243,7 +243,9 @@ def build_ui(app, settings):
     actions = ttk.Frame(main)
     RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG).pack(side="right", padx=(8, 0))
     RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG).pack(side="right", padx=(8, 0))
-    RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG).pack(side="right")
+    app.mark_all_button = RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG)
+    if app.highlight_unread.get():
+        app.mark_all_button.pack(side="right")
     app.tabs = ttk.Notebook(main, style="Clean.TNotebook")
     app.tabs.grid(row=2, column=0, sticky="nsew")
     current = ttk.Frame(app.tabs, style="White.TFrame")

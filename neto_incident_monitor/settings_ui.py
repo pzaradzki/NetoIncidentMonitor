@@ -86,6 +86,11 @@ def build_settings(app, settings):
     app.teams_check.pack(side="right")
     RoundedButton(controls, text="Konfiguruj", command=app.configure_teams).pack(side="right", padx=(0, 14))
 
+    display = section("LISTA INCYDENTÓW")
+    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "Wyróżniaj nowe incydenty i udostępniaj oznaczanie jako przeczytane.")
+    app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", True))
+    Toggle(controls, app.highlight_unread).pack(side="right")
+
     application = section("APLIKACJA I LOGOWANIE")
     controls = row(application, "Minimalizacja do zasobnika", "Kontynuuj pracę w tle po zminimalizowaniu okna.")
     app.minimize_to_tray = tk.BooleanVar(value=settings.get("minimize_to_tray", False))

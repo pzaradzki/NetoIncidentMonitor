@@ -172,3 +172,5 @@ NetoIncidentMonitor/
 Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia pomocnicze należy uruchamiać z katalogu głównego projektu, np. `python -m tools.preview_ui`.
 
 Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.
+
+Opcja **Podświetlaj nieprzeczytane incydenty** w ustawieniach jest domyślnie włączona. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
