@@ -129,9 +129,13 @@ def build_ui(app, settings):
     def show_settings():
         window = app.settings_window
         window.update_idletasks()
-        x = max(0, (root.winfo_screenwidth() - window.winfo_reqwidth()) // 2)
-        y = max(0, (root.winfo_screenheight() - window.winfo_reqheight()) // 2)
-        window.geometry(f"+{x}+{y}")
+        # Use the configured window size, not the requested height of the
+        # scrollable content, which can be taller than the settings window.
+        size = window.geometry().split("+", 1)[0]
+        width, height = map(int, size.split("x"))
+        x = max(0, (window.winfo_screenwidth() - width) // 2)
+        y = max(0, (window.winfo_screenheight() - height) // 2)
+        window.geometry(f"{width}x{height}+{x}+{y}")
         window.deiconify()
         window.lift()
     RoundedButton(app.controls, text="Ustawienia", icon="gear", command=show_settings,
