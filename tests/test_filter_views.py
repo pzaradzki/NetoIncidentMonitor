@@ -17,6 +17,14 @@ class FilterViewTests(unittest.TestCase):
                                         {"name": "B", "url": "https://example.test/b"}]}
                 with patch("neto_incident_monitor.app.read_json", return_value=settings):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
+                root.update()
+                self.assertFalse(app.clear_history_button.winfo_manager())
+                app.tabs.select(1)
+                root.update()
+                self.assertEqual(app.clear_history_button.winfo_manager(), "pack")
+                app.tabs.select(0)
+                root.update()
+                self.assertFalse(app.clear_history_button.winfo_manager())
                 for i, entry in enumerate(app.filters, 1):
                     incident = {"number": "INC1", "url": entry["url"], "short_description": entry["name"]}
                     app.history.add(incident, entry["name"], entry["url"])

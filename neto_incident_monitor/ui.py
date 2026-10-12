@@ -246,8 +246,9 @@ def build_ui(app, settings):
     toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 10))
     toolbar.pack_propagate(False)
     actions = ttk.Frame(main)
-    RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG).pack(side="right", padx=(8, 0))
-    RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG).pack(side="right", padx=(8, 0))
+    columns_button = RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG)
+    columns_button.pack(side="right", padx=(8, 0))
+    app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
     app.mark_all_button = RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG)
     if app.highlight_unread.get():
         app.mark_all_button.pack(side="right")
@@ -269,6 +270,14 @@ def build_ui(app, settings):
         actions.lift()
 
     app.tabs.bind("<Configure>", align_actions)
+    def update_history_action(event=None):
+        if app.tabs.select() == str(history):
+            app.clear_history_button.pack(side="right", padx=(8, 0), after=columns_button)
+        else:
+            app.clear_history_button.pack_forget()
+        align_actions()
+
+    app.tabs.bind("<<NotebookTabChanged>>", update_history_action, add="+")
     desired_width = max(235, int(settings.get("sidebar_width", 235)))
     drag_origin = None
 
