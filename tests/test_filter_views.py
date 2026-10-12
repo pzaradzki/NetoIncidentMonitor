@@ -30,6 +30,18 @@ class FilterViewTests(unittest.TestCase):
                 self.assertEqual(app.current_table.set(app.current_table.get_children()[0], "short_description"), "B")
                 self.assertEqual(app.table.set(app.table.get_children()[0], "short_description"), "B")
                 self.assertEqual(app.unread_count.get(), "1")
+                with patch("neto_incident_monitor.app.save_json") as save:
+                    app.highlight_unread.set(False)
+                    self.assertFalse(save.call_args.args[1]["highlight_unread"])
+                    self.assertFalse(app.mark_all_button.winfo_manager())
+                    for table in (app.current_table, app.table):
+                        self.assertNotIn("read", table["displaycolumns"])
+                        self.assertNotIn("unread", table.item(table.get_children()[0], "tags"))
+                    app.mark_all()
+                    self.assertFalse(app.history.snapshot(app.filters[1]["url"])["INC1"]["read"])
+                    app.highlight_unread.set(True)
+                    self.assertEqual(app.mark_all_button.winfo_manager(), "pack")
+                    self.assertIn("unread", app.table.item(app.table.get_children()[0], "tags"))
                 with patch("neto_incident_monitor.app.save_json"):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
