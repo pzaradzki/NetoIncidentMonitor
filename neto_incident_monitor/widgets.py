@@ -306,6 +306,10 @@ class RoundedButton(tk.Canvas):
             line([(4, 5), (5, 14), (11, 14), (12, 5)])
             line([(7, 7), (7, 11)])
             line([(9, 7), (9, 11)])
+        elif self.icon == "edit":
+            draw.polygon(points([(3, 10), (10, 3), (13, 6), (6, 13), (2, 14)]),
+                         outline=color, width=6)
+            line([(8, 5), (11, 8)])
         elif self.icon == "columns":
             draw.rounded_rectangle(box(1, 2, 15, 14), radius=4, outline=color, width=6)
             line([(6, 2), (6, 14)])
@@ -346,6 +350,7 @@ class FilterList(tk.Canvas):
         self.bind("<Down>", lambda _: self.move(1))
         self.bind("<MouseWheel>", lambda event: self.yview_scroll(-int(event.delta / 120), "units"))
         self.configure(yscrollincrement=self.ROW)
+        self.control_tooltip = FilterControlTooltip(self)
 
     def get_children(self):
         return tuple(self.rows)
@@ -572,6 +577,38 @@ class TabTooltip:
         if self.tip is not None:
             tip, self.tip = self.tip, None
             tip.destroy()
+
+
+class FilterControlTooltip(TabTooltip):
+    """Tooltips for the settings and monitoring controls inside filter cards."""
+    def __init__(self, widget):
+        super().__init__(widget, None, "")
+        self.target = None
+        widget.bind("<MouseWheel>", self.hide, add="+")
+
+    def motion(self, event):
+        widget = self.widget
+        index = int(widget.canvasy(event.y) // widget.ROW)
+        items = widget.get_children()
+        target = None
+        if not widget.drag and 0 <= index < len(items):
+            item = items[index]
+            width = widget.winfo_width()
+            if width - 70 <= event.x < width - 42:
+                target = (item, "settings")
+                text = "Ustawienia powiadomień filtra"
+            elif event.x >= width - 42:
+                enabled = widget.enabled_rows.get(item, True)
+                target = (item, "toggle", enabled)
+                text = "Wyłącz monitoring filtra" if enabled else "Włącz monitoring filtra"
+        if target is None:
+            self.hide()
+            self.target = None
+        elif target != self.target or (self.timer is None and self.tip is None):
+            self.hide()
+            self.target, self.text = target, text
+            self.position = (event.x_root + 12, event.y_root + 24)
+            self.timer = self.root.after(450, self.show)
 
 
 class ColumnWarning(tk.Canvas):
