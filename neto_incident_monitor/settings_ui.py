@@ -8,17 +8,45 @@ from neto_incident_monitor.widgets import RoundedButton, Toggle
 
 def build_settings(app, settings):
     window = app.settings_window
-    tabs = ttk.Notebook(window)
-    tabs.pack(fill="both", expand=True)
-    panel = ttk.Frame(tabs, style="White.TFrame", padding=(28, 24))
-    tabs.add(panel, text="Ogólne")
-    startup_panel = ttk.Frame(tabs, style="White.TFrame", padding=(28, 24))
-    tabs.add(startup_panel, text="Uruchamianie")
     window.minsize(700, 600)
-    ttk.Label(panel, text="Ustawienia", style="White.TLabel",
+    window.geometry("700x700")
+    header = ttk.Frame(window, style="White.TFrame", padding=(28, 24, 28, 0))
+    header.pack(fill="x")
+    ttk.Label(header, text="Ustawienia", style="White.TLabel",
               font=("Segoe UI", 18, "bold")).pack(anchor="w")
-    ttk.Label(panel, text="Dostosuj monitorowanie, powiadomienia i działanie aplikacji.",
+    ttk.Label(header, text="Dostosuj monitorowanie, powiadomienia i działanie aplikacji.",
               style="WhiteMuted.TLabel").pack(anchor="w", pady=(4, 22))
+    footer = ttk.Frame(window, style="White.TFrame", padding=(28, 12, 28, 24))
+    footer.pack(fill="x", side="bottom")
+    RoundedButton(footer, text="Zamknij", command=window.withdraw).pack(side="right")
+    viewport = ttk.Frame(window, style="White.TFrame")
+    viewport.pack(fill="both", expand=True)
+    viewport.columnconfigure(0, weight=1)
+    viewport.rowconfigure(0, weight=1)
+    canvas = tk.Canvas(viewport, bg=SURFACE, highlightthickness=0, bd=0)
+    canvas.grid(row=0, column=0, sticky="nsew")
+    scroll = ttk.Scrollbar(viewport, orient="vertical", command=canvas.yview)
+    scroll.grid(row=0, column=1, sticky="ns")
+    canvas.configure(yscrollcommand=scroll.set)
+    panel = ttk.Frame(canvas, style="White.TFrame", padding=(28, 0))
+    content = canvas.create_window(0, 0, window=panel, anchor="nw")
+
+    def update_scroll(event=None):
+        height = panel.winfo_reqheight()
+        canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(height, canvas.winfo_height())))
+        if height > canvas.winfo_height():
+            scroll.grid()
+        else:
+            scroll.grid_remove()
+            canvas.yview_moveto(0)
+
+    def resize_content(event):
+        canvas.itemconfigure(content, width=event.width)
+        update_scroll()
+
+    canvas.bind("<Configure>", resize_content)
+    panel.bind("<Configure>", update_scroll)
+    window.bind("<MouseWheel>", lambda event: canvas.yview_scroll(-int(event.delta / 120), "units"))
 
     def section(title, parent=panel):
         area = ttk.Frame(parent, style="White.TFrame")
@@ -72,7 +100,7 @@ def build_settings(app, settings):
     app.minimize_browser_check = Toggle(controls, app.minimize_browser)
     app.minimize_browser_check.pack(side="right")
 
-    startup = section("URUCHAMIANIE", startup_panel)
+    startup = section("URUCHAMIANIE")
     for key, title, description in (
         ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Automatycznie sprawdzaj włączone filtry po uruchomieniu."),
         ("start_with_windows", "Uruchom aplikację przy starcie systemu", "Uruchamiaj aplikację po zalogowaniu do Windows."),
@@ -82,8 +110,3 @@ def build_settings(app, settings):
         variable = tk.BooleanVar(value=settings.get(key, False))
         setattr(app, key, variable)
         Toggle(controls, variable).pack(side="right")
-    RoundedButton(startup_panel, text="Zamknij", command=window.withdraw).pack(side="bottom", anchor="e")
-
-    footer = ttk.Frame(panel, style="White.TFrame")
-    footer.pack(fill="x", side="bottom", pady=(4, 0))
-    RoundedButton(footer, text="Zamknij", command=window.withdraw).pack(side="right")
