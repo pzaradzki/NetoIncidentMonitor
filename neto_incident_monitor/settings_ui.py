@@ -114,7 +114,7 @@ def build_settings(app, settings):
     app.auto_login = tk.BooleanVar(value=settings.get("auto_login", False))
     app.auto_login_check = Toggle(controls, app.auto_login)
     app.auto_login_check.pack(side="right")
-    controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj okno Chromium po zalogowaniu.")
+    controls = row(browser, "Minimalizacja przeglądarki", "Uruchamiaj Chromium zminimalizowane. Pokazuj okno, gdy potrzebne jest ręczne logowanie.")
     app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", settings.get("auto_login", False)))
     app.minimize_browser_check = Toggle(controls, app.minimize_browser)
     app.minimize_browser_check.pack(side="right")

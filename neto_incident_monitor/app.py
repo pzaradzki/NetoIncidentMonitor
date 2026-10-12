@@ -184,12 +184,22 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
     last_navigation = 0
     from neto_incident_monitor.automatic_login import AutomaticLogin
     automatic = AutomaticLogin() if auto_login else None
+    manual_shown = False
+    login_started = time.monotonic()
     while not stop.is_set():
         if page.is_closed():
             raise RuntimeError("Przeglądarka logowania została zamknięta. Uruchom monitoring ponownie.")
         try:
             if automatic and authentication_page(page, url):
                 automatic.step(page)
+            if minimize_after_login and not manual_shown and authentication_page(page, url):
+                # Allow redirects and saved-account login to finish in the
+                # background; surface MFA, blocked login or a stalled attempt.
+                delay = 20 if automatic else 5
+                if (automatic and automatic.blocked) or time.monotonic() - login_started >= delay:
+                    set_chromium_window_state(page, "normal")
+                    page.bring_to_front()
+                    manual_shown = True
             if not authentication_page(page, url):
                 expected_host = urlparse(url).hostname
                 list_loaded = any(urlparse(frame.url).hostname == expected_host
@@ -211,15 +221,19 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
 
 
 def minimize_chromium(page):
-    """Minimize only the Chromium window containing the authenticated tab."""
+    set_chromium_window_state(page, "minimized")
+
+
+def set_chromium_window_state(page, state):
+    """Change only the Chromium window containing this tab."""
     session = None
     try:
         session = page.context.new_cdp_session(page)
         window = session.send("Browser.getWindowForTarget")
         session.send("Browser.setWindowBounds", {
-            "windowId": window["windowId"], "bounds": {"windowState": "minimized"}})
+            "windowId": window["windowId"], "bounds": {"windowState": state}})
     except Exception:
-        LOG.warning("Nie udało się zminimalizować przeglądarki po logowaniu.")
+        LOG.warning("Nie udało się zmienić stanu okna przeglądarki na %s.", state)
     finally:
         if session:
             try:
@@ -1242,11 +1256,16 @@ class App:
             from neto_incident_monitor.filter_state import FilterState
             membership = FilterState(STATE, normalize_url)
             with sync_playwright() as playwright:
-                context = playwright.chromium.launch_persistent_context(str(DATA / "browser-profile"), headless=False, no_viewport=True)
+                context = playwright.chromium.launch_persistent_context(
+                    str(DATA / "browser-profile"), headless=False, no_viewport=True,
+                    args=["--start-minimized"] if settings.get("minimize_browser", False) else [])
                 try:
                     page = context.pages[0] if context.pages else context.new_page()
+                    if settings.get("minimize_browser", False):
+                        minimize_chromium(page)
                     navigate(page, settings["urls"][0])
-                    page.bring_to_front()
+                    if not settings.get("minimize_browser", False):
+                        page.bring_to_front()
                     self.events.put(("phase", "Oczekiwanie na logowanie"))
                     self.events.put(("status", "Zaloguj się w przeglądarce. Monitoring rozpocznie się automatycznie po załadowaniu listy."))
                     if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
@@ -1300,7 +1319,8 @@ class App:
                                 self.events.put(("status", message))
                                 if health.authentication():
                                     self.events.put(("session_expired", message))
-                                current.bring_to_front()
+                                if not settings.get("minimize_browser", False):
+                                    current.bring_to_front()
                                 if not wait_for_login(current, url, self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
                                     return
                                 health.resumed()
