@@ -229,7 +229,7 @@ def minimize_chromium(page):
 
 
 class App:
-    def __init__(self, root, history_path=None, enable_tray=True, instance=None):
+    def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True):
         self.root = root
         self.events = queue.Queue()
         self.stop = threading.Event()
@@ -263,6 +263,9 @@ class App:
         self.minimize_browser.trace_add("write", self.save_browser_minimize)
         self.saved_minimize = self.minimize_to_tray.get()
         self.minimize_to_tray.trace_add("write", self.save_minimize_preference)
+        self.saving_startup = False
+        for key in ("start_monitoring", "start_with_windows", "start_minimized"):
+            getattr(self, key).trace_add("write", lambda *_, key=key: self.save_startup_preference(key))
         self.refresh_history()
         self.update_counts()
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -275,7 +278,11 @@ class App:
         def restore_window():
             if self.window_layout.get("maximized", False):
                 root.state("zoomed")
+            if apply_startup and self.start_minimized.get():
+                root.iconify()
             self.window_restoring = False
+            if apply_startup and self.start_monitoring.get() and any(f.get("enabled", True) for f in self.filters):
+                root.after(200, self.start)
         root.after_idle(restore_window)
         root.after(200, self.drain)
         if enable_tray:
@@ -287,6 +294,29 @@ class App:
                 LOG.exception("Nie udało się uruchomić zasobnika")
                 self.tray = None
                 self.status.set("Zasobnik niedostępny. Monitoring działa w oknie; błędy zapisano w logu.")
+
+    def save_startup_preference(self, key):
+        if self.saving_startup:
+            return
+        variable = getattr(self, key)
+        enabled = variable.get()
+        try:
+            settings = read_json(CONFIG, {})
+            if key == "start_with_windows":
+                from neto_incident_monitor.startup import set_windows_startup
+                set_windows_startup(enabled)
+            settings[key] = enabled
+            save_json(CONFIG, settings)
+        except Exception as error:
+            self.saving_startup = True
+            variable.set(not enabled)
+            self.saving_startup = False
+            if key == "start_with_windows":
+                try:
+                    set_windows_startup(not enabled)
+                except Exception:
+                    LOG.exception("Nie udało się przywrócić ustawienia autostartu")
+            messagebox.showerror("Uruchamianie aplikacji", f"Nie udało się zapisać ustawienia: {error}", parent=self.settings_window)
 
     def make_table(self, parent, history):
         columns = [("read", "Przeczytanie", 145),
