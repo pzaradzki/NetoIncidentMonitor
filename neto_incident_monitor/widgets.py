@@ -461,11 +461,14 @@ class FilterList(tk.Canvas):
             center = left + (21 if enabled else 9)
             draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
             draw_gear(draw, width - 65, 13, TEXT, size=18)
+            radius = 3 if chosen else 1.5
+            draw.ellipse(((14 - radius) * 4, (22 - radius) * 4,
+                          (14 + radius) * 4, (22 + radius) * 4),
+                         fill=ACCENT if chosen else "#919aa8")
             photo = ImageTk.PhotoImage(picture.resize((width, self.ROW), Image.Resampling.LANCZOS), master=self)
             self.pictures.append(photo)
             y = index * self.ROW
             self.create_image(0, y, image=photo, anchor="nw")
-            self.create_text(14, y + 22, text="●" if chosen else "•", fill=ACCENT if chosen else "#919aa8", font=("Segoe UI", 10))
             # Ellipsis keeps each card a single row without changing its saved name.
             from tkinter.font import Font
             font = Font(self, font=("Segoe UI", 9))
