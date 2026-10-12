@@ -195,7 +195,8 @@ def build_ui(app, settings):
     for i, (text, callback) in enumerate([
         ("+  Dodaj filtr", lambda: app.edit_filter()), ("Edytuj", lambda: app.edit_filter(True)), ("Usuń", app.remove_filter)
     ]):
-        button = RoundedButton(filter_actions, text=text, command=callback, primary=i == 0)
+        button = RoundedButton(filter_actions, text=text, command=callback, primary=i == 0,
+                               icon={1: "edit", 2: "trash"}.get(i))
         if i == 0:
             button.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         else:
