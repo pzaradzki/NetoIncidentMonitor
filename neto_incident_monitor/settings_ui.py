@@ -62,10 +62,11 @@ def build_settings(app, settings):
         container.columnconfigure(0, weight=1)
         ttk.Label(container, text=title, style="White.TLabel",
                   font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(container, text=description, style="WhiteMuted.TLabel",
-                  font=("Segoe UI", 9), wraplength=440, justify="left").grid(row=1, column=0, sticky="w", pady=(3, 0))
+        if description:
+            ttk.Label(container, text=description, style="WhiteMuted.TLabel",
+                      font=("Segoe UI", 9), wraplength=440, justify="left").grid(row=1, column=0, sticky="w", pady=(3, 0))
         controls = ttk.Frame(container, style="White.TFrame")
-        controls.grid(row=0, column=1, rowspan=2, sticky="e", padx=(20, 0))
+        controls.grid(row=0, column=1, rowspan=2 if description else 1, sticky="e", padx=(20, 0))
         return controls
 
     monitoring = section("MONITOROWANIE")
@@ -89,7 +90,7 @@ def build_settings(app, settings):
     RoundedButton(controls, text="Konfiguruj", command=app.configure_teams).pack(side="right", padx=(0, 14))
 
     display = section("LISTA INCYDENTÓW")
-    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "Wyróżniaj nowe incydenty i udostępniaj oznaczanie jako przeczytane.")
+    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "")
     app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", True))
     Toggle(controls, app.highlight_unread).pack(side="right")
 
