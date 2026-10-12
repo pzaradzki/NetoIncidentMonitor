@@ -8,16 +8,20 @@ from neto_incident_monitor.widgets import RoundedButton, Toggle
 
 def build_settings(app, settings):
     window = app.settings_window
-    panel = ttk.Frame(window, style="White.TFrame", padding=(28, 24))
-    panel.pack(fill="both", expand=True)
+    tabs = ttk.Notebook(window)
+    tabs.pack(fill="both", expand=True)
+    panel = ttk.Frame(tabs, style="White.TFrame", padding=(28, 24))
+    tabs.add(panel, text="Ogólne")
+    startup_panel = ttk.Frame(tabs, style="White.TFrame", padding=(28, 24))
+    tabs.add(startup_panel, text="Uruchamianie")
     window.minsize(700, 600)
     ttk.Label(panel, text="Ustawienia", style="White.TLabel",
               font=("Segoe UI", 18, "bold")).pack(anchor="w")
     ttk.Label(panel, text="Dostosuj monitorowanie, powiadomienia i działanie aplikacji.",
               style="WhiteMuted.TLabel").pack(anchor="w", pady=(4, 22))
 
-    def section(title):
-        area = ttk.Frame(panel, style="White.TFrame")
+    def section(title, parent=panel):
+        area = ttk.Frame(parent, style="White.TFrame")
         area.pack(fill="x", pady=(0, 16))
         tk.Label(area, text=title, bg=SURFACE, fg=MUTED,
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 6))
@@ -67,6 +71,18 @@ def build_settings(app, settings):
     app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", settings.get("auto_login", False)))
     app.minimize_browser_check = Toggle(controls, app.minimize_browser)
     app.minimize_browser_check.pack(side="right")
+
+    startup = section("URUCHAMIANIE", startup_panel)
+    for key, title, description in (
+        ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Automatycznie sprawdzaj włączone filtry po uruchomieniu."),
+        ("start_with_windows", "Uruchom aplikację przy starcie systemu", "Uruchamiaj aplikację po zalogowaniu do Windows."),
+        ("start_minimized", "Uruchom aplikację zminimalizowaną", "Rozpoczynaj pracę ze zminimalizowanym oknem."),
+    ):
+        controls = row(startup, title, description)
+        variable = tk.BooleanVar(value=settings.get(key, False))
+        setattr(app, key, variable)
+        Toggle(controls, variable).pack(side="right")
+    RoundedButton(startup_panel, text="Zamknij", command=window.withdraw).pack(side="bottom", anchor="e")
 
     footer = ttk.Frame(panel, style="White.TFrame")
     footer.pack(fill="x", side="bottom", pady=(4, 0))

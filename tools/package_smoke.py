@@ -21,7 +21,7 @@ def main(output):
         window = tk.Tk()
         window.withdraw()
         with tempfile.TemporaryDirectory(prefix="sn-smoke-") as directory:
-            app = App(window, history_path=Path(directory) / "history.json")
+            app = App(window, history_path=Path(directory) / "history.json", apply_startup=False)
             window.update()
             result["ui"] = "ok"
             if app.tray:
