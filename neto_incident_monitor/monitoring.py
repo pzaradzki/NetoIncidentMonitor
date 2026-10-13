@@ -7,6 +7,7 @@ class Schedule:
     def __init__(self):
         self.condition = threading.Condition()
         self.requested = False
+        self.woken_by_request = False
 
     def request(self):
         with self.condition:
@@ -25,6 +26,7 @@ class Schedule:
                 if remaining <= 0:
                     break
                 self.condition.wait(min(remaining, 0.25))
+            self.woken_by_request = self.requested
             self.requested = False
         return stop.is_set()
 
