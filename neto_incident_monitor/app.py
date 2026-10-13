@@ -585,6 +585,8 @@ class App:
     def applicable_columns(self):
         task = urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do")
         excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by"}
+        if not self.unread_highlighting_enabled():
+            excluded.add("read")
         return [key for key, _, _ in FIELDS if key not in excluded]
 
     def default_filter_columns(self):
