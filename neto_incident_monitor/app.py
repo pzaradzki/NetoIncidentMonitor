@@ -396,7 +396,7 @@ class App:
         content = ttk.Frame(dialog, padding=24)
         content.pack(fill="both", expand=True)
         font = ("Segoe UI", 10)
-        ttk.Label(content, text=f'„{request["name"]}” — {request["count"]:,} wpisów.\nOdczytać całą listę?'.replace(',', ' '),
+        ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.\nOdczytać całą listę?'.replace(',', ' '),
                   wraplength=480, justify="left", font=font).pack(anchor="w", pady=(0, 12))
         remember = tk.BooleanVar(value=False)
         ttk.Style(dialog).configure("LargeList.TCheckbutton", font=font)
@@ -451,7 +451,7 @@ class App:
         if not dialog.winfo_exists():
             return
         dialog.update_idletasks()
-        width, height = dialog.winfo_reqwidth(), dialog.winfo_reqheight()
+        width, height = max(420, dialog.winfo_reqwidth()), dialog.winfo_reqheight()
         x = max(0, (dialog.winfo_screenwidth() - width) // 2)
         y = max(0, (dialog.winfo_screenheight() - height) // 2)
         geometry = f"{width}x{height}+{x}+{y}"
