@@ -235,7 +235,7 @@ def build_ui(app, settings):
     app.phase_label = StatusPill(state)
     app.phase_label.pack(side="left")
     app.update_phase_text()
-    app.countdown = tk.StringVar(value="Następne sprawdzenie: —")
+    app.countdown = tk.StringVar(value="Następne sprawdzenie INC: -  Następne sprawdzenie SCTASK: -")
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
     app.current_count = tk.StringVar(value="0")

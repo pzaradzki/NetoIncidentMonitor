@@ -255,6 +255,7 @@ class App:
         self.updating_filter_url = None
         self.new_numbers = set()
         self.next_check = None
+        self.check_deadlines = {}
         self.history = History(history_path or DATA / "history.json")
         self.row_numbers = {}
         self.tray = None
@@ -1266,6 +1267,7 @@ class App:
         self.update_counts()
         self.last_read.set("Ostatnia aktualizacja: —")
         self.next_check = None
+        self.check_deadlines = {}
         self.set_phase("Uruchamianie przeglądarki")
         self.clear_table(self.current_table)
         self.start_button.configure(state="disabled")
@@ -1304,6 +1306,9 @@ class App:
                     force = True
                     while not self.stop.is_set():
                         due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
+                        active = {"task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                                  for url in settings["urls"] if url not in self.disabled_filter_urls}
+                        self.events.put(("check_deadlines", {kind: deadlines[kind] for kind in active - due}))
                         self.events.put(("checking", None))
                         cycle_error = False
                         for filter_index, url in enumerate(settings["urls"], 1):
@@ -1379,6 +1384,7 @@ class App:
                                   for url in settings["urls"] if url not in self.disabled_filter_urls}
                         next_read = min((deadlines[kind] for kind in active), default=now + min(intervals.values()))
                         self.events.put(("waiting", (next_read, cycle_error)))
+                        self.events.put(("check_deadlines", {kind: deadlines[kind] for kind in active}))
                         if self.schedule.wait(max(0, next_read - now), self.stop):
                             break
                         force = self.schedule.woken_by_request is True or intervals["inc"] == intervals["task"]
@@ -1404,6 +1410,8 @@ class App:
                     index = self.event_filter_index(value)
                     self.filter_table.updating_item = str(index - 1) if index is not None else None
                     self.filter_table.redraw()
+                elif kind == "check_deadlines":
+                    self.check_deadlines = value
                 elif kind == "status":
                     self.status.set(value)
                 elif kind == "tray_ready":
@@ -1441,6 +1449,7 @@ class App:
                     return
                 elif kind == "phase":
                     self.next_check = None
+                    self.check_deadlines = {}
                     self.set_phase(value)
                     if value in ("Oczekiwanie na logowanie", "Błąd uruchomienia") and self.root.state() == "withdrawn":
                         self.show_window()
@@ -1476,6 +1485,7 @@ class App:
                     self.apply_visible_columns()
                     self.update_counts()
                 elif kind == "finished":
+                    self.check_deadlines = {}
                     self.updating_filter_url = None
                     self.filter_table.updating_item = None
                     self.filter_table.redraw()
@@ -1506,11 +1516,11 @@ class App:
                         self.notify_batch([incident])
         except queue.Empty:
             pass
-        if self.next_check is None:
-            self.countdown.set("Następne sprawdzenie: —")
-        else:
-            remaining = max(0, int(self.next_check - time.monotonic() + 0.999))
-            self.countdown.set(f"Następne sprawdzenie: za {remaining} s")
+        now = time.monotonic()
+        def remaining(kind):
+            deadline = self.check_deadlines.get(kind)
+            return "-" if deadline is None else f"za {max(0, int(deadline - now + 0.999))} s"
+        self.countdown.set(f"Następne sprawdzenie INC: {remaining('inc')}  Następne sprawdzenie SCTASK: {remaining('task')}")
         if not self.quitting:
             self.root.after(200, self.drain)
 
