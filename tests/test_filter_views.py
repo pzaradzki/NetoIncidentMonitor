@@ -77,16 +77,23 @@ class FilterViewTests(unittest.TestCase):
                 with patch("neto_incident_monitor.app.save_json"):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
+                app.filters[1]["allow_large_list"] = True
                 app.configure_filter_notifications("1")
                 root.update()
-                dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel) and w.title()=="Powiadomienia filtra")
+                dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel) and w.title()=="Ustawienia filtra")
                 def descendants(widget):
                     for child in widget.winfo_children():
                         yield child
                         yield from descendants(child)
                 toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-                self.assertEqual([w.enabled for w in toggles], [False, False, True])
-                dialog.destroy()
+                self.assertEqual([w.enabled for w in toggles], [False, False, True, True])
+                self.assertTrue(toggles[3].variable.get())
+                toggles[3].toggle()
+                from neto_incident_monitor.widgets import RoundedButton
+                with patch.object(app, "persist_filters") as persist:
+                    next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zapisz").invoke()
+                    persist.assert_called_once()
+                self.assertFalse(app.filters[1]["allow_large_list"])
         finally:
             for timer in root.tk.call("after", "info"):
                 root.after_cancel(timer)

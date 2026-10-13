@@ -59,7 +59,7 @@ Każdy filtr ma własną listę bieżących incydentów i własną historię. Cz
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
 
-Ikona dzwonka przy filtrze otwiera ustawienia jego powiadomień:
+Ikona dzwonka przy filtrze otwiera **Ustawienia filtra**, obejmujące powiadomienia i zgodę na duże odczyty:
 
 - **Powiadomienia Windows** i **Powiadomienia Microsoft Teams** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
 - **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
@@ -188,3 +188,5 @@ W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i
 ### Ochrona przed dużymi listami
 
 Przy listach zawierających ponad 1000 wpisów aplikacja pyta o zgodę na pełny odczyt. Pytanie dotyczy zarówno INC, jak i SCTASK. Masz 15 sekund na odpowiedź: **Pobierz** pozwala na bieżący odczyt, **Odrzuć** wyłącza filtr, a brak odpowiedzi pomija bieżący odczyt bez wyłączania filtra. Zaznaczenie **Nie pytaj ponownie dla tego filtra** przy potwierdzeniu zapisuje zgodę między sesjami. Bez zaznaczenia pytanie wróci przy każdym odczycie dużej listy. Gdy licznik wszystkich wpisów w SNOW jest niedostępny, pytanie pojawia się po przekroczeniu 1000 odczytanych rekordów. Pominięcie nie zapisuje częściowego wyniku, nie zmienia historii ani potwierdzonej obecności zgłoszeń.
+
+Zapamiętaną zgodę na duże odczyty można cofnąć w **Ustawieniach filtra**: wyłącz **Pobieraj duże listy bez pytania** i wybierz **Zapisz**. Pytanie wróci przy następnym odczycie listy ponad 1000 wpisów; bieżący odczyt nie jest przerywany.
