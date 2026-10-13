@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.pagination import list_total, read_all, LargeListRejected
-from neto_incident_monitor.widgets import RoundedButton
+from neto_incident_monitor.widgets import RoundedButton, Toggle
 
 
 class LargeListTests(unittest.TestCase):
@@ -62,7 +62,7 @@ class LargeListTests(unittest.TestCase):
                 app.show_large_list_prompt(request)
                 dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
                 if not reject:
-                    next(w for w in children(dialog) if w.winfo_class()=="TCheckbutton").invoke()
+                    next(w for w in children(dialog) if isinstance(w, Toggle)).toggle()
                 button = "Wyłącz filtr" if reject else "Kontynuuj odczyt"
                 next(w for w in children(dialog) if isinstance(w, RoundedButton) and w.text==button).invoke()
                 self.assertTrue(request["done"].is_set())
