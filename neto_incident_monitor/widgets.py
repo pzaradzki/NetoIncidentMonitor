@@ -615,7 +615,7 @@ class FilterControlTooltip(TabTooltip):
             width = widget.winfo_width()
             if width - 70 <= event.x < width - 42:
                 target = (item, "settings")
-                text = "Ustawienia powiadomień filtra"
+                text = "Ustawienia filtra"
             elif event.x >= width - 42:
                 enabled = widget.enabled_rows.get(item, True)
                 target = (item, "toggle", enabled)

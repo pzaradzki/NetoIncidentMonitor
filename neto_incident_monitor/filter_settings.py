@@ -10,7 +10,7 @@ from neto_incident_monitor import themed_dialogs as messagebox
 def show_filter_settings(app, index):
     entry = app.filters[index]
     window = tk.Toplevel(app.root)
-    window.title("Powiadomienia filtra")
+    window.title("Ustawienia filtra")
     window.configure(background=SURFACE)
     window.transient(app.root)
     window.resizable(False, False)
@@ -24,13 +24,17 @@ def show_filter_settings(app, index):
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
         ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
+        ("allow_large_list", "Pobieraj duże listy bez pytania", "Dotyczy list zawierających ponad 1000 wpisów.", True),
     ]:
         row = ttk.Frame(panel, style="White.TFrame", padding=(0, 10))
         row.pack(fill="x")
         row.columnconfigure(0, weight=1)
         ttk.Label(row, text=title, style="White.TLabel", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(row, text=description, style="WhiteMuted.TLabel", wraplength=350).grid(row=1, column=0, sticky="w", pady=(4, 0))
-        values[key] = tk.BooleanVar(value=entry.get(key, key != "first_only"))
+        if key == "allow_large_list":
+            ttk.Label(panel, text="DUŻE LISTY", style="WhiteMuted.TLabel",
+                      font=("Segoe UI", 9, "bold")).pack(before=row, anchor="w", pady=(14, 0))
+        values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams")))
         controls[key] = Toggle(row, values[key])
         controls[key].grid(row=0, column=1, rowspan=2, padx=(18, 0))
         controls[key].configure(state="normal" if enabled else "disabled")
@@ -43,7 +47,7 @@ def show_filter_settings(app, index):
         except OSError as error:
             entry.clear()
             entry.update(previous)
-            messagebox.showerror("Powiadomienia filtra", str(error), parent=window)
+            messagebox.showerror("Ustawienia filtra", str(error), parent=window)
             return
         window.destroy()
 
