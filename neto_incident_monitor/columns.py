@@ -10,7 +10,6 @@ FIELDS = [
     ("assignment_group", "Grupa przypisania", 200),
     ("requested_for", "Wnioskowane dla", 180),
     ("opened_by", "Otwarte przez", 180),
-    ("request_item", "Pozycja wniosku (RITM)", 180),
     ("read", "Przeczytanie", 145),
     ("time", "Wykryto (historia)", 150),
 ]

@@ -106,7 +106,7 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(len(monitor.current_table.get_children()), 1)
             row = monitor.current_table.get_children()[0]
             self.assertEqual(monitor.current_table.item(row, "values"),
-                             ("Nieprzeczytany", "INC0012345", "Problem z kasą", "\u2003\u20022 — wysokie", "Gdańsk", "2026-10-07 10:00:00", *("—",) * 11))
+                             ("Nieprzeczytany", "INC0012345", "Problem z kasą", "\u2003\u20022 — wysokie", "Gdańsk", "2026-10-07 10:00:00", *("—",) * 10))
             self.assertEqual(monitor.unread_count.get(), "1")
             self.assertEqual(len(monitor.table.get_children()), 1)
             self.assertIn("unread", monitor.current_table.item(row, "tags"))

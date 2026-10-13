@@ -42,7 +42,7 @@ class CatalogTaskTests(unittest.TestCase):
                 self.assertEqual(task["state"], "Oczekujący")
                 self.assertEqual(task["requested_for"], "Anna")
                 self.assertEqual(task["opened_by"], "Piotr")
-                self.assertEqual(task["request_item"], "RITM1234567")
+                self.assertNotIn("request_item", task)
                 self.assertIn("requested_for", available)
                 self.assertTrue(next_button(page)[1])
             finally:

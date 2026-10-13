@@ -109,7 +109,6 @@ def collect(page, available=None):
             caller: column(['caller_id'], ['zgłaszający', 'caller']),
             requested_for: column(['requested_for', 'request.requested_for', 'request_item.request.requested_for'], ['wnioskowane dla', 'requested for']),
             opened_by: column(['opened_by'], ['otwarte przez', 'opened by']),
-            request_item: column(['request_item'], ['pozycja wniosku', 'żądany element', 'requested item', 'request item']),
             assigned_to: column(['assigned_to'], ['przypisane do', 'assigned to']),
             description: column(['description'], ['opis', 'description']),
             parent_incident: column(['parent_incident', 'parent'], ['incydent nadrzędny', 'parent incident']),
@@ -585,7 +584,7 @@ class App:
 
     def applicable_columns(self):
         task = urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do")
-        excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by", "request_item"}
+        excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by"}
         return [key for key, _, _ in FIELDS if key not in excluded]
 
     def default_filter_columns(self):
