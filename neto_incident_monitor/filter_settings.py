@@ -31,9 +31,6 @@ def show_filter_settings(app, index):
         row.columnconfigure(0, weight=1)
         ttk.Label(row, text=title, style="White.TLabel", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(row, text=description, style="WhiteMuted.TLabel", wraplength=350).grid(row=1, column=0, sticky="w", pady=(4, 0))
-        if key == "allow_large_list":
-            ttk.Label(panel, text="DUŻE LISTY", style="WhiteMuted.TLabel",
-                      font=("Segoe UI", 9, "bold")).pack(before=row, anchor="w", pady=(14, 0))
         values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams")))
         controls[key] = Toggle(row, values[key])
         controls[key].grid(row=0, column=1, rowspan=2, padx=(18, 0))
