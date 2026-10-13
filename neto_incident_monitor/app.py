@@ -395,14 +395,15 @@ class App:
         dialog.resizable(False, False)
         content = ttk.Frame(dialog, padding=24)
         content.pack(fill="both", expand=True)
-        ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.'.replace(',', ' '),
-                  wraplength=480, font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        ttk.Label(content, text="Liczba zgłoszeń przekracza limit 1000 wpisów wymagający potwierdzenia.\nOdczyt całej listy może potrwać dłużej. Czy chcesz kontynuować?",
-                  wraplength=480, justify="left").pack(anchor="w", pady=(10, 12))
+        font = ("Segoe UI", 10)
+        ttk.Label(content, text=f'„{request["name"]}” — {request["count"]:,} wpisów.\nOdczytać całą listę?'.replace(',', ' '),
+                  wraplength=480, justify="left", font=font).pack(anchor="w", pady=(0, 12))
         remember = tk.BooleanVar(value=False)
-        ttk.Checkbutton(content, text="Zapamiętaj zgodę dla tego filtra", variable=remember).pack(anchor="w")
+        ttk.Style(dialog).configure("LargeList.TCheckbutton", font=font)
+        ttk.Checkbutton(content, text="Zapamiętaj zgodę", variable=remember,
+                        style="LargeList.TCheckbutton").pack(anchor="w")
         countdown = tk.StringVar()
-        ttk.Label(content, textvariable=countdown, foreground=MUTED).pack(anchor="w", pady=12)
+        ttk.Label(content, textvariable=countdown, font=font).pack(anchor="w", pady=12)
         buttons = ttk.Frame(content)
         buttons.pack(fill="x")
         def finish(accepted, rejected=False):
@@ -444,7 +445,7 @@ class App:
                 request["done"].set()
                 dialog.destroy()
                 return
-            countdown.set(f"Czas na decyzję: {remaining} s. Brak odpowiedzi spowoduje pominięcie tego odczytu.")
+            countdown.set(f"Pominięcie odczytu za {remaining} s.")
             timer = dialog.after(100, tick)
         tick()
         if not dialog.winfo_exists():
