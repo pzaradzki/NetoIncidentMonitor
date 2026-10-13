@@ -19,6 +19,22 @@ class FilterViewTests(unittest.TestCase):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
                 root.update()
                 self.assertFalse(app.clear_history_button.winfo_manager())
+                first_url = app.filters[0]["url"]
+                second_url = app.filters[1]["url"]
+                app.filter_visible_columns = {first_url: ["number", "state"], second_url: ["number", "short_description"]}
+                app.filter_table.selection_set("1")
+                self.assertEqual(app.visible_columns, ["number", "short_description"])
+                app.filter_table.selection_set("0")
+                self.assertEqual(app.visible_columns, ["number", "state"])
+                app.visible_columns = list(app.legacy_visible_columns)
+                app.filters[1]["url"] = "https://example.test/sc_task_list.do"
+                app.filter_table.selection_set("1")
+                self.assertIn("requested_for", app.applicable_columns())
+                self.assertNotIn("caller", app.applicable_columns())
+                self.assertNotIn("parent_incident", app.applicable_columns())
+                app.filters[1]["url"] = second_url
+                app.filter_visible_columns = {}
+                app.filter_table.selection_set("0")
                 app.tabs.select(1)
                 root.update()
                 self.assertEqual(app.clear_history_button.winfo_manager(), "pack")

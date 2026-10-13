@@ -89,8 +89,8 @@ class ColumnTests(unittest.TestCase):
                 with patch('neto_incident_monitor.app.read_json', return_value={'teams_enabled':True}), patch('neto_incident_monitor.app.save_json') as save:
                     next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=='Zapisz').invoke()
                 stored = save.call_args.args[1]
-                self.assertIn('state', stored['visible_columns'])
-                self.assertIn('description', stored['visible_columns'])
+                self.assertIn('state', stored['filter_visible_columns'][app.selected_filter_url()])
+                self.assertIn('description', stored['filter_visible_columns'][app.selected_filter_url()])
                 self.assertNotIn('description', app.current_table['displaycolumns'])
                 self.assertTrue(stored['teams_enabled'])
                 self.assertIn('state', app.current_table['displaycolumns'])
@@ -104,9 +104,9 @@ class ColumnTests(unittest.TestCase):
                 self.assertIn('state', app.visible_columns)  # No change until Save.
                 with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json') as save:
                     buttons['Zapisz'].invoke()
-                self.assertEqual(set(save.call_args.args[1]['visible_columns']), set(DEFAULT))
+                self.assertEqual(set(save.call_args.args[1]['filter_visible_columns'][app.selected_filter_url()]), set(DEFAULT))
                 self.assertEqual(set(app.visible_columns), set(DEFAULT))
-                self.assertEqual(save.call_args.args[1]['column_order'], {})
+                self.assertNotIn('column_order', save.call_args.args[1])
                 self.assertEqual(tuple(app.current_table['displaycolumns']), ('number', 'state', 'short_description'))
         finally:
             root.update_idletasks()
