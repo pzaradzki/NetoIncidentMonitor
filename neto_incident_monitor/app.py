@@ -389,6 +389,7 @@ class App:
             request["done"].set()
             return
         dialog = tk.Toplevel(self.root, background=BG)
+        dialog.withdraw()
         dialog.title("Duża lista zgłoszeń")
         dialog.transient(self.root)
         dialog.resizable(False, False)
@@ -444,11 +445,20 @@ class App:
                 return
             countdown.set(f"Brak odpowiedzi: pominięcie odczytu za {remaining} s.")
             timer = dialog.after(100, tick)
+        tick()
+        if not dialog.winfo_exists():
+            return
         dialog.update_idletasks()
-        dialog.geometry(f'+{max(0, (dialog.winfo_screenwidth()-dialog.winfo_reqwidth())//2)}+{max(0, (dialog.winfo_screenheight()-dialog.winfo_reqheight())//2)}')
+        width, height = dialog.winfo_reqwidth(), dialog.winfo_reqheight()
+        x = max(0, (dialog.winfo_screenwidth() - width) // 2)
+        y = max(0, (dialog.winfo_screenheight() - height) // 2)
+        geometry = f"{width}x{height}+{x}+{y}"
+        dialog.geometry(geometry)
+        dialog.deiconify()
         dialog.lift()
         dialog.attributes("-topmost", True)
-        tick()
+        # Reapply after mapping: Windows can reposition transient windows.
+        dialog.after_idle(lambda: dialog.geometry(geometry) if dialog.winfo_exists() else None)
 
     def make_table(self, parent, history):
         columns = [("read", "Przeczytanie", 145),
