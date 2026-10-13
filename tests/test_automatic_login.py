@@ -5,6 +5,27 @@ from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_resumed_login_waits_for_browser_autofill_and_submits_once(self):
+        page = Mock(url='https://idpb2e.adeo.com/resumeSAML20/idp/SSO.ping')
+        body, passwords, anchor, buttons = Mock(), Mock(), Mock(), Mock()
+        body.inner_text.return_value = 'WITAMY'
+        passwords.count.return_value = 1
+        passwords.first.evaluate.side_effect = [False, True, True]
+        anchor.count.return_value = 0
+        buttons.count.return_value = 1
+        buttons.first.is_visible.return_value = True
+        buttons.first.is_enabled.return_value = True
+        buttons.first.evaluate.return_value = False
+        page.locator.side_effect = lambda selector: body if selector=='body' else passwords if 'password' in selector else anchor
+        page.get_by_role.return_value = buttons
+        automatic = AutomaticLogin()
+        automatic.step(page)
+        self.assertFalse(automatic.blocked)
+        automatic.step(page)
+        automatic.step(page)
+        self.assertTrue(automatic.submitted)
+        buttons.first.click.assert_called_once()
+
     def test_failed_account_click_does_not_mark_selection_complete(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
         body, passwords, accounts, name = Mock(), Mock(), Mock(), Mock()
