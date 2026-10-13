@@ -390,16 +390,17 @@ class App:
             return
         dialog = tk.Toplevel(self.root, background=BG)
         dialog.withdraw()
-        dialog.title("Duża lista zgłoszeń")
+        dialog.title("Potwierdzenie odczytu listy")
         dialog.transient(self.root)
         dialog.resizable(False, False)
         content = ttk.Frame(dialog, padding=24)
         content.pack(fill="both", expand=True)
         ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.'.replace(',', ' '),
                   wraplength=480, font=("Segoe UI", 12, "bold")).pack(anchor="w")
-        ttk.Label(content, text="Odczyt może potrwać długo. Czy pobrać całą listę?", wraplength=480).pack(anchor="w", pady=(10, 12))
+        ttk.Label(content, text="Liczba zgłoszeń przekracza limit 1000 wpisów wymagający potwierdzenia.\nOdczyt całej listy może potrwać dłużej. Czy chcesz kontynuować?",
+                  wraplength=480, justify="left").pack(anchor="w", pady=(10, 12))
         remember = tk.BooleanVar(value=False)
-        ttk.Checkbutton(content, text="Nie pytaj ponownie dla tego filtra", variable=remember).pack(anchor="w")
+        ttk.Checkbutton(content, text="Zapamiętaj zgodę dla tego filtra", variable=remember).pack(anchor="w")
         countdown = tk.StringVar()
         ttk.Label(content, textvariable=countdown, foreground=MUTED).pack(anchor="w", pady=12)
         buttons = ttk.Frame(content)
@@ -425,8 +426,8 @@ class App:
             request["accepted"] = accepted
             request["done"].set()
             dialog.destroy()
-        RoundedButton(buttons, text="Pobierz", command=lambda: finish(True), primary=True).pack(side="right")
-        RoundedButton(buttons, text="Odrzuć", command=lambda: finish(False, True)).pack(side="right", padx=8)
+        RoundedButton(buttons, text="Kontynuuj odczyt", command=lambda: finish(True), primary=True).pack(side="right")
+        RoundedButton(buttons, text="Wyłącz filtr", command=lambda: finish(False, True)).pack(side="right", padx=8)
         dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False, True))
         timer = None
         def cleanup(event):
@@ -443,7 +444,7 @@ class App:
                 request["done"].set()
                 dialog.destroy()
                 return
-            countdown.set(f"Brak odpowiedzi: pominięcie odczytu za {remaining} s.")
+            countdown.set(f"Czas na decyzję: {remaining} s. Brak odpowiedzi spowoduje pominięcie tego odczytu.")
             timer = dialog.after(100, tick)
         tick()
         if not dialog.winfo_exists():

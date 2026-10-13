@@ -63,7 +63,7 @@ class LargeListTests(unittest.TestCase):
                 dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
                 if not reject:
                     next(w for w in children(dialog) if w.winfo_class()=="TCheckbutton").invoke()
-                button = "Odrzuć" if reject else "Pobierz"
+                button = "Wyłącz filtr" if reject else "Kontynuuj odczyt"
                 next(w for w in children(dialog) if isinstance(w, RoundedButton) and w.text==button).invoke()
                 self.assertTrue(request["done"].is_set())
                 self.assertEqual(request["accepted"], not reject)
