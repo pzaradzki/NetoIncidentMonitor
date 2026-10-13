@@ -25,13 +25,18 @@ class AutomaticLogin:
             return
         passwords = page.locator('input[type="password"]:visible')
         if passwords.count() == 1:
-            if not self.account_clicked:
-                # A manually opened login form belongs to the user, even when
-                # typing or autofill makes the password field nonempty.
-                self.blocked = True
-                return
-            # Only inspect whether autofill is present. Never retrieve the password.
             ready = passwords.first.evaluate("el => !!el.value && !el.disabled")
+            if not self.account_clicked:
+                if not ready:
+                    # Chromium can apply saved credentials after the first
+                    # inspection of the login page.
+                    return
+                autofilled = passwords.first.evaluate("el => el.matches(':-webkit-autofill')")
+                if not autofilled:
+                    # Never submit credentials entered manually by the user.
+                    self.blocked = True
+                    return
+            # Only inspect whether autofill is present. Never retrieve the password.
             buttons = page.get_by_role("button", name=re.compile(r"^Zaloguj się$", re.I))
             adeo_button = page.locator('a#signOnButton:visible')
             if adeo_button.count() == 1:
