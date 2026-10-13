@@ -56,6 +56,7 @@ class FilterViewTests(unittest.TestCase):
                 self.assertEqual(app.unread_count.get(), "1")
                 with patch("neto_incident_monitor.app.save_json") as save:
                     app.highlight_unread.set(False)
+                    self.assertNotIn("read", app.applicable_columns())
                     self.assertFalse(save.call_args.args[1]["highlight_unread"])
                     self.assertFalse(app.mark_all_button.winfo_manager())
                     for table in (app.current_table, app.table):
@@ -64,6 +65,7 @@ class FilterViewTests(unittest.TestCase):
                     app.mark_all()
                     self.assertFalse(app.history.snapshot(app.filters[1]["url"])["INC1"]["read"])
                     app.highlight_unread.set(True)
+                    self.assertIn("read", app.applicable_columns())
                     self.assertEqual(app.mark_all_button.winfo_manager(), "pack")
                     self.assertIn("unread", app.table.item(app.table.get_children()[0], "tags"))
                 with patch("neto_incident_monitor.app.save_json"):
