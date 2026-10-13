@@ -252,6 +252,7 @@ class App:
         self.worker = None
         self.items = {}
         self.snapshots = {}
+        self.updating_filter_url = None
         self.new_numbers = set()
         self.next_check = None
         self.history = History(history_path or DATA / "history.json")
@@ -744,6 +745,8 @@ class App:
                 self.status.set("Incydenty zapisano. Nie udało się wysłać powiadomienia Windows.")
 
     def refresh_filters(self):
+        updating_index = self.event_filter_index(self.updating_filter_url)
+        self.filter_table.updating_item = str(updating_index - 1) if updating_index is not None else None
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.filter_table.enabled_rows = {str(i): entry.get("enabled", True) for i, entry in enumerate(self.filters)}
         self.filter_table.on_toggle = self.toggle_filter
@@ -1312,6 +1315,7 @@ class App:
                             filter_name = settings["filters"][filter_index - 1]["name"]
                             if self.stop.is_set():
                                 break
+                            self.events.put(("filter_updating", url))
                             try:
                                 # Filters are read sequentially, so one tab is
                                 # sufficient. Opening additional tabs restores
@@ -1366,6 +1370,8 @@ class App:
                                 self.events.put(("status", f"Błąd odczytu: {exc}. Próba ponownie w kolejnym cyklu."))
                                 if health.failure(url):
                                     self.events.put(("interruption", f"Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane."))
+                            finally:
+                                self.events.put(("filter_updating", None))
                         now = time.monotonic()
                         for kind in due:
                             deadlines[kind] = now + intervals[kind]
@@ -1393,7 +1399,12 @@ class App:
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == "status":
+                if kind == "filter_updating":
+                    self.updating_filter_url = value
+                    index = self.event_filter_index(value)
+                    self.filter_table.updating_item = str(index - 1) if index is not None else None
+                    self.filter_table.redraw()
+                elif kind == "status":
                     self.status.set(value)
                 elif kind == "tray_ready":
                     self.tray_ready = True
@@ -1465,6 +1476,9 @@ class App:
                     self.apply_visible_columns()
                     self.update_counts()
                 elif kind == "finished":
+                    self.updating_filter_url = None
+                    self.filter_table.updating_item = None
+                    self.filter_table.redraw()
                     self.next_check = None
                     if self.stop.is_set():
                         self.set_phase("Monitoring zatrzymany")
