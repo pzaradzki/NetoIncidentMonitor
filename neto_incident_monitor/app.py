@@ -384,7 +384,7 @@ class App:
         return False
 
     def show_large_list_prompt(self, request):
-        from neto_incident_monitor.widgets import RoundedButton
+        from neto_incident_monitor.widgets import RoundedButton, Toggle
         if request["done"].is_set() or self.quitting:
             request["done"].set()
             return
@@ -399,9 +399,12 @@ class App:
         ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.\nOdczytać całą listę?'.replace(',', ' '),
                   wraplength=480, justify="left", font=font).pack(anchor="w", pady=(0, 12))
         remember = tk.BooleanVar(value=False)
-        ttk.Style(dialog).configure("LargeList.TCheckbutton", font=font)
-        ttk.Checkbutton(content, text="Zapamiętaj zgodę", variable=remember,
-                        style="LargeList.TCheckbutton").pack(anchor="w")
+        remember_row = ttk.Frame(content)
+        remember_row.pack(fill="x")
+        ttk.Label(remember_row, text="Zapamiętaj zgodę", font=font).pack(side="left")
+        remember_toggle = Toggle(remember_row, remember)
+        remember_toggle.configure(background=BG)
+        remember_toggle.pack(side="right")
         countdown = tk.StringVar()
         ttk.Label(content, textvariable=countdown, font=font).pack(anchor="w", pady=12)
         buttons = ttk.Frame(content)
