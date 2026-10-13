@@ -465,7 +465,17 @@ class FilterList(tk.Canvas):
                                    fill=ACCENT if enabled else "#555c68")
             center = left + (21 if enabled else 9)
             draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
-            draw_gear(draw, width - 65, 13, TEXT, size=18)
+            # Draw the notification bell at 4x resolution like the other icons.
+            bell_x = width - 65
+            def bell_points(coords):
+                return [((bell_x + x) * 4, (13 + y) * 4) for x, y in coords]
+            draw.line(bell_points([(2, 13), (4, 10), (4, 6), (5, 3),
+                                   (7, 2), (11, 2), (13, 3), (14, 6),
+                                   (14, 10), (16, 13), (2, 13)]),
+                      fill=TEXT, width=6, joint="curve")
+            draw.line(bell_points([(9, 0), (9, 2)]), fill=TEXT, width=6)
+            draw.arc(((bell_x + 6) * 4, 25 * 4, (bell_x + 12) * 4, 30 * 4),
+                     start=0, end=180, fill=TEXT, width=6)
             radius = 3 if chosen else 1.5
             draw.ellipse(((14 - radius) * 4, (22 - radius) * 4,
                           (14 + radius) * 4, (22 + radius) * 4),

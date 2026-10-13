@@ -77,7 +77,7 @@ def build_settings(app, settings):
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     notifications = section("POWIADOMIENIA")
-    ttk.Label(notifications, text="Przełączniki globalne. Powiadomienia poszczególnych filtrów ustawisz\nprzez ikonę koła zębatego przy filtrze.",
+    ttk.Label(notifications, text="Przełączniki globalne. Powiadomienia poszczególnych filtrów ustawisz\nprzez ikonę dzwonka przy filtrze.",
               style="WhiteMuted.TLabel").pack(anchor="w", pady=(8, 2))
     controls = row(notifications, "Powiadomienia Windows", "Powiadomienia systemowe i sygnał dźwiękowy.")
     app.notify = tk.BooleanVar(value=settings.get("notify", True))
