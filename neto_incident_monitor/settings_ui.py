@@ -70,10 +70,16 @@ def build_settings(app, settings):
         return controls
 
     monitoring = section("MONITOROWANIE")
-    controls = row(monitoring, "Częstotliwość odczytu", "Odstęp między kolejnymi sprawdzeniami list.")
+    controls = row(monitoring, "Incydenty (INC)", "Odstęp między kolejnymi sprawdzeniami list incydentów.")
     app.interval = tk.StringVar(value=str(settings.get("interval", 60)))
     app.interval_entry = ttk.Entry(controls, textvariable=app.interval, width=6, justify="center")
     app.interval_entry.pack(side="left")
+    ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
+
+    controls = row(monitoring, "Zadania katalogowe (SCTASK)", "Odstęp między kolejnymi sprawdzeniami list zadań katalogowych.")
+    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", settings.get("interval", 60))))
+    app.task_interval_entry = ttk.Entry(controls, textvariable=app.task_interval, width=6, justify="center")
+    app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     notifications = section("POWIADOMIENIA")

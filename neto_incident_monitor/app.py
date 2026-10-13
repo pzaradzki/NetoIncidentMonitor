@@ -1239,11 +1239,12 @@ class App:
         try:
             urls = validate_urls("\n".join(entry["url"] for entry in self.filters))
             interval = int(self.interval.get())
-            if interval < 15:
+            task_interval = int(self.task_interval.get())
+            if min(interval, task_interval) < 15:
                 raise ValueError("Minimalny odstęp wynosi 15 sekund.")
             filters = load_filters({"filters": self.filters})
             settings = {"urls": urls, "filters": filters,
-                        "interval": interval, "notify": self.notify.get(), "auto_login": self.auto_login.get(),
+                        "interval": interval, "task_interval": task_interval, "notify": self.notify.get(), "auto_login": self.auto_login.get(),
                         "minimize_to_tray": self.minimize_to_tray.get(),
                         "minimize_browser": self.minimize_browser.get()}
             existing = read_json(CONFIG, {})
@@ -1267,6 +1268,7 @@ class App:
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.interval_entry.configure(state="disabled")
+        self.task_interval_entry.configure(state="disabled")
         self.notify_check.configure(state="disabled")
         for button in self.filter_buttons:
             button.configure(state="disabled")
@@ -1294,10 +1296,17 @@ class App:
                     self.events.put(("status", "Zaloguj się w przeglądarce. Monitoring rozpocznie się automatycznie po załadowaniu listy."))
                     if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
                         return
+                    intervals = {"inc": settings["interval"], "task": settings.get("task_interval", settings["interval"])}
+                    deadlines = {"inc": 0, "task": 0}
+                    force = True
                     while not self.stop.is_set():
+                        due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
                         self.events.put(("checking", None))
                         cycle_error = False
                         for filter_index, url in enumerate(settings["urls"], 1):
+                            kind = "task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                            if kind not in due:
+                                continue
                             if url in self.disabled_filter_urls:
                                 continue
                             filter_name = settings["filters"][filter_index - 1]["name"]
@@ -1357,9 +1366,16 @@ class App:
                                 self.events.put(("status", f"Błąd odczytu: {exc}. Próba ponownie w kolejnym cyklu."))
                                 if health.failure(url):
                                     self.events.put(("interruption", f"Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane."))
-                        self.events.put(("waiting", (time.monotonic() + settings["interval"], cycle_error)))
-                        if self.schedule.wait(settings["interval"], self.stop):
+                        now = time.monotonic()
+                        for kind in due:
+                            deadlines[kind] = now + intervals[kind]
+                        active = {"task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                                  for url in settings["urls"] if url not in self.disabled_filter_urls}
+                        next_read = min((deadlines[kind] for kind in active), default=now + min(intervals.values()))
+                        self.events.put(("waiting", (next_read, cycle_error)))
+                        if self.schedule.wait(max(0, next_read - now), self.stop):
                             break
+                        force = self.schedule.woken_by_request is True or intervals["inc"] == intervals["task"]
                 finally:
                     context.close()
         except Exception as exc:
@@ -1457,6 +1473,7 @@ class App:
                     self.stop_button.configure(state="disabled")
                     self.check_button.configure(state="disabled")
                     self.interval_entry.configure(state="normal")
+                    self.task_interval_entry.configure(state="normal")
                     self.notify_check.configure(state="normal")
                     for button in self.filter_buttons:
                         button.configure(state="normal")

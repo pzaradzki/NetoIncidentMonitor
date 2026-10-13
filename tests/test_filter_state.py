@@ -11,6 +11,43 @@ from neto_incident_monitor.history import History
 
 
 class FilterStateTests(unittest.TestCase):
+    def test_separate_incident_and_task_intervals(self):
+        from neto_incident_monitor.app import App
+        with tempfile.TemporaryDirectory() as folder:
+            app = App.__new__(App)
+            app.events = queue.Queue()
+            app.stop = threading.Event()
+            app.schedule = Mock()
+            app.schedule.woken_by_request = False
+            clock = [100]
+            waits = []
+            def wait(seconds, stop):
+                waits.append(seconds)
+                clock[0] += seconds
+                return len(waits) == 3
+            app.schedule.wait.side_effect = wait
+            app.filters = [{"name": "INC", "url": "https://example.test/incident_list.do"},
+                           {"name": "TASK", "url": "https://example.test/sc_task_list.do"}]
+            app.disabled_filter_urls = frozenset()
+            app.history = History(Path(folder)/"history.json")
+            settings = {"urls": [f["url"] for f in app.filters], "filters": app.filters,
+                        "interval": 60, "task_interval": 120}
+            page = Mock()
+            page.is_closed.return_value = False
+            context = Mock(pages=[page])
+            playwright = MagicMock()
+            playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
+            with patch("playwright.sync_api.sync_playwright", return_value=playwright), \
+                 patch("neto_incident_monitor.app.STATE", Path(folder)/"seen.json"), \
+                 patch("neto_incident_monitor.app.navigate"), \
+                 patch("neto_incident_monitor.app.wait_for_login", return_value=True), \
+                 patch("neto_incident_monitor.app.time.monotonic", side_effect=lambda: clock[0]), \
+                 patch("neto_incident_monitor.app.read_all", return_value=({}, 1)) as read:
+                app.monitor(settings)
+            self.assertEqual([call.args[1] for call in read.call_args_list],
+                             [settings["urls"][i] for i in (0, 1, 0, 0, 1)])
+            self.assertEqual(waits, [60, 60, 60])
+
     def test_monitor_pipeline_scopes_notifications_and_ignores_failed_reads(self):
         from neto_incident_monitor.app import App
         with tempfile.TemporaryDirectory() as folder:
