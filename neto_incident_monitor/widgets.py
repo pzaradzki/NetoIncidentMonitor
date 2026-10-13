@@ -204,11 +204,12 @@ class Toggle(tk.Canvas):
         self.delete("all")
         on = self.variable.get()
         color = (ACCENT if on else "#4b515c") if self.enabled else ("#85444c" if on else "#343840")
-        key = (bool(on), self.enabled)
+        background = self.cget("background")
+        key = (bool(on), self.enabled, background)
         if key not in self.images:
             # Draw at 8x resolution, then downsample to smooth curved edges.
             scale = 8
-            image = Image.new("RGB", (48 * scale, 28 * scale), SURFACE)
+            image = Image.new("RGB", (48 * scale, 28 * scale), background)
             draw = ImageDraw.Draw(image)
             draw.rounded_rectangle((2 * scale, 2 * scale, 46 * scale, 26 * scale),
                                    radius=12 * scale, fill=color)
@@ -223,6 +224,9 @@ class Toggle(tk.Canvas):
         result = super().configure(cnf, **kwargs)
         if state is not None:
             self.enabled = state != "disabled"
+            self.redraw()
+        if "background" in kwargs or "bg" in kwargs:
+            super().configure(highlightbackground=self.cget("background"))
             self.redraw()
         return result
 
