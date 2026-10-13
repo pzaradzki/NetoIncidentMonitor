@@ -1,5 +1,7 @@
 """One attempt per login session, using only already filled ADEO login fields."""
 import re
+from time import monotonic
+import logging
 from urllib.parse import urlparse
 
 
@@ -8,6 +10,8 @@ class AutomaticLogin:
         self.account_clicked = False
         self.submitted = False
         self.blocked = False
+        self.account_attempts = 0
+        self.last_account_attempt = None
 
     def step(self, page):
         host = urlparse(page.url).hostname or ""
@@ -39,13 +43,28 @@ class AutomaticLogin:
                 self.submitted = True  # Set before click: ambiguous failures must not retry.
                 buttons.first.click(timeout=1500)
             return
-        if not self.account_clicked and re.search(r"WITAMY|WELCOME", body, re.I):
+        if re.search(r"WITAMY|WELCOME", body, re.I):
             accounts = page.locator('#existingAccountsSelectionList .identifier-first__account-item:visible')
             if accounts.count():
                 if accounts.count() != 1:
                     return
                 name = accounts.first.locator('.identifier-first__account-name')
                 if name.count() == 1 and name.is_visible():
+                    now = monotonic()
+                    if self.last_account_attempt is not None and now - self.last_account_attempt < 5:
+                        return
+                    if self.account_attempts >= 3:
+                        self.blocked = True
+                        logging.getLogger("servicenow").warning("Automatyczny wybór konta nie przeszedł do formularza po trzech próbach; wymagane ręczne logowanie.")
+                        return
+                    self.account_attempts += 1
+                    self.last_account_attempt = now
+                    try:
+                        name.click(timeout=1500)
+                    except Exception:
+                        # Selection is safe to retry on this exact welcome
+                        # screen; never retry submitting the password form.
+                        logging.getLogger("servicenow").warning("Nie udało się kliknąć zapamiętanego konta; wybór zostanie ponowiony.")
+                        return
                     self.account_clicked = True
-                    name.click(timeout=1500)
                 return

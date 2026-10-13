@@ -1,9 +1,49 @@
 import unittest
+from unittest.mock import Mock, patch
 from playwright.sync_api import sync_playwright
 from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_failed_account_click_does_not_mark_selection_complete(self):
+        page = Mock(url='https://idpb2e.adeo.com/login')
+        body, passwords, accounts, name = Mock(), Mock(), Mock(), Mock()
+        body.inner_text.return_value = 'WITAMY'
+        passwords.count.return_value = 0
+        accounts.count.return_value = 1
+        accounts.first.locator.return_value = name
+        name.count.return_value = 1
+        name.is_visible.return_value = True
+        name.click.side_effect = [RuntimeError('page transitioning'), None]
+        page.locator.side_effect = lambda selector: body if selector=='body' else passwords if 'password' in selector else accounts
+        automatic = AutomaticLogin()
+        with patch('neto_incident_monitor.automatic_login.monotonic', side_effect=[0, 5]):
+            automatic.step(page)
+            self.assertFalse(automatic.account_clicked)
+            automatic.step(page)
+            self.assertTrue(automatic.account_clicked)
+        self.assertEqual(name.click.call_count, 2)
+
+    def test_welcome_screen_retries_are_delayed_and_bounded(self):
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
+                page.goto('https://idpb2e.adeo.com/login')
+                page.set_content('''<body>WITAMY<ul id="existingAccountsSelectionList">
+                    <li class="identifier-first__account-item"><div class="identifier-first__account-name"
+                    onclick="window.selected=(window.selected||0)+1">TEST USER</div></li></ul></body>''')
+                automatic = AutomaticLogin()
+                with patch('neto_incident_monitor.automatic_login.monotonic', side_effect=[0, 1, 5, 10, 15]):
+                    for _ in range(5):
+                        automatic.step(page)
+                self.assertEqual(page.evaluate('window.selected'), 3)
+                self.assertTrue(automatic.blocked)
+                self.assertFalse(automatic.submitted)
+            finally:
+                browser.close()
+
     def test_manual_form_is_never_submitted_when_user_types(self):
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
