@@ -336,6 +336,7 @@ class FilterList(tk.Canvas):
                          bd=0, highlightthickness=0, takefocus=True, cursor="hand2")
         self.rows, self.selected, self.pictures = {}, None, []
         self.enabled_rows = {}
+        self.updating_item = None
         self.on_toggle = None
         self.on_select = None
         self.on_settings = None
@@ -460,6 +461,11 @@ class FilterList(tk.Canvas):
                                    fill="#432e36" if chosen else "#30353e",
                                    outline=ACCENT if chosen else "#444b56", width=4)
             enabled = self.enabled_rows.get(iid, True)
+            updating = iid == self.updating_item
+            badge_left = width - 155
+            if updating:
+                draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 78) * 4, 33 * 4),
+                                       radius=11 * 4, fill="#244b37")
             left = width - 38
             draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
                                    fill=ACCENT if enabled else "#555c68")
@@ -488,11 +494,14 @@ class FilterList(tk.Canvas):
             from tkinter.font import Font
             font = Font(self, font=("Segoe UI", 9))
             label = name
-            while label and font.measure(label) > width - 100:
+            while label and font.measure(label) > width - (190 if updating else 100):
                 label = label[:-1]
             if label != name:
                 label = label[:-1] + "…"
             self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            if updating:
+                self.create_text(badge_left + 38, y + 22, text="Aktualizuje",
+                                 fill="#8ee2ac", font=("Segoe UI", 8))
         # A scroll region shorter than the viewport lets Tk shift the rows
         # down when scrolling upward, leaving empty space above them.
         self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))

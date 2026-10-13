@@ -19,6 +19,12 @@ class FilterViewTests(unittest.TestCase):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
                 root.update()
                 self.assertFalse(app.clear_history_button.winfo_manager())
+                app.events.put(("filter_updating", app.filters[1]["url"]))
+                app.drain()
+                self.assertEqual(app.filter_table.updating_item, "1")
+                app.events.put(("filter_updating", None))
+                app.drain()
+                self.assertIsNone(app.filter_table.updating_item)
                 first_url = app.filters[0]["url"]
                 second_url = app.filters[1]["url"]
                 app.filter_visible_columns = {first_url: ["number", "state"], second_url: ["number", "short_description"]}
