@@ -269,7 +269,10 @@ class App:
         self.teams_webhook = settings.get("teams_webhook", "")
         self.filters = load_filters(settings)
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
-        self.visible_columns = settings.get("visible_columns", DEFAULT)
+        self.legacy_visible_columns = settings.get("visible_columns", DEFAULT)
+        self.filter_visible_columns = settings.get("filter_visible_columns", {})
+        self.columns_filter_url = None
+        self.visible_columns = list(self.legacy_visible_columns)
         self.column_availability = {}
         self.column_orders = settings.get("column_order", {})
         self.column_widths = settings.get("column_widths", {})
@@ -563,7 +566,7 @@ class App:
         for table, history in ((self.current_table, False), (self.table, True)):
             available = self.available_columns(history)
             order = self.column_order(table)
-            visible = [key for key in order if key in self.visible_columns and (key != "read" or self.unread_highlighting_enabled()) and (available is None or key in available)]
+            visible = [key for key in order if key in self.applicable_columns() and key in self.visible_columns and (key != "read" or self.unread_highlighting_enabled()) and (available is None or key in available)]
             table.configure(displaycolumns=tuple(visible))
             if table.sort_column and table.sort_column not in visible:
                 table.sort_column = None
@@ -580,8 +583,22 @@ class App:
                     badge.hide()
                     badge.grid_remove()
 
+    def applicable_columns(self):
+        task = urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do")
+        excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by", "request_item"}
+        return [key for key, _, _ in FIELDS if key not in excluded]
+
+    def default_filter_columns(self):
+        if urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do"):
+            return ["number", "requested_for", "priority", "state", "short_description", "assignment_group", "assigned_to"]
+        return DEFAULT
+
     def configure_columns(self):
         from neto_incident_monitor.widgets import RoundedButton, ColumnWarning
+        filter_url = self.selected_filter_url()
+        if not filter_url:
+            return
+        fields = [(key, label, width) for key, label, width in FIELDS if key in self.applicable_columns()]
         dialog = tk.Toplevel(self.root)
         dialog.title("Widoczne kolumny")
         dialog.configure(background=BG)
@@ -589,11 +606,11 @@ class App:
         content = ttk.Frame(dialog, padding=20)
         content.pack(fill="both", expand=True)
         ttk.Label(content, text="Wybierz kolumny", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        ttk.Label(content, text="Zmiana dotyczy bieżącej listy i historii.\nKolumny niewidoczne w ServiceNow są automatycznie ukrywane.",
+        ttk.Label(content, text="Zmiana dotyczy bieżącej listy i historii wybranego filtra.\nKolumny niewidoczne w ServiceNow są automatycznie ukrywane.",
                   foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
         choices = {}
         self.column_badges = {}
-        for index, (key, label, _) in enumerate(FIELDS):
+        for index, (key, label, _) in enumerate(fields):
             variable = tk.BooleanVar(value=key in self.visible_columns)
             choices[key] = variable
             row = ttk.Frame(content)
@@ -610,31 +627,27 @@ class App:
                 self.column_badges = {}
         dialog.bind("<Destroy>", closed, add="+")
 
-        reset_order = False
         def restore_defaults():
-            nonlocal reset_order
-            reset_order = True
             for key, variable in choices.items():
-                variable.set(key in DEFAULT)
+                variable.set(key in self.default_filter_columns())
 
         def save():
             selected = [key for key, variable in choices.items() if variable.get()]
             try:
                 settings = read_json(CONFIG, {})
-                settings["visible_columns"] = selected
-                if reset_order:
-                    settings["column_order"] = {}
+                profiles = dict(settings.get("filter_visible_columns", self.filter_visible_columns))
+                profiles[filter_url] = selected
+                settings["filter_visible_columns"] = profiles
                 save_json(CONFIG, settings)
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Kolumny", f"Nie udało się zapisać ustawień: {exc}", parent=dialog)
                 return
+            self.filter_visible_columns = profiles
             self.visible_columns = selected
-            if reset_order:
-                self.column_orders = {}
             self.apply_visible_columns()
             dialog.destroy()
         actions = ttk.Frame(content)
-        actions.grid(row=2 + (len(FIELDS) + 1) // 2, column=0, columnspan=2, sticky="ew", pady=(16, 0))
+        actions.grid(row=2 + (len(fields) + 1) // 2, column=0, columnspan=2, sticky="ew", pady=(16, 0))
         RoundedButton(actions, text="Przywróć domyślne", command=restore_defaults, background=BG).pack(side="left", padx=(0, 12))
         RoundedButton(actions, text="Zapisz", command=save, primary=True, background=BG).pack(side="right")
         RoundedButton(actions, text="Anuluj", command=dialog.destroy, background=BG).pack(side="right", padx=8)
@@ -690,6 +703,11 @@ class App:
         return self.filters[index - 1]["url"] if index else ""
 
     def filter_selected(self):
+        url = self.selected_filter_url()
+        if url != self.columns_filter_url:
+            self.columns_filter_url = url
+            fallback = self.default_filter_columns() if urlparse(url).path.endswith("/sc_task_list.do") else self.legacy_visible_columns
+            self.visible_columns = list(self.filter_visible_columns.get(url, fallback))
         if hasattr(self, "phase"):
             self.update_phase_text()
         if hasattr(self, "current_table"):
