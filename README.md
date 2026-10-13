@@ -72,7 +72,7 @@ Powiadomienie zawiera nazwę filtra, liczbę wykrytych incydentów oraz ich nume
 
 ### Bieżące incydenty i historia
 
-Zakładka **Bieżące incydenty** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
+Zakładka **Bieżące zgłoszenia** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
 
 Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.
 
@@ -174,3 +174,9 @@ Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia
 Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.
 
 Opcja **Podświetlaj nieprzeczytane incydenty** w ustawieniach jest domyślnie włączona. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
+
+### Zadania katalogowe (SCTASK)
+
+Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_task_list.do`). Obsługiwane są zarówno adresy bezpośrednie, jak i linki nawigacyjne `/now/nav/ui/classic/params/target/`. Po dodaniu filtra zadania SCTASK są odczytywane ze wszystkich stron listy i korzystają z osobnej historii oraz ustawień powiadomień tego filtra.
+
+W wyborze kolumn dostępne są także **Wnioskowane dla**, **Otwarte przez** i **Pozycja wniosku (RITM)**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.

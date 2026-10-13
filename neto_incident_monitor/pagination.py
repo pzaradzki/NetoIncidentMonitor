@@ -20,7 +20,7 @@ def first_page(url):
 
 def navigation_button(page, direction):
     for frame in page.frames:
-        if not urlparse(frame.url).path.endswith("/incident_list.do"):
+        if not urlparse(frame.url).path.endswith(("/incident_list.do", "/sc_task_list.do")):
             continue
         english, polish = ("First page", "Pierwsza strona") if direction == "first" else ("Next page", "Następna strona")
         selector = ", ".join(
@@ -48,7 +48,7 @@ def next_button(page):
 
 def row_input(page):
     for frame in page.frames:
-        if not urlparse(frame.url).path.endswith("/incident_list.do"):
+        if not urlparse(frame.url).path.endswith(("/incident_list.do", "/sc_task_list.do")):
             continue
         inputs = frame.locator('input.list2_page, input[data-type="list_nav_input"], input[name="sysparm_first_row"]')
         for index in range(inputs.count()):
@@ -140,7 +140,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
         if button is None:
             # A missing pager is safe only when the list has no pagination at all.
             for frame in page.frames:
-                if urlparse(frame.url).path.endswith("/incident_list.do") and frame.locator(
+                if urlparse(frame.url).path.endswith(("/incident_list.do", "/sc_task_list.do")) and frame.locator(
                     '[data-type^="list_nav"], input.list2_page, .list2_paging').count():
                     raise RuntimeError("Nie rozpoznano przycisku następnej strony. Nie zapisano częściowego wyniku.")
             return result, page_index

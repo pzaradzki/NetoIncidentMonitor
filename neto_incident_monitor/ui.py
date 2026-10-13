@@ -256,7 +256,7 @@ def build_ui(app, settings):
     app.tabs.grid(row=2, column=0, sticky="nsew")
     current = ttk.Frame(app.tabs, style="White.TFrame")
     history = ttk.Frame(app.tabs, style="White.TFrame")
-    app.tabs.add(current, text="Bieżące incydenty")
+    app.tabs.add(current, text="Bieżące zgłoszenia")
     app.tabs.add(history, text="Historia zgłoszeń")
     app.history_tooltip = TabTooltip(app.tabs, 1,
         "Lista wcześniej wykrytych zgłoszeń. Pokazuje dane zapisane w chwili wykrycia — mogą różnić się od aktualnych danych w ServiceNow.")

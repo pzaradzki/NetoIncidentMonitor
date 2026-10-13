@@ -24,7 +24,7 @@ from neto_incident_monitor.runtime_paths import ROOT, DATA
 DATA.mkdir(parents=True, exist_ok=True)
 CONFIG = DATA / "config.json"
 STATE = DATA / "seen.json"
-INC = re.compile(r"\bINC\d{7,}\b", re.I)
+INC = re.compile(r"\b(?:INC|SCTASK)\d{7,}\b", re.I)
 LOG = logging.getLogger("servicenow")
 
 
@@ -50,9 +50,9 @@ def normalize_url(url):
     # Decode the navigation envelope exactly once. Encoded filter values
     # inside sysparm_query must retain their own percent escaping.
     target = urlparse(unquote(parsed.path[len(prefix):]))
-    if target.scheme or target.netloc or target.path not in ("incident_list.do", "/incident_list.do"):
-        raise ValueError("Link nawigacyjny musi wskazywać listę incident_list.do na tym samym serwerze.")
-    return parsed._replace(path="/incident_list.do", params="", query=target.query, fragment=target.fragment).geturl()
+    if target.scheme or target.netloc or target.path not in ("incident_list.do", "/incident_list.do", "sc_task_list.do", "/sc_task_list.do"):
+        raise ValueError("Link nawigacyjny musi wskazywać listę incydentów lub zadań katalogowych na tym samym serwerze.")
+    return parsed._replace(path="/" + target.path.lstrip("/"), params="", query=target.query, fragment=target.fragment).geturl()
 
 
 def validate_urls(text):
@@ -92,13 +92,13 @@ def collect(page, available=None):
             .filter(th => th.closest('table') === table && visible(th));
           const header = headers.find(th => {
             const name = th.getAttribute('name') || th.getAttribute('data-name') || '';
-            return /^(incident\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
+            return /^(?:(?:incident|sc_task)\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
           });
           if (!header) return [];
           const column = (names, labels) => headers.find(th => {
-            const name = (th.getAttribute('name') || th.getAttribute('data-name') || '').replace(/^incident\\./, '');
-            return names.includes(name) || labels.includes(th.innerText.trim().toLowerCase());
-          });
+            const name = (th.getAttribute('name') || th.getAttribute('data-name') || '').replace(/^(?:incident|sc_task)\\./, '');
+            return names.includes(name);
+          }) || headers.find(th => labels.includes(th.innerText.trim().toLowerCase()));
           const fields = {
             short_description: column(['short_description'], ['krótki opis', 'short description']),
             priority: column(['priority'], ['priorytet', 'priority']),
@@ -107,6 +107,9 @@ def collect(page, available=None):
             updated: column(['sys_updated_on'], ['zaktualizowano', 'updated']),
             state: column(['state', 'incident_state'], ['stan', 'state']),
             caller: column(['caller_id'], ['zgłaszający', 'caller']),
+            requested_for: column(['requested_for', 'request.requested_for', 'request_item.request.requested_for'], ['wnioskowane dla', 'requested for']),
+            opened_by: column(['opened_by'], ['otwarte przez', 'opened by']),
+            request_item: column(['request_item'], ['pozycja wniosku', 'żądany element', 'requested item', 'request item']),
             assigned_to: column(['assigned_to'], ['przypisane do', 'assigned to']),
             description: column(['description'], ['opis', 'description']),
             parent_incident: column(['parent_incident', 'parent'], ['incydent nadrzędny', 'parent incident']),
@@ -146,7 +149,7 @@ def empty_list(page, url):
     expected_host = urlparse(url).hostname
     for frame in page.frames:
         parsed = urlparse(frame.url)
-        if parsed.hostname != expected_host or not parsed.path.endswith("/incident_list.do"):
+        if parsed.hostname != expected_host or parsed.path != urlparse(url).path:
             continue
         messages = frame.get_by_text(re.compile(
             r"Brak\s+rekordów\s+do\s+wyświetlenia|No\s+records\s+to\s+display", re.I))
@@ -203,7 +206,7 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
             if not authentication_page(page, url):
                 expected_host = urlparse(url).hostname
                 list_loaded = any(urlparse(frame.url).hostname == expected_host
-                                  and urlparse(frame.url).path.endswith("/incident_list.do")
+                                  and urlparse(frame.url).path == urlparse(url).path
                                   for frame in page.frames)
                 if list_loaded and (collect(page) or empty_list(page, url)):
                     if minimize_after_login:
@@ -705,7 +708,9 @@ class App:
             return
         from neto_incident_monitor.teams_notifications import incident_text
         _, message = incident_text(incidents)
-        heading = "Wykryto incydent" if len(incidents) == 1 else f"Wykryto incydenty: {len(incidents)}"
+        catalog_tasks = all(item["number"].startswith("SCTASK") for item in incidents)
+        singular, plural = ("zadanie katalogowe", "zadania katalogowe") if catalog_tasks else ("incydent", "incydenty")
+        heading = f"Wykryto {singular}" if len(incidents) == 1 else f"Wykryto {plural}: {len(incidents)}"
         title = entry["name"]
         message = heading + "\n" + message
         if self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook:

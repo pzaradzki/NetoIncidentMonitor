@@ -8,6 +8,9 @@ FIELDS = [
     ("parent_incident", "Incydent nadrzędny", 160),
     ("configuration_item", "Objęty element konfiguracji", 230),
     ("assignment_group", "Grupa przypisania", 200),
+    ("requested_for", "Wnioskowane dla", 180),
+    ("opened_by", "Otwarte przez", 180),
+    ("request_item", "Pozycja wniosku (RITM)", 180),
     ("read", "Przeczytanie", 145),
     ("time", "Wykryto (historia)", 150),
 ]
