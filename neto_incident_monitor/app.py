@@ -1296,7 +1296,7 @@ class App:
                     self.events.put(("status", "Zaloguj się w przeglądarce. Monitoring rozpocznie się automatycznie po załadowaniu listy."))
                     if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
                         return
-                    intervals = {"inc": settings["interval"], "task": settings.get("task_interval", settings["interval"])}
+                    intervals = {"inc": settings["interval"], "task": settings.get("task_interval", 3600)}
                     deadlines = {"inc": 0, "task": 0}
                     force = True
                     while not self.stop.is_set():

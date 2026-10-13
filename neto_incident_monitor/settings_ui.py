@@ -77,7 +77,7 @@ def build_settings(app, settings):
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     controls = row(monitoring, "Zadania katalogowe (SCTASK)", "Odstęp między kolejnymi sprawdzeniami list zadań katalogowych.")
-    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", settings.get("interval", 60))))
+    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", 3600)))
     app.task_interval_entry = ttk.Entry(controls, textvariable=app.task_interval, width=6, justify="center")
     app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
