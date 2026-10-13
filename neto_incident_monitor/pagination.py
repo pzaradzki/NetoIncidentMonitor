@@ -1,5 +1,7 @@
 """Read complete classic ServiceNow lists; never return a partial traversal."""
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+import re
+from itertools import count as page_numbers
 
 
 class AuthenticationRequired(Exception):
@@ -8,6 +10,27 @@ class AuthenticationRequired(Exception):
 
 class Cancelled(Exception):
     pass
+
+
+class LargeListRejected(Exception):
+    pass
+
+
+def list_total(page, url):
+    """Read the visible classic list pager, never a number from a task row."""
+    for frame in page.frames:
+        if urlparse(frame.url).path != urlparse(url).path:
+            continue
+        texts = frame.locator('.list2_paging, [data-type="list_nav_total"], [id$="_total_rows"]').evaluate_all(
+            "els => els.filter(el => el.getClientRects().length).map(el => el.innerText || el.textContent)")
+        for text in texts:
+            match = re.search(r'(?:\bz\s+|\bof\s+)([\d\s\u00a0,.]+)', text, re.I)
+            value = match.group(1) if match else text.strip()
+            if re.fullmatch(r'[\d\s\u00a0,.]+', value):
+                digits = re.sub(r'\D', '', value)
+                if digits:
+                    return int(digits)
+    return None
 
 
 def first_page(url):
@@ -60,14 +83,15 @@ def row_input(page):
     return None, None
 
 
-def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None):
+def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None):
     navigate(page, first_page(url))
     result = {}
     previous = None
     signatures = set()
     reset_requested = False
     restored_signature = None
-    for page_index in range(1, 1001):
+    large_approved = False
+    for page_index in page_numbers(1):
         rows = None
         stable = None
         repeats = 0
@@ -132,6 +156,13 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
             raise RuntimeError("Paginacja powróciła do wcześniej odczytanej strony. Odczyt przerwany.")
         signatures.add(signature)
         result.update(rows)
+        if approve_large is not None and not large_approved:
+            count = list_total(page, url)
+            count = max(count or 0, len(result))
+            if count > 1000:
+                if not approve_large(count):
+                    raise LargeListRejected()
+                large_approved = True
         if progress:
             progress(page_index, len(result))
         button, disabled = next_button(page)
@@ -146,4 +177,3 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
             return result, page_index
         previous = signature
         button.click(timeout=10000)
-    raise RuntimeError("Przekroczono limit 1000 stron. Nie zapisano częściowego wyniku.")

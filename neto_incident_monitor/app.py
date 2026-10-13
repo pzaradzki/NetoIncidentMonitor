@@ -17,7 +17,7 @@ from neto_incident_monitor import themed_dialogs as messagebox
 from urllib.parse import urlparse, unquote
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import Schedule, Health
-from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled
+from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled, LargeListRejected
 from neto_incident_monitor.notifications import batch_text
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
@@ -366,6 +366,89 @@ class App:
         self.refresh_current()
         self.apply_visible_columns()
         self.update_counts()
+
+    def approve_large_list(self, url, name, count):
+        if next((entry.get("allow_large_list", False) for entry in self.filters if entry["url"] == url), False):
+            return True
+        request = {"url": url, "name": name, "count": count, "deadline": time.monotonic() + 15,
+                   "done": threading.Event(), "accepted": False}
+        self.events.put(("large_list_prompt", request))
+        while not self.stop.is_set():
+            remaining = request["deadline"] - time.monotonic()
+            if remaining <= 0:
+                request["done"].set()
+                return False
+            if request["done"].wait(min(remaining, 0.1)):
+                return request["accepted"]
+        request["done"].set()
+        return False
+
+    def show_large_list_prompt(self, request):
+        from neto_incident_monitor.widgets import RoundedButton
+        if request["done"].is_set() or self.quitting:
+            request["done"].set()
+            return
+        dialog = tk.Toplevel(self.root, background=BG)
+        dialog.title("Duża lista zgłoszeń")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        content = ttk.Frame(dialog, padding=24)
+        content.pack(fill="both", expand=True)
+        ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.'.replace(',', ' '),
+                  wraplength=480, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        ttk.Label(content, text="Odczyt może potrwać długo. Czy pobrać całą listę?", wraplength=480).pack(anchor="w", pady=(10, 12))
+        remember = tk.BooleanVar(value=False)
+        ttk.Checkbutton(content, text="Nie pytaj ponownie dla tego filtra", variable=remember).pack(anchor="w")
+        countdown = tk.StringVar()
+        ttk.Label(content, textvariable=countdown, foreground=MUTED).pack(anchor="w", pady=12)
+        buttons = ttk.Frame(content)
+        buttons.pack(fill="x")
+        def finish(accepted, rejected=False):
+            if request["done"].is_set() or time.monotonic() >= request["deadline"]:
+                request["done"].set()
+                dialog.destroy()
+                return
+            index = self.event_filter_index(request["url"])
+            if index is not None and (rejected or (accepted and remember.get())):
+                entry = self.filters[index - 1]
+                field = "enabled" if rejected else "allow_large_list"
+                old = entry.get(field, True if rejected else False)
+                entry[field] = not rejected
+                try:
+                    self.persist_filters()
+                except (OSError, ValueError) as error:
+                    entry[field] = old
+                    accepted = False
+                    messagebox.showerror("Duża lista", f"Nie udało się zapisać ustawienia: {error}", parent=dialog)
+                self.refresh_filters()
+            request["accepted"] = accepted
+            request["done"].set()
+            dialog.destroy()
+        RoundedButton(buttons, text="Pobierz", command=lambda: finish(True), primary=True).pack(side="right")
+        RoundedButton(buttons, text="Odrzuć", command=lambda: finish(False, True)).pack(side="right", padx=8)
+        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False, True))
+        timer = None
+        def cleanup(event):
+            if event.widget is dialog and timer is not None:
+                dialog.after_cancel(timer)
+        dialog.bind("<Destroy>", cleanup, add="+")
+        def tick():
+            nonlocal timer
+            timer = None
+            if not dialog.winfo_exists():
+                return
+            remaining = max(0, int(request["deadline"] - time.monotonic() + 0.999))
+            if request["done"].is_set() or remaining == 0 or self.stop.is_set():
+                request["done"].set()
+                dialog.destroy()
+                return
+            countdown.set(f"Brak odpowiedzi: pominięcie odczytu za {remaining} s.")
+            timer = dialog.after(100, tick)
+        dialog.update_idletasks()
+        dialog.geometry(f'+{max(0, (dialog.winfo_screenwidth()-dialog.winfo_reqwidth())//2)}+{max(0, (dialog.winfo_screenheight()-dialog.winfo_reqheight())//2)}')
+        dialog.lift()
+        dialog.attributes("-topmost", True)
+        tick()
 
     def make_table(self, parent, history):
         columns = [("read", "Przeczytanie", 145),
@@ -1335,7 +1418,8 @@ class App:
                                     current, url, self.stop, lambda p: collect(p, available), empty_list, authentication_page, navigate,
                                     lambda index, count: self.events.put(("status",
                                         f"{filter_name}: strona {index}, odczytano {count} incydentów…"
-                                        if index else f"{filter_name}: powrót do pierwszej strony…")))
+                                        if index else f"{filter_name}: powrót do pierwszej strony…")),
+                                    approve_large=lambda count: self.approve_large_list(url, filter_name, count))
                                 if url in self.disabled_filter_urls:
                                     continue
                                 for incident in incidents.values():
@@ -1353,6 +1437,8 @@ class App:
                                     self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)])))
                                 self.events.put(("read", (time.time(), filter_name)))
                                 self.events.put(("status", f"{filter_name}: {len(incidents)} incydentów na {page_count} stronach; nowych w tym odczycie: {len(new)}."))
+                            except LargeListRejected:
+                                self.events.put(("status", f"Pominięto dużą listę: {filter_name}."))
                             except Cancelled:
                                 return
                             except AuthenticationRequired:
@@ -1412,6 +1498,8 @@ class App:
                     self.filter_table.redraw()
                 elif kind == "check_deadlines":
                     self.check_deadlines = value
+                elif kind == "large_list_prompt":
+                    self.show_large_list_prompt(value)
                 elif kind == "status":
                     self.status.set(value)
                 elif kind == "tray_ready":
