@@ -821,9 +821,9 @@ class App:
         from neto_incident_monitor.filter_settings import show_filter_settings
         show_filter_settings(self, int(item))
 
-    def notify_filter(self, url, incidents):
+    def notify_filter(self, url, incidents, manual=False):
         entry = next((entry for entry in self.filters if entry["url"] == url), None)
-        if not entry or not entry.get("enabled", True) or not incidents:
+        if not entry or (not manual and not entry.get("enabled", True)) or not incidents:
             return
         from neto_incident_monitor.teams_notifications import incident_text
         _, message = incident_text(incidents)
@@ -1665,8 +1665,28 @@ class App:
         if self.unread_highlighting_enabled():
             menu.add_separator()
             menu.add_command(label="Oznacz jako przeczytany", command=lambda: self.mark_read([number]))
+        menu.add_separator()
+        menu.add_command(label="Test powiadomienia", command=lambda: self.test_record_notification(table, number, url))
         menu.show(event.x_root, event.y_root)
         return "break"
+
+    def test_record_notification(self, table, number, url):
+        filter_url = self.selected_filter_url()
+        entry = next((entry for entry in self.filters if entry["url"] == filter_url), None)
+        if not entry:
+            return
+        windows = self.notify.get() and entry.get("notify_windows", True)
+        teams = self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook
+        if not windows and not teams:
+            messagebox.showinfo("Test powiadomienia", "Włącz powiadomienia Windows lub skonfiguruj Teams dla tego filtra.", parent=self.root)
+            return
+        if table is self.current_table:
+            incident = self.snapshots.get(self.selected_filter_index(), {}).get(number)
+        else:
+            record = self.history.snapshot(filter_url).get(number)
+            incident = record["incident"] if record else None
+        if incident is not None:
+            self.notify_filter(filter_url, [{**incident, "number": number, "url": url}], manual=True)
 
     def close(self):
         self.quit_app()
