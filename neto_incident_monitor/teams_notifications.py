@@ -34,17 +34,34 @@ def incident_text(incidents):
         description = incident.get("short_description") or incident.get("summary") or "Brak opisu"
         location = " ".join(location.split())
         description = " ".join(description.split()) or "Brak opisu"
-        lines.append(f"{number} - {location} - {description}")
+        if number.startswith("SCTASK"):
+            requested_for = " ".join((incident.get("requested_for") or "").split())
+            if requested_for in ("", "—", "-"):
+                requested_for = "Brak osoby wnioskującej"
+            lines.append(f"{number} - {description} - {requested_for}")
+        else:
+            lines.append(f"{number} - {location} - {description}")
     return title, "\n".join(lines)
 
 
-def payload(title, message):
-    text = html.escape(title) + "<br>" + html.escape(message).replace("\n", "<br>")
+def payload(title, message, links=None):
+    lines, card_lines = [], []
+    for line in message.split("\n"):
+        number = line.split(" - ", 1)[0]
+        url = (links or {}).get(number, "")
+        parsed = urlparse(url)
+        if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
+            lines.append(f'<a href="{html.escape(url, quote=True)}">{html.escape(number)}</a>' + html.escape(line[len(number):]))
+            card_lines.append(f'[{number}]({url.replace("(", "%28").replace(")", "%29")})' + line[len(number):])
+        else:
+            lines.append(html.escape(line))
+            card_lines.append(line)
+    text = html.escape(title) + "<br>" + "<br>".join(lines)
     return {"type": "message", "text": text, "attachments": [{
         "contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": None,
         "content": {"type": "AdaptiveCard", "version": "1.2", "body": [
             {"type": "TextBlock", "text": title, "weight": "Bolder", "wrap": True},
-            {"type": "TextBlock", "text": message, "wrap": True}]}}]}
+            {"type": "TextBlock", "text": "\n".join(card_lines), "wrap": True}]}}]}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -52,9 +69,9 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def send(webhook, title, message):
+def send(webhook, title, message, links=None):
     webhook = validate_webhook(webhook)
-    request = Request(webhook, data=json.dumps(payload(title, message)).encode("utf-8"),
+    request = Request(webhook, data=json.dumps(payload(title, message, links)).encode("utf-8"),
                       headers={"Content-Type": "application/json"}, method="POST")
     try:
         with build_opener(NoRedirect).open(request, timeout=15) as response:
@@ -72,17 +89,17 @@ class Sender:
         self.jobs = queue.Queue(maxsize=20)
         threading.Thread(target=self.run, daemon=True).start()
 
-    def submit(self, webhook, title, message, test=False):
+    def submit(self, webhook, title, message, test=False, links=None):
         try:
-            self.jobs.put_nowait((webhook, title, message, test))
+            self.jobs.put_nowait((webhook, title, message, test, links))
         except queue.Full:
             self.events.put(("teams_result", (False, test, "Kolejka Teams jest pełna. Alerty zachowano w historii.")))
 
     def run(self):
         while True:
-            webhook, title, message, test = self.jobs.get()
+            webhook, title, message, test, links = self.jobs.get()
             try:
-                send(webhook, title, message)
+                send(webhook, title, message, links)
                 result = True, test, "Teams przyjął żądanie. Sprawdź wiadomość i historię uruchomień przepływu."
             except Exception as error:
                 result = False, test, str(error)
