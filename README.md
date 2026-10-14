@@ -192,3 +192,5 @@ Przy listach zawierających ponad 1000 wpisów aplikacja pyta o zgodę na pełny
 Zapamiętaną zgodę na duże odczyty można cofnąć w **Ustawieniach filtra**: wyłącz **Pobieraj duże listy bez pytania** i wybierz **Zapisz**. Pytanie wróci przy następnym odczycie listy ponad 1000 wpisów; bieżący odczyt nie jest przerywany.
 
 W powiadomieniach Teams numery INC i SCTASK są hiperłączami do rekordów ServiceNow. Format INC: numer, lokalizacja, krótki opis. Format SCTASK: numer, krótki opis, wnioskowane dla. W powiadomieniach Windows numery pozostają zwykłym tekstem. Przepływ korzystający z `triggerBody()?['text']` otrzymuje gotową treść HTML z hiperłączami.
+
+Opcja **Test powiadomienia** na dole menu kontekstowego wysyła powiadomienie z klikniętym INC lub SCTASK, korzystając z danych bieżącej listy albo historii. Obowiązują globalne i indywidualne ustawienia kanałów powiadomień. Test nie zmienia oznaczenia przeczytania ani pamięci wykrytych zgłoszeń i działa także dla wyłączonego filtra.
