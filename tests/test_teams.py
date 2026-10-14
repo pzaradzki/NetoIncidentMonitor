@@ -69,6 +69,21 @@ class TeamsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_webhook(url)
 
+    def test_catalog_task_order_and_clickable_numbers(self):
+        from neto_incident_monitor.teams_notifications import incident_text
+        _, message = incident_text([{"number": "SCTASK1234567", "short_description": "Laptop <test>",
+                                    "requested_for": "Anna", "location": "Unused"}])
+        self.assertEqual(message, "SCTASK1234567 - Laptop <test> - Anna")
+        for number in ("INC1234567", "SCTASK1234567"):
+            url = "https://example.test/task.do?sys_id=123&view=default"
+            value = payload("Filtr", f"{number} - Opis <test> - Anna", {number: url})
+            self.assertIn(f'>{number}</a>', value["text"])
+            self.assertIn("&amp;view=default", value["text"])
+            self.assertIn("&lt;test&gt;", value["text"])
+            self.assertIn(f'[{number}](', value["attachments"][0]["content"]["body"][1]["text"])
+            unsafe = payload("Filtr", number, {number: "javascript:alert(1)"})
+            self.assertNotIn("href", unsafe["text"])
+
     def test_payload_is_safe_html_and_valid_card(self):
         value = payload('Nowe: 2', '<script>\nINC1234567')
         self.assertIn('&lt;script&gt;<br>', value['text'])

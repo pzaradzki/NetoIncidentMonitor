@@ -833,7 +833,8 @@ class App:
         title = entry["name"]
         message = heading + "\n" + message
         if self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook:
-            self.teams_sender.submit(self.teams_webhook, title, message)
+            links = {item["number"]: item["url"] for item in incidents if item.get("url")}
+            self.teams_sender.submit(self.teams_webhook, title, message, **({"links": links} if links else {}))
         if self.notify.get() and entry.get("notify_windows", True):
             try:
                 from plyer import notification
