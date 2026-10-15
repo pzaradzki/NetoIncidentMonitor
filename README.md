@@ -102,6 +102,8 @@ Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybra�
 
 Opcja „Całkowicie ukryj okno przeglądarki” w ustawieniach jest domyślnie wyłączona. Po włączeniu ukrywa Chromium także na pasku zadań i ma pierwszeństwo przed minimalizacją. Okno pojawia się, gdy potrzebne jest ręczne logowanie, a po zalogowaniu ponownie znika. Można je też przywrócić poleceniem „Pokaż przeglądarkę” w zasobniku aplikacji. Zmiana opcji działa po ponownym uruchomieniu monitoringu.
 
+Kliknięcie przycisku logowania ma limit 5 sekund. Po przekroczeniu limitu aplikacja ponawia je tylko wtedy, gdy obserwator w tym samym dokumencie potwierdza brak zdarzeń aktywacji przycisku lub wysłania formularza. Odstęp między próbami wynosi co najmniej 2 sekundy, a limit to 3 próby. Wykryte zdarzenie, zmiana dokumentu lub niepewny wynik wykluczają ponowne automatyczne wysłanie. Diagnostyka rozróżnia niewykonane kliknięcie, zaobserwowaną aktywację i nieznany wynik.
+
 Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [film instruktażowy konfiguracji powiadomień Teams](https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
 
 ## Przechowywanie danych
