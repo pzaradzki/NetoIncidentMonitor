@@ -14,6 +14,7 @@ class AutomaticLogin:
         self.last_account_attempt = None
         self.submitted_at = None
         self.reason = None
+        self.prefill_since = None
 
     def block(self, reason):
         if not self.blocked:
@@ -43,12 +44,36 @@ class AutomaticLogin:
                 if not ready:
                     # Chromium can apply saved credentials after the first
                     # inspection of the login page.
+                    self.prefill_since = None
                     return
                 autofilled = passwords.first.evaluate("el => el.matches(':-webkit-autofill')")
                 if not autofilled:
-                    # Never submit credentials entered manually by the user.
-                    self.block("pole hasła nie zostało rozpoznane jako autouzupełnione")
-                    return
+                    remembered_form = passwords.first.evaluate("""el => {
+                        if (!el.__netoEditGuard) {
+                            el.__netoEditGuard = true;
+                            const edited = event => { if (event.isTrusted) el.__netoManualEdit = true; };
+                            el.addEventListener('beforeinput', edited);
+                            el.addEventListener('paste', edited);
+                        }
+                        const form = el.form || document;
+                        const identities = [...form.querySelectorAll('input:not([type=password]):not([type=hidden])')]
+                            .filter(input => input.getClientRects().length && input.value &&
+                                ['text', 'email', 'tel'].includes(input.type));
+                        return !el.__netoManualEdit && identities.length === 1 &&
+                            (identities[0].readOnly || identities[0].disabled);
+                    }""")
+                    if not remembered_form:
+                        self.block("pole hasła nie zostało rozpoznane jako autouzupełnione")
+                        return
+                    # Some ADEO resume pages lose the Chromium autofill marker.
+                    # Allow one submission only for a locked remembered account,
+                    # after a quiet period with no observed manual editing.
+                    now = monotonic()
+                    if self.prefill_since is None:
+                        self.prefill_since = now
+                    if now - self.prefill_since < 5:
+                        return
+                    logging.getLogger("servicenow").info("Automatyczne logowanie: formularz zapamiętanego konta bez znacznika autouzupełnienia.")
             # Only inspect whether autofill is present. Never retrieve the password.
             buttons = page.get_by_role("button", name=re.compile(r"^Zaloguj się$", re.I))
             adeo_button = page.locator('a#signOnButton:visible')
