@@ -346,7 +346,8 @@ class App:
         if enable_tray:
             try:
                 from neto_incident_monitor.tray import Tray
-                self.tray = Tray(self.events, self.unread_highlighting_enabled())
+                self.tray = Tray(self.events, self.unread_highlighting_enabled(),
+                                 browser_visible=lambda: bool(self.browser_window and self.browser_window.visible))
                 self.tray.start()
             except Exception:
                 LOG.exception("Nie udało się uruchomić zasobnika")
@@ -1456,7 +1457,8 @@ class App:
                     page = context.pages[0] if context.pages else context.new_page()
                     if settings.get("hide_browser", False):
                         from neto_incident_monitor.browser_window import BrowserWindow
-                        self.browser_window = BrowserWindow(context.browser)
+                        self.browser_window = BrowserWindow(context.browser,
+                            visibility_changed=lambda: self.events.put(("browser_visibility", None)))
                         self.browser_window.hide()
                     elif settings.get("minimize_browser", False):
                         minimize_chromium(page)
@@ -1563,6 +1565,7 @@ class App:
                         force = self.schedule.woken_by_request is True or intervals["inc"] == intervals["task"]
                 finally:
                     self.browser_window = None
+                    self.events.put(("browser_visibility", None))
                     context.close()
         except (TargetClosedError, BrowserClosedError):
             raise
@@ -1602,6 +1605,12 @@ class App:
                 elif kind == "show_browser":
                     if self.browser_window:
                         self.browser_window.show()
+                elif kind == "hide_browser":
+                    if self.browser_window:
+                        self.browser_window.hide()
+                elif kind == "browser_visibility":
+                    if self.tray and self.tray_ready:
+                        self.tray.icon.update_menu()
                 elif kind == "check_now":
                     self.check_now()
                 elif kind == "interruption":

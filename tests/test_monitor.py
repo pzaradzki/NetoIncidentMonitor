@@ -201,7 +201,8 @@ class MonitorTests(unittest.TestCase):
         import queue
         from neto_incident_monitor.tray import Tray
         events = queue.Queue()
-        tray = Tray(events, unread_enabled=False)
+        browser_visible = [False]
+        tray = Tray(events, unread_enabled=False, browser_visible=lambda: browser_visible[0])
         try:
             self.assertFalse(tray.icon.menu.items[2].visible)
             tray.start()
@@ -219,6 +220,13 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(events.get(timeout=2)[0], "show")
             tray.icon.menu.items[1](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "show_browser")
+            self.assertEqual(tray.icon.menu.items[1].text, "Pokaż przeglądarkę")
+            browser_visible[0] = True
+            self.assertEqual(tray.icon.menu.items[1].text, "Ukryj przeglądarkę")
+            tray.icon.menu.items[1](tray.icon)
+            self.assertEqual(events.get(timeout=2)[0], "hide_browser")
+            browser_visible[0] = False
+            self.assertEqual(tray.icon.menu.items[1].text, "Pokaż przeglądarkę")
             tray.icon.menu.items[2](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "mark_all")
             tray.icon.menu.items[4](tray.icon)

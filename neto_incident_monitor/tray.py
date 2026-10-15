@@ -3,15 +3,17 @@ import logging
 
 
 class Tray:
-    def __init__(self, events, unread_enabled=True):
+    def __init__(self, events, unread_enabled=True, browser_visible=None):
         import pystray
         self.events = events
         self.count = 0
         self.phase = "Gotowy"
         self.unread_enabled = unread_enabled
+        browser_visible = browser_visible or (lambda: False)
         menu = pystray.Menu(
             pystray.MenuItem("Pokaż aplikację", lambda icon, item: events.put(("show", None)), default=True),
-            pystray.MenuItem("Pokaż przeglądarkę", lambda icon, item: events.put(("show_browser", None))),
+            pystray.MenuItem(lambda item: "Ukryj przeglądarkę" if browser_visible() else "Pokaż przeglądarkę",
+                             lambda icon, item: events.put(("hide_browser" if browser_visible() else "show_browser", None))),
             pystray.MenuItem("Oznacz wszystkie jako przeczytane", lambda icon, item: events.put(("mark_all", None)),
                              visible=lambda item: self.unread_enabled),
             pystray.MenuItem("Zatrzymaj monitoring", lambda icon, item: events.put(("stop_monitor", None))),
