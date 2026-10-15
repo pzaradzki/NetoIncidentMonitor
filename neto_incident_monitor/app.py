@@ -205,7 +205,7 @@ def authentication_page(page, url):
             or any(part in actual.path.lower() for part in ("login", "sso", "auth")))
 
 
-def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False):
+def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False, browser_window=None):
     """Wait for a real incident list; never navigate over an SSO login page."""
     last_navigation = 0
     from neto_incident_monitor.automatic_login import AutomaticLogin
@@ -219,11 +219,13 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
         try:
             if automatic and authentication_page(page, url):
                 automatic.step(page)
-            if minimize_after_login and not manual_shown and authentication_page(page, url):
+            if (minimize_after_login or browser_window) and not manual_shown and authentication_page(page, url):
                 # Allow redirects and saved-account login to finish in the
                 # background; surface MFA, blocked login or a stalled attempt.
                 delay = 20 if automatic else 5
                 if (automatic and automatic.blocked) or time.monotonic() - login_started >= delay:
+                    if browser_window:
+                        browser_window.show()
                     set_chromium_window_state(page, "normal")
                     page.bring_to_front()
                     manual_shown = True
@@ -233,7 +235,9 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                                   and urlparse(frame.url).path == urlparse(url).path
                                   for frame in page.frames)
                 if list_loaded and (collect(page) or empty_list(page, url)):
-                    if minimize_after_login:
+                    if browser_window:
+                        browser_window.hide()
+                    elif minimize_after_login:
                         minimize_chromium(page)
                     return True
                 if not list_loaded and time.monotonic() - last_navigation >= 5:
@@ -279,6 +283,7 @@ class App:
         self.root = root
         self.events = queue.Queue()
         self.stop = threading.Event()
+        self.browser_window = None
         self.worker = None
         self.items = {}
         self.snapshots = {}
@@ -313,6 +318,7 @@ class App:
         self.teams_enabled.trace_add("write", self.change_teams)
         self.auto_login.trace_add("write", self.save_auto_login)
         self.minimize_browser.trace_add("write", self.save_browser_minimize)
+        self.hide_browser.trace_add("write", self.save_browser_minimize)
         self.saved_minimize = self.minimize_to_tray.get()
         self.minimize_to_tray.trace_add("write", self.save_minimize_preference)
         self.saving_startup = False
@@ -1268,6 +1274,7 @@ class App:
         try:
             settings = read_json(CONFIG, {})
             settings["minimize_browser"] = self.minimize_browser.get()
+            settings["hide_browser"] = self.hide_browser.get()
             save_json(CONFIG, settings)
         except (OSError, ValueError):
             self.status.set("Nie udało się zapisać ustawienia minimalizacji przeglądarki.")
@@ -1381,7 +1388,7 @@ class App:
             settings = {"urls": urls, "filters": filters,
                         "interval": interval, "task_interval": task_interval, "notify": self.notify.get(), "auto_login": self.auto_login.get(),
                         "minimize_to_tray": self.minimize_to_tray.get(),
-                        "minimize_browser": self.minimize_browser.get()}
+                        "minimize_browser": self.minimize_browser.get(), "hide_browser": self.hide_browser.get()}
             existing = read_json(CONFIG, {})
             existing.update(settings)
             settings = existing
@@ -1431,6 +1438,7 @@ class App:
             self.events.put(("finished", None))
 
     def _monitor_browser(self, settings):
+        self.browser_window = None
         health = Health()
         try:
             from playwright.sync_api import sync_playwright
@@ -1439,19 +1447,23 @@ class App:
             with sync_playwright() as playwright:
                 context = playwright.chromium.launch_persistent_context(
                     str(DATA / "browser-profile"), headless=False, no_viewport=True,
-                    args=["--start-minimized"] if settings.get("minimize_browser", False) else [])
+                    args=["--start-minimized"] if settings.get("minimize_browser", False) or settings.get("hide_browser", False) else [])
                 # Wake an idle monitoring cycle immediately when Chromium exits.
                 context.on("close", lambda *_: self.schedule.request())
                 try:
                     page = context.pages[0] if context.pages else context.new_page()
-                    if settings.get("minimize_browser", False):
+                    if settings.get("hide_browser", False):
+                        from neto_incident_monitor.browser_window import BrowserWindow
+                        self.browser_window = BrowserWindow(context.browser)
+                        self.browser_window.hide()
+                    elif settings.get("minimize_browser", False):
                         minimize_chromium(page)
                     navigate(page, settings["urls"][0])
-                    if not settings.get("minimize_browser", False):
+                    if not settings.get("minimize_browser", False) and not settings.get("hide_browser", False):
                         page.bring_to_front()
                     self.events.put(("phase", "Oczekiwanie na logowanie"))
                     self.events.put(("status", "Zaloguj się w przeglądarce. Monitoring rozpocznie się automatycznie po załadowaniu listy."))
-                    if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
+                    if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False), self.browser_window):
                         return
                     intervals = {"inc": settings["interval"], "task": settings.get("task_interval", 3600)}
                     deadlines = {"inc": 0, "task": 0}
@@ -1479,7 +1491,9 @@ class App:
                                 # a minimized Chromium window on Windows.
                                 if page.is_closed():
                                     page = context.new_page()
-                                    if settings.get("minimize_browser", False):
+                                    if self.browser_window:
+                                        self.browser_window.hide()
+                                    elif settings.get("minimize_browser", False):
                                         minimize_chromium(page)
                                 current = page
                                 available = set()
@@ -1516,9 +1530,9 @@ class App:
                                 self.events.put(("status", message))
                                 if health.authentication():
                                     self.events.put(("session_expired", message))
-                                if not settings.get("minimize_browser", False):
+                                if not settings.get("minimize_browser", False) and not settings.get("hide_browser", False):
                                     current.bring_to_front()
-                                if not wait_for_login(current, url, self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False)):
+                                if not wait_for_login(current, url, self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False), self.browser_window):
                                     return
                                 health.resumed()
                                 self.schedule.request()
@@ -1546,6 +1560,7 @@ class App:
                             break
                         force = self.schedule.woken_by_request is True or intervals["inc"] == intervals["task"]
                 finally:
+                    self.browser_window = None
                     context.close()
         except (TargetClosedError, BrowserClosedError):
             raise
@@ -1582,6 +1597,9 @@ class App:
                     self.status.set("Zasobnik niedostępny — aplikacja pozostaje w oknie.")
                 elif kind == "show":
                     self.show_window()
+                elif kind == "show_browser":
+                    if self.browser_window:
+                        self.browser_window.show()
                 elif kind == "check_now":
                     self.check_now()
                 elif kind == "interruption":

@@ -10,6 +10,7 @@ class Tray:
         self.phase = "Gotowy"
         menu = pystray.Menu(
             pystray.MenuItem("Pokaż aplikację", lambda icon, item: events.put(("show", None)), default=True),
+            pystray.MenuItem("Pokaż przeglądarkę", lambda icon, item: events.put(("show_browser", None))),
             pystray.MenuItem("Oznacz wszystkie jako przeczytane", lambda icon, item: events.put(("mark_all", None))),
             pystray.MenuItem("Zatrzymaj monitoring", lambda icon, item: events.put(("stop_monitor", None))),
             pystray.MenuItem("Zakończ aplikację", lambda icon, item: events.put(("quit", None))),
