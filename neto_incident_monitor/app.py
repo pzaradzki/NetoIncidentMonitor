@@ -1114,7 +1114,7 @@ class App:
                 name = self.filters[index - 1]["name"]
                 if name not in entry["filters"]:
                     entry["filters"].append(name)
-        for number, entry in sorted(combined.items()):
+        for number, entry in sorted(combined.items(), key=lambda pair: int(re.sub(r"\D", "", pair[0]) or 0), reverse=True):
             incident = entry["incident"]
             unread = number in records and not records[number]["read"]
             label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
