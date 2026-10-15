@@ -1,10 +1,50 @@
 import threading
+import queue
 import unittest
 from unittest.mock import Mock, patch
-from neto_incident_monitor.app import wait_for_login
+from neto_incident_monitor.app import App, BrowserClosedError, wait_for_browser_cycle, wait_for_login
+from neto_incident_monitor.monitoring import Schedule
+from playwright._impl._errors import TargetClosedError
 
 
 class LoginTests(unittest.TestCase):
+    def test_browser_close_restarts_monitoring_and_finishes_once(self):
+        for error in (BrowserClosedError('closed'), TargetClosedError('closed')):
+            app = App.__new__(App)
+            app.stop = threading.Event()
+            app.events = queue.Queue()
+            app._monitor_browser = Mock(side_effect=[error, None])
+            with patch.object(app.stop, 'wait', return_value=False):
+                app.monitor({'urls': ['test']})
+            self.assertEqual(app._monitor_browser.call_count, 2)
+            events = list(app.events.queue)
+            self.assertEqual(events.count(('finished', None)), 1)
+            self.assertTrue(any(kind == 'phase' for kind, _ in events))
+
+    def test_stop_during_browser_restart_prevents_relaunch(self):
+        app = App.__new__(App)
+        app.stop = threading.Event()
+        app.events = queue.Queue()
+        app._monitor_browser = Mock(side_effect=BrowserClosedError('closed'))
+        with patch.object(app.stop, 'wait', return_value=True):
+            app.monitor({})
+        app._monitor_browser.assert_called_once()
+
+    def test_idle_wait_detects_closed_browser(self):
+        page = self.page()
+        page.wait_for_timeout.side_effect = lambda _: setattr(page.is_closed, 'return_value', True)
+        with self.assertRaises(BrowserClosedError):
+            wait_for_browser_cycle(page, Schedule(), 3600, threading.Event())
+        page.wait_for_timeout.assert_called_once()
+
+    def test_idle_wait_honors_manual_refresh(self):
+        schedule = Schedule()
+        schedule.request()
+        page = self.page()
+        self.assertFalse(wait_for_browser_cycle(page, schedule, 3600, threading.Event()))
+        self.assertTrue(schedule.woken_by_request)
+        page.wait_for_timeout.assert_not_called()
+
     def test_browser_minimize_is_independent_of_auto_login(self):
         for automatic_enabled in (False, True):
             for minimize_enabled in (False, True):

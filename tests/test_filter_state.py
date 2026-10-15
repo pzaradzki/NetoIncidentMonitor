@@ -41,6 +41,7 @@ class FilterStateTests(unittest.TestCase):
                  patch("neto_incident_monitor.app.STATE", Path(folder)/"seen.json"), \
                  patch("neto_incident_monitor.app.navigate"), \
                  patch("neto_incident_monitor.app.wait_for_login", return_value=True), \
+                 patch("neto_incident_monitor.app.wait_for_browser_cycle", side_effect=lambda page, schedule, seconds, stop: schedule.wait(seconds, stop)), \
                  patch("neto_incident_monitor.app.time.monotonic", side_effect=lambda: clock[0]), \
                  patch("neto_incident_monitor.app.read_all", return_value=({}, 1)) as read:
                 app.monitor(settings)

@@ -1,6 +1,6 @@
 """Local ServiceNow list monitor. Browser access only; no ServiceNow API."""
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
-from neto_incident_monitor.columns import FIELDS, DEFAULT, DATA_FIELDS, LOCAL
+from neto_incident_monitor.columns import FIELDS, DEFAULT, DATA_FIELDS, LOCAL, age_minutes
 from neto_incident_monitor.widgets import IncidentMenu, PriorityDots
 import json
 import logging
@@ -19,6 +19,7 @@ from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import Schedule, Health
 from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled, LargeListRejected
 from neto_incident_monitor.notifications import batch_text
+from playwright._impl._errors import TargetClosedError
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
 DATA.mkdir(parents=True, exist_ok=True)
@@ -26,6 +27,27 @@ CONFIG = DATA / "config.json"
 STATE = DATA / "seen.json"
 INC = re.compile(r"\b(?:INC|SCTASK)\d{7,}\b", re.I)
 LOG = logging.getLogger("servicenow")
+
+
+class BrowserClosedError(RuntimeError):
+    """The monitored browser was closed and can be started again."""
+
+
+def wait_for_browser_cycle(page, schedule, seconds, stop):
+    """Keep Playwright events flowing while waiting for the next read."""
+    deadline = time.monotonic() + seconds
+    while not stop.is_set():
+        if page.is_closed():
+            raise BrowserClosedError("Karta monitoringu została zamknięta.")
+        if schedule.wait(0, stop):
+            return True
+        if schedule.woken_by_request:
+            return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        page.wait_for_timeout(min(250, remaining * 1000))
+    return True
 
 
 def read_json(path, default):
@@ -73,8 +95,10 @@ def load_filters(settings):
 
 def incident_values(incident):
     values = []
-    for key in ("number", *DATA_FIELDS):
-        value = incident.get(key) or "—"
+    for key, _, _ in FIELDS:
+        if key in ("read", "time"):
+            continue
+        value = age_minutes(incident.get("created"), incident.get("number")) if key == "age_minutes" else incident.get(key) or "—"
         if key == "priority" and str(value).strip()[:1] in PriorityDots.COLORS:
             value = "\u2003\u2002" + str(value).strip()
         values.append(value)
@@ -188,9 +212,10 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
     automatic = AutomaticLogin() if auto_login else None
     manual_shown = False
     login_started = time.monotonic()
+    last_inspection_warning = None
     while not stop.is_set():
         if page.is_closed():
-            raise RuntimeError("Przeglądarka logowania została zamknięta. Uruchom monitoring ponownie.")
+            raise BrowserClosedError("Przeglądarka logowania została zamknięta.")
         try:
             if automatic and authentication_page(page, url):
                 automatic.step(page)
@@ -214,10 +239,15 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                 if not list_loaded and time.monotonic() - last_navigation >= 5:
                     last_navigation = time.monotonic()
                     navigate(page, url)
-        except Exception:
+        except Exception as exc:
             # SSO transitions can destroy execution contexts while we inspect them.
             if page.is_closed():
                 raise
+            now = time.monotonic()
+            if last_inspection_warning is None or now - last_inspection_warning >= 30:
+                # Exception messages can contain URLs or form data. Log only type.
+                LOG.warning("Nie udało się sprawdzić stanu logowania (%s); ponawiam odczyt.", type(exc).__name__)
+                last_inspection_warning = now
         page.wait_for_timeout(500)
     return False
 
@@ -467,7 +497,7 @@ class App:
 
     def make_table(self, parent, history):
         columns = [("read", "Przeczytanie", 145),
-                   *[(key, label, width) for key, label, width in FIELDS if key == "number" or key in DATA_FIELDS]]
+                   *[(key, label, width) for key, label, width in FIELDS if key not in ("read", "time")]]
         if history:
             columns.insert(0, ("time", "Wykryto", 150))
         table = ttk.Treeview(parent, columns=[key for key, _, _ in columns], show="headings")
@@ -657,9 +687,9 @@ class App:
             available = set()
             for incident in incidents:
                 available.update(incident.get("_available_columns", [key for key in DATA_FIELDS if key in incident]))
-            return available | LOCAL
+            return available | LOCAL | ({"age_minutes"} if "created" in available else set())
         available = self.column_availability.get(self.selected_filter_index())
-        return available | LOCAL if available is not None else None
+        return available | LOCAL | ({"age_minutes"} if "created" in available else set()) if available is not None else None
 
     def apply_visible_columns(self):
         for table, history in ((self.current_table, False), (self.table, True)):
@@ -685,6 +715,8 @@ class App:
     def applicable_columns(self):
         task = urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do")
         excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by"}
+        if task:
+            excluded.add("age_minutes")
         if not self.unread_highlighting_enabled():
             excluded.add("read")
         return [key for key, _, _ in FIELDS if key not in excluded]
@@ -1380,6 +1412,25 @@ class App:
         self.worker.start()
 
     def monitor(self, settings):
+        try:
+            while not self.stop.is_set():
+                try:
+                    self._monitor_browser(settings)
+                    break
+                except (TargetClosedError, BrowserClosedError):
+                    if self.stop.is_set():
+                        break
+                    LOG.warning("Chromium zostało zamknięte; ponowne uruchomienie monitoringu.")
+                    self.events.put(("filter_updating", None))
+                    self.events.put(("phase", "Ponowne uruchamianie przeglądarki"))
+                    self.events.put(("status", "Przeglądarka została zamknięta. Otwieram ją ponownie i wznawiam monitoring."))
+                    # Back off without delaying an explicit Stop request.
+                    if self.stop.wait(2):
+                        break
+        finally:
+            self.events.put(("finished", None))
+
+    def _monitor_browser(self, settings):
         health = Health()
         try:
             from playwright.sync_api import sync_playwright
@@ -1389,6 +1440,8 @@ class App:
                 context = playwright.chromium.launch_persistent_context(
                     str(DATA / "browser-profile"), headless=False, no_viewport=True,
                     args=["--start-minimized"] if settings.get("minimize_browser", False) else [])
+                # Wake an idle monitoring cycle immediately when Chromium exits.
+                context.on("close", lambda *_: self.schedule.request())
                 try:
                     page = context.pages[0] if context.pages else context.new_page()
                     if settings.get("minimize_browser", False):
@@ -1470,6 +1523,8 @@ class App:
                                 health.resumed()
                                 self.schedule.request()
                                 break
+                            except TargetClosedError:
+                                raise
                             except Exception as exc:
                                 LOG.exception("Błąd odczytu filtra %s", filter_name)
                                 cycle_error = True
@@ -1487,19 +1542,19 @@ class App:
                         next_read = min((deadlines[kind] for kind in active), default=now + min(intervals.values()))
                         self.events.put(("waiting", (next_read, cycle_error)))
                         self.events.put(("check_deadlines", {kind: deadlines[kind] for kind in active}))
-                        if self.schedule.wait(max(0, next_read - now), self.stop):
+                        if wait_for_browser_cycle(page, self.schedule, max(0, next_read - now), self.stop):
                             break
                         force = self.schedule.woken_by_request is True or intervals["inc"] == intervals["task"]
                 finally:
                     context.close()
+        except (TargetClosedError, BrowserClosedError):
+            raise
         except Exception as exc:
             LOG.exception("Nie udało się uruchomić monitoringu")
             self.events.put(("phase", "Błąd uruchomienia"))
             self.events.put(("status", f"Nie udało się uruchomić monitoringu: {exc}"))
             if not self.stop.is_set():
                 self.events.put(("interruption", "Monitoring zatrzymał się z powodu błędu przeglądarki lub aplikacji. Otwórz aplikację, aby zobaczyć szczegóły i uruchomić go ponownie."))
-        finally:
-            self.events.put(("finished", None))
 
     def drain(self):
         if self.instance and self.instance.poll():
@@ -1621,6 +1676,15 @@ class App:
         except queue.Empty:
             pass
         now = time.monotonic()
+        if now - getattr(self, "last_age_refresh", 0) >= 1:
+            self.last_age_refresh = now
+            for table in (self.current_table, self.table):
+                for item in table.get_children():
+                    value = age_minutes(table.set(item, "created"), table.set(item, "number"))
+                    if table.set(item, "age_minutes") != value:
+                        table.set(item, "age_minutes", value)
+                if table.sort_column == "age_minutes":
+                    self.apply_sort(table)
         def remaining(kind):
             deadline = self.check_deadlines.get(kind)
             return "-" if deadline is None else f"za {max(0, int(deadline - now + 0.999))} s"

@@ -105,7 +105,10 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(monitor.new_count.get(), "1")
             self.assertEqual(len(monitor.current_table.get_children()), 1)
             row = monitor.current_table.get_children()[0]
-            self.assertEqual(monitor.current_table.item(row, "values"),
+            values = list(monitor.current_table.item(row, "values"))
+            age_index = list(monitor.current_table["columns"]).index("age_minutes")
+            self.assertGreaterEqual(int(values.pop(age_index)), 0)
+            self.assertEqual(tuple(values),
                              ("Nieprzeczytany", "INC0012345", "Problem z kasą", "\u2003\u20022 — wysokie", "Gdańsk", "2026-10-07 10:00:00", *("—",) * 10))
             self.assertEqual(monitor.unread_count.get(), "1")
             self.assertEqual(len(monitor.table.get_children()), 1)

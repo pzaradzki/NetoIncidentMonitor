@@ -12,16 +12,29 @@ class AutomaticLogin:
         self.blocked = False
         self.account_attempts = 0
         self.last_account_attempt = None
+        self.submitted_at = None
+        self.reason = None
+
+    def block(self, reason):
+        if not self.blocked:
+            self.blocked = True
+            self.reason = reason
+            logging.getLogger("servicenow").warning("Automatyczne logowanie: %s; wymagane ręczne logowanie.", reason)
 
     def step(self, page):
-        host = urlparse(page.url).hostname or ""
-        if self.blocked or self.submitted or not re.fullmatch(r"idp[a-z0-9-]*\.adeo\.com", host, re.I):
+        address = urlparse(page.url)
+        host = address.hostname or ""
+        if self.blocked or address.scheme != "https" or not re.fullmatch(r"idp[a-z0-9-]*\.adeo\.com", host, re.I):
             return
         body = page.locator("body").inner_text(timeout=1000)
         if re.search(r"nieprawidł|błędne hasło|incorrect|invalid|authentication failed|"
                      r"kod weryfik|verification code|jednorazow|one.time|authenticator|"
-                     r"zatwierdź|approve sign|captcha|zablokowan", body, re.I):
-            self.blocked = True
+                     r"zatwierdź (?:logowanie|żądanie)|approve sign|captcha|zablokowan", body, re.I):
+            self.block("strona wymaga interwencji użytkownika lub zgłasza błąd")
+            return
+        if self.submitted:
+            if self.submitted_at is not None and monotonic() - self.submitted_at >= 30:
+                self.block("brak zakończenia logowania przez 30 sekund po zatwierdzeniu")
             return
         passwords = page.locator('input[type="password"]:visible')
         if passwords.count() == 1:
@@ -34,7 +47,7 @@ class AutomaticLogin:
                 autofilled = passwords.first.evaluate("el => el.matches(':-webkit-autofill')")
                 if not autofilled:
                     # Never submit credentials entered manually by the user.
-                    self.blocked = True
+                    self.block("pole hasła nie zostało rozpoznane jako autouzupełnione")
                     return
             # Only inspect whether autofill is present. Never retrieve the password.
             buttons = page.get_by_role("button", name=re.compile(r"^Zaloguj się$", re.I))
@@ -46,6 +59,7 @@ class AutomaticLogin:
                 if disabled:
                     return
                 self.submitted = True  # Set before click: ambiguous failures must not retry.
+                self.submitted_at = monotonic()
                 buttons.first.click(timeout=1500)
             return
         if re.search(r"WITAMY|WELCOME", body, re.I):
@@ -59,8 +73,7 @@ class AutomaticLogin:
                     if self.last_account_attempt is not None and now - self.last_account_attempt < 5:
                         return
                     if self.account_attempts >= 3:
-                        self.blocked = True
-                        logging.getLogger("servicenow").warning("Automatyczny wybór konta nie przeszedł do formularza po trzech próbach; wymagane ręczne logowanie.")
+                        self.block("wybór konta nie przeszedł do formularza po trzech próbach")
                         return
                     self.account_attempts += 1
                     self.last_account_attempt = now
