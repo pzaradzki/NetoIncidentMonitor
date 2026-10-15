@@ -5,6 +5,37 @@ from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_locked_remembered_account_without_autofill_marker(self):
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
+                page.goto('https://idpb2e.adeo.com/resumeSAML20/idp/SSO.ping')
+                form = '''<form><input readonly value="test-account"><input type="password" value="dummy">
+                    <button type="button" onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button></form>'''
+                page.set_content(form)
+                automatic = AutomaticLogin()
+                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=0):
+                    automatic.step(page)
+                self.assertFalse(automatic.submitted)
+                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=6):
+                    automatic.step(page)
+                    automatic.step(page)
+                self.assertEqual(page.evaluate('window.clicks'), 1)
+                page.set_content(form)
+                automatic = AutomaticLogin()
+                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=0):
+                    automatic.step(page)
+                page.locator('input[type=password]').press('End')
+                page.locator('input[type=password]').press('x')
+                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=6):
+                    automatic.step(page)
+                self.assertTrue(automatic.blocked)
+                self.assertFalse(automatic.submitted)
+            finally:
+                browser.close()
+
     def test_stalled_submission_is_reported_without_resubmitting(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
         page.locator.return_value.inner_text.return_value = 'WITAMY'
