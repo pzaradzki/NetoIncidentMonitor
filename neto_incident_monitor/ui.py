@@ -11,7 +11,8 @@ def build_ui(app, settings):
     root = app.root
     from neto_incident_monitor.window_style import install_window_style
     install_window_style(root)
-    root.title("Neto Incident Monitor")
+    from neto_incident_monitor import __version__
+    root.title(f"Neto Incident Monitor v{__version__}")
     saved_geometry = settings.get("window_layout", {}).get("geometry", "1440x850")
     import re
     root.geometry(saved_geometry if isinstance(saved_geometry, str) and re.fullmatch(r"\d+x\d+(?:[+-]\d+[+-]\d+)?", saved_geometry) else "1440x850")

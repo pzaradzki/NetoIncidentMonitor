@@ -5,6 +5,33 @@ from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_stalled_submission_is_reported_without_resubmitting(self):
+        page = Mock(url='https://idpb2e.adeo.com/login')
+        page.locator.return_value.inner_text.return_value = 'WITAMY'
+        automatic = AutomaticLogin()
+        automatic.submitted = True
+        automatic.submitted_at = 0
+        with patch('neto_incident_monitor.automatic_login.monotonic', return_value=31):
+            automatic.step(page)
+            automatic.step(page)
+        self.assertTrue(automatic.blocked)
+        self.assertIn('30 sekund', automatic.reason)
+        page.get_by_role.assert_not_called()
+
+    def test_insecure_login_page_is_not_inspected(self):
+        page = Mock(url='http://idpb2e.adeo.com/login')
+        AutomaticLogin().step(page)
+        page.locator.assert_not_called()
+
+    def test_mfa_after_submission_is_reported(self):
+        page = Mock(url='https://idpb2e.adeo.com/login')
+        page.locator.return_value.inner_text.return_value = 'Wprowadź kod weryfikacyjny'
+        automatic = AutomaticLogin()
+        automatic.submitted = True
+        automatic.step(page)
+        self.assertTrue(automatic.blocked)
+        page.get_by_role.assert_not_called()
+
     def test_resumed_login_waits_for_browser_autofill_and_submits_once(self):
         page = Mock(url='https://idpb2e.adeo.com/resumeSAML20/idp/SSO.ping')
         body, passwords, anchor, buttons = Mock(), Mock(), Mock(), Mock()
