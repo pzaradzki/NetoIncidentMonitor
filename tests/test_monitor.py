@@ -213,8 +213,10 @@ class MonitorTests(unittest.TestCase):
             tray.icon.menu.items[0](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "show")
             tray.icon.menu.items[1](tray.icon)
+            self.assertEqual(events.get(timeout=2)[0], "show_browser")
+            tray.icon.menu.items[2](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "mark_all")
-            tray.icon.menu.items[3](tray.icon)
+            tray.icon.menu.items[4](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "quit")
         finally:
             tray.stop()

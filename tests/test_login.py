@@ -8,6 +8,30 @@ from playwright._impl._errors import TargetClosedError
 
 
 class LoginTests(unittest.TestCase):
+    def test_hidden_browser_is_hidden_again_after_login_even_without_minimize(self):
+        window = Mock()
+        with patch('neto_incident_monitor.app.authentication_page', return_value=False), \
+             patch('neto_incident_monitor.app.collect', return_value={'INC1': {}}), \
+             patch('neto_incident_monitor.app.minimize_chromium') as minimize:
+            self.assertTrue(wait_for_login(self.page(), 'https://example.service-now.com/incident_list.do',
+                                           threading.Event(), browser_window=window))
+        window.hide.assert_called_once()
+        window.show.assert_not_called()
+        minimize.assert_not_called()
+
+    def test_hidden_browser_is_shown_for_manual_login(self):
+        window = Mock()
+        stop = threading.Event()
+        page = self.page()
+        page.wait_for_timeout.side_effect = lambda _: stop.set()
+        with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
+             patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 6]), \
+             patch('neto_incident_monitor.app.set_chromium_window_state'):
+            self.assertFalse(wait_for_login(page, 'https://example.service-now.com/incident_list.do',
+                                            stop, browser_window=window))
+        window.show.assert_called_once()
+        page.bring_to_front.assert_called_once()
+
     def test_browser_close_restarts_monitoring_and_finishes_once(self):
         for error in (BrowserClosedError('closed'), TargetClosedError('closed')):
             app = App.__new__(App)
