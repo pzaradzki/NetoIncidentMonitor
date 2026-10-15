@@ -3,15 +3,17 @@ import logging
 
 
 class Tray:
-    def __init__(self, events):
+    def __init__(self, events, unread_enabled=True):
         import pystray
         self.events = events
         self.count = 0
         self.phase = "Gotowy"
+        self.unread_enabled = unread_enabled
         menu = pystray.Menu(
             pystray.MenuItem("Pokaż aplikację", lambda icon, item: events.put(("show", None)), default=True),
             pystray.MenuItem("Pokaż przeglądarkę", lambda icon, item: events.put(("show_browser", None))),
-            pystray.MenuItem("Oznacz wszystkie jako przeczytane", lambda icon, item: events.put(("mark_all", None))),
+            pystray.MenuItem("Oznacz wszystkie jako przeczytane", lambda icon, item: events.put(("mark_all", None)),
+                             visible=lambda item: self.unread_enabled),
             pystray.MenuItem("Zatrzymaj monitoring", lambda icon, item: events.put(("stop_monitor", None))),
             pystray.MenuItem("Zakończ aplikację", lambda icon, item: events.put(("quit", None))),
             pystray.MenuItem("Sprawdź teraz", lambda icon, item: events.put(("check_now", None))),
@@ -41,7 +43,10 @@ class Tray:
                 self.events.put(("tray_failed", None))
         self.icon.run_detached(setup)
 
-    def update(self, count, phase):
+    def update(self, count, phase, unread_enabled=True):
+        if self.unread_enabled != unread_enabled:
+            self.unread_enabled = unread_enabled
+            self.icon.update_menu()
         if count != self.count:
             self.icon.icon = self.image(count)
         self.count, self.phase = count, phase
