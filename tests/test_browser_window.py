@@ -37,10 +37,12 @@ class BrowserWindowTests(unittest.TestCase):
                     user32.EnumWindows(visit, 0)
                     return results
                 window.hide()
+                self.assertFalse(window.visible)
                 page.wait_for_timeout(300)
                 self.assertEqual(visibility(), [False])
                 self.assertEqual(page.evaluate('2 + 2'), 4)
                 window.show()
+                self.assertTrue(window.visible)
                 page.wait_for_timeout(300)
                 self.assertEqual(visibility(), [True])
                 window.hide()

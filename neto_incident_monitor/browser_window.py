@@ -4,7 +4,9 @@ from ctypes import wintypes
 
 
 class BrowserWindow:
-    def __init__(self, browser):
+    def __init__(self, browser, visibility_changed=None):
+        self.visible = True
+        self.visibility_changed = visibility_changed or (lambda: None)
         session = browser.new_browser_cdp_session()
         try:
             processes = session.send("SystemInfo.getProcessInfo")["processInfo"]
@@ -37,6 +39,10 @@ class BrowserWindow:
 
     def hide(self):
         self._apply(False)
+        self.visible = False
+        self.visibility_changed()
 
     def show(self):
         self._apply(True)
+        self.visible = True
+        self.visibility_changed()
