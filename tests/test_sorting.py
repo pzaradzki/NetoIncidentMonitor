@@ -1,10 +1,37 @@
 import tkinter as tk
 import unittest
 from tkinter import ttk
+from unittest.mock import Mock
 from neto_incident_monitor.app import App
 
 
 class SortingTests(unittest.TestCase):
+    def test_current_lists_default_to_highest_number(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            app = App.__new__(App)
+            app.items, app.row_numbers = {}, {}
+            app.history = Mock()
+            app.history.snapshot.return_value = {}
+            app.selected_filter_url = Mock(return_value='filter')
+            app.selected_filter_index = Mock(return_value=1)
+            app.filters = [{'name': 'Test'}]
+            app.current_table = app.make_table(ttk.Frame(root), False)
+            for prefix in ('INC', 'SCTASK'):
+                app.snapshots = {1: {prefix+number: {'number': prefix+number, 'url': 'https://example.test/task'}
+                                     for number in ('9', '11', '10')}}
+                app.refresh_current()
+                expected = [prefix+'11', prefix+'10', prefix+'9']
+                self.assertEqual([app.current_table.set(item, 'number') for item in app.current_table.get_children()], expected)
+                for _ in range(3):
+                    app.toggle_sort(app.current_table, 'number')
+                self.assertEqual([app.current_table.set(item, 'number') for item in app.current_table.get_children()], expected)
+        finally:
+            for timer in root.tk.call('after', 'info'):
+                root.after_cancel(timer)
+            root.destroy()
+
     def test_headers_cycle_and_refresh_preserves_sort(self):
         root = tk.Tk()
         root.withdraw()
