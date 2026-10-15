@@ -41,6 +41,17 @@ class BrowserWindowTests(unittest.TestCase):
                 page.wait_for_timeout(300)
                 self.assertEqual(visibility(), [False])
                 self.assertEqual(page.evaluate('2 + 2'), 4)
+                # Login must remain usable while the native Chromium window is hidden.
+                from neto_incident_monitor.automatic_login import AutomaticLogin
+                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
+                page.goto('https://idpb2e.adeo.com/login')
+                page.set_content('<input type="password" value="dummy"><button '
+                                 'onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>')
+                automatic = AutomaticLogin()
+                automatic.account_clicked = True
+                automatic.step(page)
+                self.assertTrue(automatic.submitted)
+                self.assertEqual(page.evaluate('window.clicks'), 1)
                 window.show()
                 self.assertTrue(window.visible)
                 page.wait_for_timeout(300)

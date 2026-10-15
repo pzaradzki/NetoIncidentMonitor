@@ -1,10 +1,79 @@
 import unittest
 from unittest.mock import Mock, patch
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, Locator, TimeoutError as PlaywrightTimeoutError
 from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_submit_retry_requires_proof_that_no_activation_was_delivered(self):
+        form = '''<input readonly value="account"><input type="password" value="dummy">
+            <button onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>'''
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
+                page.goto('https://idpb2e.adeo.com/login')
+                original_click = Locator.click
+                for mode in ('undelivered', 'delivered', 'new_document', 'bounded', 'late_activation', 'late_navigation'):
+                    with self.subTest(mode=mode):
+                        page.set_content(form)
+                        page.evaluate('window.clicks = 0')
+                        automatic = AutomaticLogin()
+                        automatic.account_clicked = True
+                        attempts = []
+                        def click(locator, **kwargs):
+                            attempts.append(kwargs['timeout'])
+                            if mode == 'delivered':
+                                original_click(locator, **kwargs)
+                            if mode == 'new_document':
+                                page.evaluate('delete window.__netoLoginDelivery')
+                            if len(attempts) == 1 or mode == 'bounded':
+                                raise PlaywrightTimeoutError('simulated click timeout')
+                            original_click(locator, **kwargs)
+                        with patch.object(Locator, 'click', new=click), \
+                             patch('neto_incident_monitor.automatic_login.monotonic', return_value=0) as clock:
+                            if mode in ('delivered', 'new_document'):
+                                with self.assertRaises(PlaywrightTimeoutError):
+                                    automatic.step(page)
+                                self.assertTrue(automatic.submitted)
+                                clock.return_value = 3
+                                automatic.step(page)
+                                self.assertEqual(len(attempts), 1)
+                                self.assertEqual(page.evaluate('window.clicks'), int(mode == 'delivered'))
+                            else:
+                                automatic.step(page)
+                                self.assertFalse(automatic.submitted)
+                                clock.return_value = 1
+                                automatic.step(page)
+                                self.assertEqual(len(attempts), 1)
+                                if mode == 'late_activation':
+                                    page.locator('button').evaluate('el => el.click()')
+                                elif mode == 'late_navigation':
+                                    page.evaluate('delete window.__netoLoginDelivery')
+                                clock.return_value = 2
+                                automatic.step(page)
+                                if mode in ('late_activation', 'late_navigation'):
+                                    self.assertTrue(automatic.submitted)
+                                    self.assertEqual(len(attempts), 1)
+                                    self.assertEqual(page.evaluate('window.clicks'), int(mode == 'late_activation'))
+                                elif mode == 'bounded':
+                                    clock.return_value = 4
+                                    automatic.step(page)
+                                    self.assertTrue(automatic.blocked)
+                                    clock.return_value = 6
+                                    automatic.step(page)
+                                    self.assertEqual(len(attempts), 3)
+                                    self.assertEqual(page.evaluate('window.clicks'), 0)
+                                else:
+                                    self.assertTrue(automatic.submitted)
+                                    automatic.step(page)
+                                    self.assertEqual(len(attempts), 2)
+                                    self.assertEqual(page.evaluate('window.clicks'), 1)
+                            self.assertTrue(all(timeout == 5000 for timeout in attempts))
+            finally:
+                browser.close()
+
     def test_locked_remembered_account_without_autofill_marker(self):
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)

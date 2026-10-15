@@ -1,8 +1,30 @@
-"""One attempt per login session, using only already filled ADEO login fields."""
+"""One delivered submission, with bounded retries of undelivered ADEO clicks."""
 import re
 from time import monotonic
 import logging
 from urllib.parse import urlparse
+from uuid import uuid4
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+
+ARM_DELIVERY = """(el, token) => {
+    const guard = {token, activations: 0};
+    window.__netoLoginDelivery = guard;
+    const mark = event => {
+        if (window.__netoLoginDelivery !== guard) return;
+        if (el === event.target || el.contains(event.target) ||
+            (event.type === 'submit' && (!el.form || event.target === el.form)) ||
+            (event.type === 'beforeinput' && event.target.type === 'password')) guard.activations++;
+    };
+    for (const type of ['pointerdown', 'mousedown', 'click', 'submit', 'keydown', 'beforeinput'])
+        document.addEventListener(type, mark, true);
+    return true;
+}"""
+
+READ_DELIVERY = """token => {
+    const guard = window.__netoLoginDelivery;
+    return guard && guard.token === token ? guard.activations : null;
+}"""
 
 
 class AutomaticLogin:
@@ -16,6 +38,9 @@ class AutomaticLogin:
         self.submitted_at = None
         self.reason = None
         self.prefill_since = None
+        self.submit_attempts = 0
+        self.last_submit_attempt = None
+        self.pending_delivery_token = None
 
     def report(self, event, **facts):
         if self.diagnostics:
@@ -94,14 +119,55 @@ class AutomaticLogin:
                 if disabled:
                     self.report("submit_unavailable", aria_or_class_disabled=True)
                     return
-                self.submitted = True  # Set before click: ambiguous failures must not retry.
-                self.submitted_at = monotonic()
-                self.report("submit_attempt", attempt=1)
+                now = monotonic()
+                if self.last_submit_attempt is not None and now - self.last_submit_attempt < 2:
+                    return
+                if self.pending_delivery_token is not None:
+                    try:
+                        previous_delivery = page.evaluate(READ_DELIVERY, self.pending_delivery_token)
+                    except Exception:
+                        previous_delivery = None
+                    if type(previous_delivery) is not int or previous_delivery != 0:
+                        self.submitted = True
+                        self.submitted_at = now
+                        self.pending_delivery_token = None
+                        self.report("submit_retry_cancelled", delivery='observed' if type(previous_delivery) is int else 'unknown')
+                        return
+                if self.submit_attempts >= 3:
+                    self.block("nie udało się wykonać kliknięcia logowania po trzech próbach")
+                    return
+                token = uuid4().hex
+                armed = buttons.first.evaluate(ARM_DELIVERY, token) is True
+                self.pending_delivery_token = None
+                self.submit_attempts += 1
+                self.last_submit_attempt = now
+                self.submitted = True  # Ambiguous outcomes must never be retried.
+                self.submitted_at = now
+                self.report("submit_attempt", attempt=self.submit_attempts, delivery_observer=armed, timeout_ms=5000)
                 try:
-                    buttons.first.click(timeout=1500)
+                    buttons.first.click(timeout=5000)
                 except Exception as error:
-                    self.report("submit_error", error_type=type(error).__name__)
+                    activations = None
+                    if armed:
+                        try:
+                            activations = page.evaluate(READ_DELIVERY, token)
+                        except Exception:
+                            pass  # Navigation/document destruction makes delivery uncertain.
+                    undelivered = type(activations) is int and activations == 0
+                    self.report("submit_error", error_type=type(error).__name__,
+                                delivery='not_observed' if undelivered else 'observed' if type(activations) is int else 'unknown',
+                                attempt=self.submit_attempts)
+                    if isinstance(error, PlaywrightTimeoutError) and undelivered:
+                        self.submitted = False
+                        self.submitted_at = None
+                        self.pending_delivery_token = token
+                        self.last_submit_attempt = monotonic()
+                        self.report("submit_retry_scheduled", attempt=self.submit_attempts, delay_s=2)
+                        if self.submit_attempts >= 3:
+                            self.block("nie udało się wykonać kliknięcia logowania po trzech próbach")
+                        return
                     raise
+                self.submitted_at = monotonic()
                 self.report("submit_clicked")
             else:
                 self.report("submit_unavailable", password_ready=bool(ready), button_count=buttons.count())
