@@ -346,7 +346,7 @@ class App:
         if enable_tray:
             try:
                 from neto_incident_monitor.tray import Tray
-                self.tray = Tray(self.events)
+                self.tray = Tray(self.events, self.unread_highlighting_enabled())
                 self.tray.start()
             except Exception:
                 LOG.exception("Nie udało się uruchomić zasobnika")
@@ -1077,7 +1077,9 @@ class App:
     def update_tray(self):
         if self.tray and self.tray_ready:
             try:
-                self.tray.update(self.history.unread() if self.unread_highlighting_enabled() else 0, getattr(self, "monitoring_phase", "Gotowy do uruchomienia"))
+                self.tray.update(self.history.unread() if self.unread_highlighting_enabled() else 0,
+                                 getattr(self, "monitoring_phase", "Gotowy do uruchomienia"),
+                                 unread_enabled=self.unread_highlighting_enabled())
             except Exception:
                 LOG.exception("Błąd aktualizacji zasobnika")
 

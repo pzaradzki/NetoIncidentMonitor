@@ -201,13 +201,18 @@ class MonitorTests(unittest.TestCase):
         import queue
         from neto_incident_monitor.tray import Tray
         events = queue.Queue()
-        tray = Tray(events)
+        tray = Tray(events, unread_enabled=False)
         try:
+            self.assertFalse(tray.icon.menu.items[2].visible)
             tray.start()
             kind, _ = events.get(timeout=5)
             self.assertEqual(kind, "tray_ready")
             self.assertTrue(tray.icon.visible)
             tray.update(3, "Monitoring aktywny")
+            self.assertTrue(tray.icon.menu.items[2].visible)
+            tray.update(0, "Monitoring aktywny", unread_enabled=False)
+            self.assertFalse(tray.icon.menu.items[2].visible)
+            tray.update(3, "Monitoring aktywny", unread_enabled=True)
             self.assertIn("nieprzeczytane: 3", tray.icon.title)
             # Exercise the menu dispatch without touching Tk from a tray thread.
             tray.icon.menu.items[0](tray.icon)
