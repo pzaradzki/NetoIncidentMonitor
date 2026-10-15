@@ -154,6 +154,8 @@ Podstawowy test uruchomienia pakietu, bez połączenia z ServiceNow:
 
 Raport potwierdza uruchomienie interfejsu i dołączonej przeglądarki Chromium. Log błędów `monitor.log` znajduje się w katalogu danych aplikacji. Rotacja logów zachowuje do trzech plików archiwalnych.
 
+Szczegółowy przebieg logowania jest automatycznie zapisywany w `login-diagnostics.jsonl` w tym samym katalogu. Dla wersji EXE jest to `%LOCALAPPDATA%\NetoIncidentMonitor`, a dla kodu źródłowego katalog `data`. Każda próba ma własny identyfikator i czas zdarzeń. Log zawiera stan formularza (obecność i autouzupełnienie hasła, dostępność przycisku, liczba kont), próby kliknięć, przyczyny oczekiwania i przejścia do ręcznego logowania oraz typy błędów. Nie zapisuje wartości pól, loginów, haseł, treści strony, ciasteczek, ścieżek ani parametrów adresów SSO. Niezmieniony stan jest odnotowywany co 10 sekund. Plik ma limit 2 MB i trzy archiwalne kopie. Przy problemie z logowaniem zachowaj `login-diagnostics.jsonl` wraz z jego plikami `.1`, `.2`, `.3` oraz `monitor.log`.
+
 ## Struktura projektu
 
 ```text

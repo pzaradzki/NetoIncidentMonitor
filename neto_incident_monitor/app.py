@@ -209,14 +209,18 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
     """Wait for a real incident list; never navigate over an SSO login page."""
     last_navigation = 0
     from neto_incident_monitor.automatic_login import AutomaticLogin
-    automatic = AutomaticLogin() if auto_login else None
+    from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+    diagnostics = LoginDiagnostics(auto_login=bool(auto_login), minimize=bool(minimize_after_login), hidden=bool(browser_window))
+    automatic = AutomaticLogin(diagnostics=diagnostics) if auto_login else None
     manual_shown = False
     login_started = time.monotonic()
     last_inspection_warning = None
     while not stop.is_set():
         if page.is_closed():
+            diagnostics.record("browser_closed")
             raise BrowserClosedError("Przeglądarka logowania została zamknięta.")
         try:
+            diagnostics.inspect(page, automatic)
             if automatic and authentication_page(page, url):
                 automatic.step(page)
             if (minimize_after_login or browser_window) and not manual_shown and authentication_page(page, url):
@@ -229,6 +233,7 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                     set_chromium_window_state(page, "normal")
                     page.bring_to_front()
                     manual_shown = True
+                    diagnostics.record("manual_login_shown", automatic_blocked=bool(automatic and automatic.blocked))
             if not authentication_page(page, url):
                 expected_host = urlparse(url).hostname
                 list_loaded = any(urlparse(frame.url).hostname == expected_host
@@ -239,11 +244,14 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                         browser_window.hide()
                     elif minimize_after_login:
                         minimize_chromium(page)
+                    diagnostics.record("login_complete")
                     return True
                 if not list_loaded and time.monotonic() - last_navigation >= 5:
                     last_navigation = time.monotonic()
+                    diagnostics.record("reopen_requested_list")
                     navigate(page, url)
         except Exception as exc:
+            diagnostics.record("login_loop_error", error_type=type(exc).__name__)
             # SSO transitions can destroy execution contexts while we inspect them.
             if page.is_closed():
                 raise
@@ -253,6 +261,7 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                 LOG.warning("Nie udało się sprawdzić stanu logowania (%s); ponawiam odczyt.", type(exc).__name__)
                 last_inspection_warning = now
         page.wait_for_timeout(500)
+    diagnostics.record("login_cancelled")
     return False
 
 
