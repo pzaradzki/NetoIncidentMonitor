@@ -15,14 +15,17 @@ def main(output):
     from neto_incident_monitor.app import App
     from neto_incident_monitor.history import History
     from neto_incident_monitor.tray import Tray
+    from neto_incident_monitor import __version__
     result = {"frozen": bool(getattr(sys, "frozen", False)),
-              "data": str(DATA), "bundle": str(ROOT)}
+              "data": str(DATA), "bundle": str(ROOT), "version": __version__}
     try:
         window = tk.Tk()
         window.withdraw()
         with tempfile.TemporaryDirectory(prefix="sn-smoke-") as directory:
             app = App(window, history_path=Path(directory) / "history.json", apply_startup=False)
             window.update()
+            result["window_title"] = window.title()
+            assert window.title() == f"Neto Incident Monitor v{__version__}"
             result["ui"] = "ok"
             if app.tray:
                 app.tray.stop()
