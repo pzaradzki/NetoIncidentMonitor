@@ -158,6 +158,33 @@ Raport potwierdza uruchomienie interfejsu i dołączonej przeglądarki Chromium.
 
 Szczegółowy przebieg logowania jest automatycznie zapisywany w `login-diagnostics.jsonl` w tym samym katalogu. Dla wersji EXE jest to `%LOCALAPPDATA%\NetoIncidentMonitor`, a dla kodu źródłowego katalog `data`. Każda próba ma własny identyfikator i czas zdarzeń. Log zawiera stan formularza (obecność i autouzupełnienie hasła, dostępność przycisku, liczba kont), próby kliknięć, przyczyny oczekiwania i przejścia do ręcznego logowania oraz typy błędów. Nie zapisuje wartości pól, loginów, haseł, treści strony, ciasteczek, ścieżek ani parametrów adresów SSO. Niezmieniony stan jest odnotowywany co 10 sekund. Plik ma limit 2 MB i trzy archiwalne kopie. Przy problemie z logowaniem zachowaj `login-diagnostics.jsonl` wraz z jego plikami `.1`, `.2`, `.3` oraz `monitor.log`.
 
+## Automatyczne aktualizacje
+
+W ustawieniach znajduje się sekcja „Aktualizacje” z domyślnie włączoną opcją „Sprawdzaj aktualizacje przy uruchomieniu” oraz przyciskiem ręcznego sprawdzania. Wersja EXE sprawdza stabilne wydanie oznaczone jako Latest w repozytorium `pzaradzki/NetoIncidentMonitor`. Wyłączenie opcji jest zapamiętywane. Sprawdzanie i pobieranie działają w tle; błąd połączenia nie zatrzymuje monitoringu. Wersja uruchamiana ze źródeł obsługuje ręczne sprawdzanie, a instalacja automatyczna jest dostępna w EXE.
+
+Użytkownik potwierdza pobranie oraz późniejszą instalację. Paczka musi zgadzać się z rozmiarem i sumą SHA256 w manifeście. Aktualizator odrzuca nieprawidłowe ścieżki, dowiązania i nadmiernie duże archiwa. Po uruchomieniu niezależnego programu `Neto Update Helper.exe` aplikacja zamyka monitoring i Chromium. Aktualizator czeka na zakończenie procesu, przenosi poprzedni folder do kopii zapasowej i podmienia go przygotowaną paczką. Przed restartem sprawdza nowy EXE poleceniem `--smoke-test`, w tym numer wersji, interfejs i Chromium. Nieudana podmiana lub test powoduje próbę przywrócenia poprzedniego folderu i uruchomienia starej wersji. Dane w `%LOCALAPPDATA%\NetoIncidentMonitor` pozostają poza folderami instalacji.
+
+Instalacja wymaga prawa zapisu do folderu nadrzędnego aplikacji; aktualizator nie podnosi uprawnień. Kopia starej instalacji pozostaje w sąsiednim folderze `.neto-backup-*`. Raport przebiegu instalacji znajduje się w `%LOCALAPPDATA%\NetoIncidentMonitor\updates\<identyfikator>\result.json`. Nie należy uruchamiać pliku `Neto Update Helper.exe` ręcznie. Pierwsze wydanie zawierające tę funkcję trzeba zainstalować ręcznie; starsze wersje aplikacji nie mają jeszcze aktualizatora.
+
+Każde kolejne wydanie GitHub musi zawierać ZIP oraz załącznik o dokładnej nazwie `update-manifest.json`. Po zbudowaniu aktualnego ZIP-a wygeneruj manifest:
+
+```powershell
+.venv\Scripts\python.exe -m tools.update_manifest "dist\Neto Incident Monitor.zip"
+```
+
+Domyślna nazwa załącznika ZIP w manifeście to `Neto.Incident.Monitor.zip`, zgodna z nazwą nadawaną przy publikacji przez przeglądarkę GitHub. Jeśli publikujesz pod inną nazwą, podaj dokładną nazwę przez `--asset-name`. Manifest i ZIP muszą dotyczyć tego samego wydania oraz tej samej paczki. Schemat manifestu:
+
+```json
+{
+  "version": "1.5.0",
+  "asset_name": "Neto.Incident.Monitor.zip",
+  "size": 123456789,
+  "sha256": "64 znaki szesnastkowe"
+}
+```
+
+Wykorzystywany jest publiczny [interfejs GitHub Releases](https://docs.github.com/en/rest/releases/releases); aplikacja nie wymaga tokenu GitHub. Wydania testowe, wersje starsze i wydania bez poprawnego manifestu nie są automatycznie instalowane.
+
 ## Struktura projektu
 
 ```text
