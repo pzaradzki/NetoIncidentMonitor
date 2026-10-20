@@ -353,7 +353,10 @@ class App:
             if self.window_layout.get("maximized", False):
                 root.state("zoomed")
             if apply_startup and self.start_minimized.get():
-                root.iconify()
+                if self.minimize_to_tray.get() and self.tray_ready:
+                    self.hide_window()
+                else:
+                    root.iconify()
             self.window_restoring = False
             if apply_startup and self.start_monitoring.get() and any(f.get("enabled", True) for f in self.filters):
                 root.after(200, self.start)
@@ -1622,6 +1625,7 @@ class App:
                 elif kind == "tray_ready":
                     self.tray_ready = True
                     self.update_tray()
+                    self.handle_minimize()
                 elif kind == "tray_failed":
                     self.tray_ready = False
                     self.show_window()
