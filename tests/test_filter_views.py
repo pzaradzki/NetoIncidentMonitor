@@ -13,7 +13,7 @@ class FilterViewTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory() as folder:
-                settings = {"filters": [{"name": "A", "url": "https://example.test/a"},
+                settings = {"highlight_unread": True, "filters": [{"name": "A", "url": "https://example.test/a"},
                                         {"name": "B", "url": "https://example.test/b"}]}
                 with patch("neto_incident_monitor.app.read_json", return_value=settings):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)

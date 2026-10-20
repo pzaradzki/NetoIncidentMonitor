@@ -183,7 +183,7 @@ Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia
 
 Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.
 
-Opcja **Podświetlaj nieprzeczytane incydenty** w ustawieniach jest domyślnie włączona. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
+Opcja **Podświetlaj nieprzeczytane incydenty** znajduje się w sekcji **Lista incydentów** na końcu ustawień i jest domyślnie wyłączona. Zapisany wcześniej wybór użytkownika jest zachowywany. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
 
 ### Zadania katalogowe (SCTASK)
 

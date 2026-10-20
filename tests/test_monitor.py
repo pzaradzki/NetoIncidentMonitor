@@ -65,7 +65,7 @@ class MonitorTests(unittest.TestCase):
         root.withdraw()
         temporary = tempfile.TemporaryDirectory(dir=Path(__file__).parent)
         try:
-            with patch("neto_incident_monitor.app.read_json", return_value={"filters": [
+            with patch("neto_incident_monitor.app.read_json", return_value={"highlight_unread": True, "filters": [
                 {"name": "Gdańsk", "url": URL},
                 {"name": "Gdynia", "url": URL + "&second=1"}]}):
                 monitor = App(root, history_path=Path(temporary.name) / "history.json", enable_tray=False)

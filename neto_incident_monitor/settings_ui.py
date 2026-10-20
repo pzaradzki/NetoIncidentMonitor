@@ -99,11 +99,6 @@ def build_settings(app, settings):
     Toggle(controls, app.google_chat_enabled).pack(side="right")
     RoundedButton(controls, text="Konfiguruj", command=app.configure_google_chat).pack(side="right", padx=(0, 14))
 
-    display = section("LISTA INCYDENTÓW")
-    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "")
-    app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", True))
-    Toggle(controls, app.highlight_unread).pack(side="right")
-
     startup = section("URUCHAMIANIE I OKNO APLIKACJI")
     for key, title, description in (
         ("start_with_windows", "Uruchom aplikację przy starcie systemu", "Uruchamiaj aplikację po zalogowaniu do Windows."),
@@ -132,3 +127,8 @@ def build_settings(app, settings):
     controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań. Pokazuj okno, gdy potrzebne jest ręczne logowanie. Zmiana działa po ponownym uruchomieniu monitoringu.")
     app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", False))
     Toggle(controls, app.hide_browser).pack(side="right")
+
+    display = section("LISTA INCYDENTÓW")
+    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "")
+    app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", False))
+    Toggle(controls, app.highlight_unread).pack(side="right")
