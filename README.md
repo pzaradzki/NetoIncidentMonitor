@@ -5,7 +5,7 @@ Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monito
 ## Główne funkcje
 
 - Monitorowanie wielu filtrów z możliwością ich włączania i wyłączania podczas pracy.
-- Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams.
+- Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams i Google Chat.
 - Oddzielna historia każdego filtra i lokalne oznaczanie incydentów jako przeczytanych.
 - Otwieranie incydentów oraz kopiowanie ich numerów i adresów z menu kontekstowego.
 - Konfigurowanie widoczności, kolejności i szerokości kolumn.
@@ -61,7 +61,7 @@ Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia 
 
 Ikona dzwonka przy filtrze otwiera **Ustawienia filtra**, obejmujące powiadomienia i zgodę na duże odczyty:
 
-- **Powiadomienia Windows** i **Powiadomienia Microsoft Teams** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
+- **Powiadomienia Windows**, **Powiadomienia Microsoft Teams** i **Powiadomienia Google Chat** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
 - **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
 
 Powrót oznacza ponowne pojawienie się incydentu po poprawnym odczycie, który potwierdził jego nieobecność. Błąd odczytu, wyłączenie filtra i ponowne uruchomienie aplikacji nie stanowią potwierdzenia zniknięcia. Ostatnia potwierdzona obecność i wcześniejsze wystąpienia są zachowywane między uruchomieniami.
@@ -96,7 +96,7 @@ Przycisk **Ustawienia**, oznaczony ikoną koła zębatego, otwiera konfigurację
 
 Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończy działanie aplikacji. Przy włączonej minimalizacji do zasobnika systemowego monitoring pozostaje aktywny po zminimalizowaniu okna.
 
-## Logowanie i powiadomienia Microsoft Teams
+## Logowanie i powiadomienia
 
 Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybrać pojedyncze zapamiętane konto i zatwierdzić formularz, jeśli pole hasła jest już uzupełnione. Gdy wymagane jest podanie hasła, wybór spośród wielu kont, uwierzytelnianie wieloskładnikowe lub obsługa błędu, aplikacja oczekuje na działanie użytkownika. Nie zapisuje samodzielnie hasła. Korzysta z własnego profilu Chromium, niezależnego od profilu przeglądarki Chrome użytkownika.
 
@@ -105,6 +105,10 @@ Opcja „Całkowicie ukryj okno przeglądarki” w ustawieniach jest domyślnie 
 Kliknięcie przycisku logowania ma limit 5 sekund. Po przekroczeniu limitu aplikacja ponawia je tylko wtedy, gdy obserwator w tym samym dokumencie potwierdza brak zdarzeń aktywacji przycisku lub wysłania formularza. Odstęp między próbami wynosi co najmniej 2 sekundy, a limit to 3 próby. Wykryte zdarzenie, zmiana dokumentu lub niepewny wynik wykluczają ponowne automatyczne wysłanie. Diagnostyka rozróżnia niewykonane kliknięcie, zaobserwowaną aktywację i nieznany wynik.
 
 Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [film instruktażowy konfiguracji powiadomień Teams](https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
+
+Google Chat jest trzecim, niezależnym kanałem. W ustawieniach globalnych wybierz **Google Chat → Konfiguruj**, wklej adres webhooka, użyj **Wyślij test**, zapisz konfigurację i włącz kanał. Przycisk **Instrukcja** prowadzi do [instrukcji Google](https://developers.google.com/workspace/chat/quickstart/webhooks). Webhook tworzysz w przeglądarkowej wersji Google Chat: wybrana przestrzeń → **Aplikacje i integracje → Dodaj webhooki**. Organizacja Google Workspace musi zezwalać na używanie webhooków. Power Automate i logowanie do Google w naszej aplikacji nie są potrzebne.
+
+Google Chat jest domyślnie wyłączony globalnie. Po skonfigurowaniu można wybierać powiadomienia osobno dla każdego filtra, tak samo jak Windows i Teams. Kanały mogą działać jednocześnie. Obsługiwane są INC i SCTASK, hiperłącza pod numerami oraz **Test powiadomienia** z menu kontekstowego. Ustawienia i webhook są zapamiętywane między sesjami. Wysyłanie działa w tle z ograniczoną kolejką i odstępem między wiadomościami; większe zestawy zgłoszeń są dzielone na części. Adres jest maskowany w oknie konfiguracji, a komunikaty błędów nie zawierają parametrów `key` ani `token`. Pełny adres webhooka jest zapisywany lokalnie w ustawieniach, podobnie jak adres Teams; nie udostępniaj pliku konfiguracji.
 
 ## Przechowywanie danych
 

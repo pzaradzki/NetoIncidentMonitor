@@ -23,6 +23,7 @@ def show_filter_settings(app, index):
     for key, title, description, enabled in [
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
+        ("notify_google_chat", "Powiadomienia Google Chat", "Wymagają włączonych powiadomień globalnych.", app.google_chat_enabled.get()),
         ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
         ("allow_large_list", "Pobieraj duże listy bez pytania", "Dotyczy list zawierających ponad 1000 wpisów.", True),
     ]:
@@ -31,7 +32,7 @@ def show_filter_settings(app, index):
         row.columnconfigure(0, weight=1)
         ttk.Label(row, text=title, style="White.TLabel", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(row, text=description, style="WhiteMuted.TLabel", wraplength=350).grid(row=1, column=0, sticky="w", pady=(4, 0))
-        values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams")))
+        values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams", "notify_google_chat")))
         controls[key] = Toggle(row, values[key])
         controls[key].grid(row=0, column=1, rowspan=2, padx=(18, 0))
         controls[key].configure(state="normal" if enabled else "disabled")

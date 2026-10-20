@@ -12,6 +12,7 @@ class ContextMenuTests(TestCase):
         app.selected_filter_index = Mock(return_value=1)
         app.notify = Mock(); app.notify.get.return_value = True
         app.teams_enabled = Mock(); app.teams_enabled.get.return_value = False
+        app.google_chat_enabled = Mock(); app.google_chat_enabled.get.return_value = False
         app.current_table = Mock()
         app.snapshots = {1: {'SCTASK1234567': {'short_description': 'Current task', 'requested_for': 'Anna'}}}
         app.history = Mock()

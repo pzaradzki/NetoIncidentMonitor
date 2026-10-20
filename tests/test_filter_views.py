@@ -86,9 +86,9 @@ class FilterViewTests(unittest.TestCase):
                         yield child
                         yield from descendants(child)
                 toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-                self.assertEqual([w.enabled for w in toggles], [False, False, True, True])
-                self.assertTrue(toggles[3].variable.get())
-                toggles[3].toggle()
+                self.assertEqual([w.enabled for w in toggles], [False, False, False, True, True])
+                self.assertTrue(toggles[4].variable.get())
+                toggles[4].toggle()
                 from neto_incident_monitor.widgets import RoundedButton
                 with patch.object(app, "persist_filters") as persist:
                     next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zapisz").invoke()
@@ -105,6 +105,7 @@ class FilterViewTests(unittest.TestCase):
                        {"name": "B", "url": "B", "notify_windows": False, "notify_teams": True}]
         app.notify = Mock(); app.notify.get.return_value = True
         app.teams_enabled = Mock(); app.teams_enabled.get.return_value = True
+        app.google_chat_enabled = Mock(); app.google_chat_enabled.get.return_value = False
         app.teams_webhook = "webhook"
         app.teams_sender = Mock(); app.root = Mock()
         incident = {"number": "INC1", "location": "Store", "short_description": "Description"}

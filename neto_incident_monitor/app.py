@@ -312,6 +312,11 @@ class App:
         from neto_incident_monitor.teams_notifications import Sender
         self.teams_sender = Sender(self.events)
         self.teams_webhook = settings.get("teams_webhook", "")
+        from neto_incident_monitor.google_chat_notifications import Sender as GoogleChatSender
+        self.google_chat_sender = GoogleChatSender(self.events)
+        self.google_chat_webhook = settings.get("google_chat_webhook", "")
+        self.saved_google_chat = settings.get("google_chat_enabled", False), self.google_chat_webhook
+        self.saving_google_chat = False
         self.filters = load_filters(settings)
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.legacy_visible_columns = settings.get("visible_columns", DEFAULT)
@@ -325,6 +330,8 @@ class App:
         build_ui(self, settings)
         self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
+        from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
+        self.google_chat_enabled.trace_add("write", lambda *_: google_chat_changed(self))
         self.auto_login.trace_add("write", self.save_auto_login)
         self.minimize_browser.trace_add("write", self.save_browser_minimize)
         self.hide_browser.trace_add("write", self.save_browser_minimize)
@@ -883,6 +890,9 @@ class App:
         if self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook:
             links = {item["number"]: item["url"] for item in incidents if item.get("url")}
             self.teams_sender.submit(self.teams_webhook, title, message, **({"links": links} if links else {}))
+        if self.google_chat_enabled.get() and entry.get("notify_google_chat", True) and self.google_chat_webhook:
+            links = {item["number"]: item["url"] for item in incidents if item.get("url")}
+            self.google_chat_sender.submit(self.google_chat_webhook, title, message, links=links)
         if self.notify.get() and entry.get("notify_windows", True):
             try:
                 from plyer import notification
@@ -1269,6 +1279,12 @@ class App:
         self.interruption(message)
         if self.teams_enabled.get() and self.teams_webhook:
             self.teams_sender.submit(self.teams_webhook, "ServiceNow — sesja wygasła", message)
+        if self.google_chat_enabled.get() and self.google_chat_webhook:
+            self.google_chat_sender.submit(self.google_chat_webhook, "ServiceNow — sesja wygasła", message)
+
+    def configure_google_chat(self):
+        from neto_incident_monitor.google_chat_ui import show_config
+        show_config(self)
 
     def save_auto_login(self, *_):
         try:
@@ -1373,6 +1389,11 @@ class App:
             from neto_incident_monitor.teams_notifications import incident_text
             teams_title, teams_message = incident_text(unread)
             self.teams_sender.submit(self.teams_webhook, teams_title, teams_message)
+        if self.google_chat_enabled.get() and self.google_chat_webhook:
+            from neto_incident_monitor.teams_notifications import incident_text
+            chat_title, chat_message = incident_text(unread)
+            links = {item["number"]: item["url"] for item in unread if item.get("url")}
+            self.google_chat_sender.submit(self.google_chat_webhook, chat_title, chat_message, links=links)
         if not self.notify.get():
             return
         try:
@@ -1633,6 +1654,12 @@ class App:
                         (messagebox.showinfo if success else messagebox.showerror)("Test Teams", detail, parent=self.root)
                     elif not success:
                         self.status.set(detail)
+                elif kind == "google_chat_result":
+                    success, test, detail = value
+                    if test:
+                        (messagebox.showinfo if success else messagebox.showerror)("Test Google Chat", detail, parent=self.root)
+                    elif not success:
+                        self.status.set(detail)
                 elif kind == "mark_all":
                     self.mark_all()
                 elif kind == "stop_monitor":
@@ -1775,8 +1802,9 @@ class App:
             return
         windows = self.notify.get() and entry.get("notify_windows", True)
         teams = self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook
-        if not windows and not teams:
-            messagebox.showinfo("Test powiadomienia", "Włącz powiadomienia Windows lub skonfiguruj Teams dla tego filtra.", parent=self.root)
+        google_chat = self.google_chat_enabled.get() and entry.get("notify_google_chat", True) and self.google_chat_webhook
+        if not windows and not teams and not google_chat:
+            messagebox.showinfo("Test powiadomienia", "Włącz powiadomienia Windows, Teams lub Google Chat dla tego filtra.", parent=self.root)
             return
         if table is self.current_table:
             incident = self.snapshots.get(self.selected_filter_index(), {}).get(number)

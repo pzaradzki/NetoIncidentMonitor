@@ -94,6 +94,10 @@ def build_settings(app, settings):
     app.teams_check = Toggle(controls, app.teams_enabled)
     app.teams_check.pack(side="right")
     RoundedButton(controls, text="Konfiguruj", command=app.configure_teams).pack(side="right", padx=(0, 14))
+    controls = row(notifications, "Google Chat", "Wysyłanie powiadomień do przestrzeni przez webhook.")
+    app.google_chat_enabled = tk.BooleanVar(value=settings.get("google_chat_enabled", False))
+    Toggle(controls, app.google_chat_enabled).pack(side="right")
+    RoundedButton(controls, text="Konfiguruj", command=app.configure_google_chat).pack(side="right", padx=(0, 14))
 
     display = section("LISTA INCYDENTÓW")
     controls = row(display, "Podświetlaj nieprzeczytane incydenty", "")
