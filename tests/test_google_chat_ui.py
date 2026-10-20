@@ -64,9 +64,34 @@ class GoogleChatUITests(unittest.TestCase):
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         widgets = list(descendants(dialog))
         toggles = [w for w in widgets if isinstance(w, Toggle)]
-        self.assertEqual([w.enabled for w in toggles[:3]], [False, False, True])
-        self.assertTrue(toggles[2].variable.get())
-        toggles[2].toggle()
+        self.assertEqual(len(toggles), 3)
+        labels = [w.cget('text') for w in widgets if isinstance(w, ttk.Label)]
+        self.assertNotIn('Powiadomienia Windows', labels)
+        self.assertNotIn('Powiadomienia Microsoft Teams', labels)
+        self.assertIn('Powiadomienia Google Chat', labels)
+        self.assertTrue(toggles[0].variable.get())
+        toggles[0].toggle()
         next(w for w in widgets if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
         self.assertFalse(self.app.filters[0]['notify_google_chat'])
         self.app.persist_filters.assert_called_once()
+
+    def test_hidden_channels_keep_preferences_when_saved_and_reopened(self):
+        self.app.filters = [{'name': 'Test', 'url': 'filter',
+                             'notify_windows': True, 'notify_teams': False,
+                             'notify_google_chat': True}]
+        self.app.notify = tk.BooleanVar(value=False)
+        self.app.teams_enabled = tk.BooleanVar(value=False)
+        show_filter_settings(self.app, 0)
+        dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
+        widgets = list(descendants(dialog))
+        self.assertEqual(len([w for w in widgets if isinstance(w, Toggle)]), 2)
+        next(w for w in widgets if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
+        for key, expected in [('notify_windows', True), ('notify_teams', False), ('notify_google_chat', True)]:
+            self.assertEqual(self.app.filters[0][key], expected)
+        self.app.notify.set(True)
+        self.app.teams_enabled.set(True)
+        self.app.google_chat_enabled.set(True)
+        show_filter_settings(self.app, 0)
+        dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
+        toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
+        self.assertEqual([w.variable.get() for w in toggles[:3]], [True, False, True])

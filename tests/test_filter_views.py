@@ -86,9 +86,9 @@ class FilterViewTests(unittest.TestCase):
                         yield child
                         yield from descendants(child)
                 toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-                self.assertEqual([w.enabled for w in toggles], [False, False, False, True, True])
-                self.assertTrue(toggles[4].variable.get())
-                toggles[4].toggle()
+                self.assertEqual([w.enabled for w in toggles], [True, True])
+                self.assertTrue(toggles[1].variable.get())
+                toggles[1].toggle()
                 from neto_incident_monitor.widgets import RoundedButton
                 with patch.object(app, "persist_filters") as persist:
                     next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zapisz").invoke()

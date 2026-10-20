@@ -27,6 +27,8 @@ def show_filter_settings(app, index):
         ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
         ("allow_large_list", "Pobieraj duże listy bez pytania", "Dotyczy list zawierających ponad 1000 wpisów.", True),
     ]:
+        if not enabled:
+            continue
         row = ttk.Frame(panel, style="White.TFrame", padding=(0, 10))
         row.pack(fill="x")
         row.columnconfigure(0, weight=1)
