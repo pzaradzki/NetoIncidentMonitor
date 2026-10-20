@@ -187,7 +187,16 @@ def build_ui(app, settings):
     app.filter_table.grid(row=1, column=0, sticky="nsew")
     filter_scroll = app.filter_scroll = ttk.Scrollbar(lists, orient="vertical", command=app.filter_table.yview)
     filter_scroll.grid(row=1, column=1, sticky="ns")
-    app.filter_table.configure(yscrollcommand=filter_scroll.set)
+    filter_scroll.grid_remove()
+
+    def update_filter_scroll(first, last):
+        filter_scroll.set(first, last)
+        if float(first) > 0.000001 or float(last) < 0.999999:
+            filter_scroll.grid()
+        else:
+            filter_scroll.grid_remove()
+
+    app.filter_table.configure(yscrollcommand=update_filter_scroll)
     filter_actions = ttk.Frame(sidebar, style="White.TFrame")
     filter_actions.grid(row=2, column=0, sticky="ew", pady=(10, 0))
     filter_actions.columnconfigure(0, weight=1)

@@ -907,10 +907,6 @@ class App:
             self.filter_table.insert("", "end", iid=str(index), values=(entry["name"], urlparse(entry["url"]).hostname))
         self.filter_count.set(str(len(self.filters)))
         self.filter_table.configure(height=max(1, min(4, len(self.filters))))
-        if len(self.filters) > 4:
-            self.filter_scroll.grid()
-        else:
-            self.filter_scroll.grid_remove()
         if self.filters:
             self.filter_table.selection_set(selected[0] if selected and selected[0] in self.filter_table.get_children() else "0")
         else:

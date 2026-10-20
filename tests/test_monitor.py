@@ -76,6 +76,7 @@ class MonitorTests(unittest.TestCase):
             filters = list(monitor.filters)
             monitor.filters += [{"name": f"Lista {index}", "url": URL + f"&list={index}"} for index in range(4)]
             monitor.refresh_filters()
+            root.update_idletasks()
             self.assertEqual(int(monitor.filter_table.cget("height")), 4 * monitor.filter_table.ROW)
             self.assertEqual(monitor.filter_scroll.winfo_manager(), "grid")
             monitor.filters = filters

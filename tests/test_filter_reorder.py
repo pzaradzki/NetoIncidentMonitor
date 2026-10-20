@@ -18,6 +18,26 @@ class FilterReorderTests(unittest.TestCase):
             self.root.after_cancel(timer)
         self.root.destroy()
 
+    def test_filter_scrollbar_hides_when_all_rows_fit(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
+            filters = [{'name': f'Filter {i}', 'url': f'https://example.test/list?id={i}'} for i in range(6)]
+            with patch('neto_incident_monitor.app.read_json', return_value={'filters': filters}):
+                app = App(self.root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
+            self.root.geometry('1440x900')
+            self.root.update()
+            self.assertGreaterEqual(app.filter_table.winfo_height(), 6 * FilterList.ROW)
+            self.assertEqual(app.filter_scroll.winfo_manager(), '')
+            app.filters += [{'name': f'More {i}', 'url': f'https://example.test/more?id={i}'} for i in range(30)]
+            app.refresh_filters()
+            self.root.update()
+            self.assertEqual(app.filter_scroll.winfo_manager(), 'grid')
+            app.filter_table.yview_moveto(1)
+            app.filters = app.filters[:2]
+            app.refresh_filters()
+            self.root.update()
+            self.assertEqual(app.filter_scroll.winfo_manager(), '')
+            self.assertEqual(app.filter_table.yview(), (0.0, 1.0))
+
     def test_drag_marker_drop_and_controls(self):
         table = FilterList(self.root)
         table.pack()
