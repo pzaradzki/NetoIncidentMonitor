@@ -36,6 +36,11 @@ class StartupTests(unittest.TestCase):
                         app.drain()
                         self.assertEqual(root.state(), expected)
                         if expected == 'withdrawn':
+                            app.events.put(('phase', 'Uruchamianie przeglądarki'))
+                            app.events.put(('phase', 'Oczekiwanie na logowanie'))
+                            app.drain()
+                            root.update()
+                            self.assertEqual(root.state(), 'withdrawn')
                             app.events.put(('tray_failed', None))
                             app.drain()
                             self.assertEqual(root.state(), 'normal')

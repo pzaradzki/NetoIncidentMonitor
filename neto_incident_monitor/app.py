@@ -1675,7 +1675,7 @@ class App:
                     self.next_check = None
                     self.check_deadlines = {}
                     self.set_phase(value)
-                    if value in ("Oczekiwanie na logowanie", "Błąd uruchomienia") and self.root.state() == "withdrawn":
+                    if value == "Błąd uruchomienia" and self.root.state() == "withdrawn":
                         self.show_window()
                 elif kind == "checking":
                     self.next_check = None
