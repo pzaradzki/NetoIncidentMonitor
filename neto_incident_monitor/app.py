@@ -1752,8 +1752,8 @@ class App:
                     self.apply_sort(table)
         def remaining(kind):
             deadline = self.check_deadlines.get(kind)
-            return "-" if deadline is None else f"za {max(0, int(deadline - now + 0.999))} s"
-        self.countdown.set(f"Następne sprawdzenie INC: {remaining('inc')}  Następne sprawdzenie SCTASK: {remaining('task')}")
+            return "-" if deadline is None else f"{max(0, int(deadline - now + 0.999))} s"
+        self.countdown.set(f"Następna aktualizacja INC: {remaining('inc')}  STASK: {remaining('task')}")
         if not self.quitting:
             self.root.after(200, self.drain)
 

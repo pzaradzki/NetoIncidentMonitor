@@ -126,6 +126,9 @@ def build_ui(app, settings):
     app.check_button = RoundedButton(app.controls, text="Sprawdź teraz", icon="refresh", command=app.check_now, background=BG)
     app.check_button.configure(state="disabled")
     app.check_button.pack(side="left", padx=4)
+    from neto_incident_monitor.report_ui import show_report
+    RoundedButton(app.controls, text="Zgłoś", icon="bug", command=lambda: show_report(app),
+                  background=BG).pack(side="left", padx=4)
 
     def show_settings():
         window = app.settings_window
@@ -245,7 +248,7 @@ def build_ui(app, settings):
     app.phase_label = StatusPill(state)
     app.phase_label.pack(side="left")
     app.update_phase_text()
-    app.countdown = tk.StringVar(value="Następne sprawdzenie INC: -  Następne sprawdzenie SCTASK: -")
+    app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  STASK: -")
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
     app.current_count = tk.StringVar(value="0")
