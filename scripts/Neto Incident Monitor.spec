@@ -23,14 +23,9 @@ a = Analysis([str(root / "launcher.pyw")], pathex=[str(root)],
              hiddenimports=collect_submodules("plyer.platforms.win") + ["pystray._win32"],
              hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False)
 pyz = PYZ(a.pure)
-updater = Analysis([str(root / "scripts" / "update_helper.pyw")], pathex=[str(root)],
-                   binaries=[], datas=[], hiddenimports=[], excludes=[])
-helper = EXE(PYZ(updater.pure), updater.scripts, updater.binaries, updater.datas,
-             name="Neto Update Helper", console=False, upx=False,
-             icon=str(root / "assets" / "netology-icon.ico"))
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True,
           name="Neto Incident Monitor", debug=False, bootloader_ignore_signals=False,
           strip=False, upx=False, console=False, icon=str(root / "assets" / "netology-icon.ico"), disable_windowed_traceback=False)
-coll = COLLECT(exe, helper, a.binaries, a.datas, strip=False, upx=False,
+coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False,
                name="Neto Incident Monitor")
 

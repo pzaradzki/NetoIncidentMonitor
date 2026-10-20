@@ -128,15 +128,3 @@ def build_settings(app, settings):
     controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań. Pokazuj okno, gdy potrzebne jest ręczne logowanie. Zmiana działa po ponownym uruchomieniu monitoringu.")
     app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", False))
     Toggle(controls, app.hide_browser).pack(side="right")
-
-    updates = section("AKTUALIZACJE")
-    controls = row(updates, "Sprawdzaj aktualizacje przy uruchomieniu", "Instalacja nowej wersji wymaga Twojego potwierdzenia.")
-    app.check_updates = tk.BooleanVar(value=settings.get("check_updates", True))
-    Toggle(controls, app.check_updates).pack(side="right")
-    controls = row(updates, "Aktualna wersja", "")
-    from neto_incident_monitor import __version__
-    ttk.Label(controls, text=__version__, style="WhiteMuted.TLabel").pack(side="left", padx=(0, 12))
-    RoundedButton(controls, text="Sprawdź aktualizacje", command=lambda: app.updates.check()).pack(side="right")
-    app.update_status = tk.StringVar(value="")
-    ttk.Label(updates, textvariable=app.update_status, wraplength=600,
-              style="WhiteMuted.TLabel").pack(anchor="w", pady=(4, 8))

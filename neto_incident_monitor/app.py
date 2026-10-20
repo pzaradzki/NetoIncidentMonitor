@@ -323,8 +323,6 @@ class App:
         self.column_widths = settings.get("column_widths", {})
         from neto_incident_monitor.ui import build_ui
         build_ui(self, settings)
-        from neto_incident_monitor.update_ui import UpdateController
-        self.updates = UpdateController(self, settings, apply_startup)
         self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
         self.auto_login.trace_add("write", self.save_auto_login)
@@ -345,13 +343,12 @@ class App:
         self.window_restoring = True
         root.bind("<Configure>", self.window_changed, add="+")
         def restore_window():
-            import sys
             if self.window_layout.get("maximized", False):
                 root.state("zoomed")
             if apply_startup and self.start_minimized.get():
                 root.iconify()
             self.window_restoring = False
-            if apply_startup and (self.start_monitoring.get() or '--resume-monitoring' in sys.argv) and any(f.get("enabled", True) for f in self.filters):
+            if apply_startup and self.start_monitoring.get() and any(f.get("enabled", True) for f in self.filters):
                 root.after(200, self.start)
         root.after_idle(restore_window)
         root.after(200, self.drain)
@@ -1603,8 +1600,6 @@ class App:
                     self.check_deadlines = value
                 elif kind == "large_list_prompt":
                     self.show_large_list_prompt(value)
-                elif kind.startswith("update_"):
-                    self.updates.handle(kind, value)
                 elif kind == "status":
                     self.status.set(value)
                 elif kind == "tray_ready":
