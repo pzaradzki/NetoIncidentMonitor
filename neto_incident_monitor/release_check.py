@@ -1,12 +1,15 @@
 """Manual release lookup. Opens a release page, never downloads or installs files."""
 import json
+import logging
 import queue
 import re
+import ssl
 import threading
 import tkinter as tk
 import webbrowser
 from tkinter import ttk
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 from neto_incident_monitor import __version__
 from neto_incident_monitor.theme import BG
@@ -14,6 +17,22 @@ from neto_incident_monitor.widgets import RoundedButton
 
 API = 'https://api.github.com/repos/pzaradzki/NetoIncidentMonitor/releases/latest'
 RELEASES = 'https://github.com/pzaradzki/NetoIncidentMonitor/releases/tag/'
+LOG = logging.getLogger(__name__)
+
+
+def failure_message(error):
+    if isinstance(error, HTTPError):
+        if error.code in (403, 429):
+            return 'GitHub ograniczył dostęp do sprawdzania wydań. Spróbuj ponownie później.'
+        if error.code == 404:
+            return 'Nie znaleziono opublikowanego wydania aplikacji na GitHubie.'
+        return f'GitHub zwrócił błąd HTTP {error.code}. Spróbuj ponownie później.'
+    reason = error.reason if isinstance(error, URLError) else error
+    if isinstance(reason, ssl.SSLError):
+        return 'Nie udało się zweryfikować bezpiecznego połączenia z GitHubem. Szczegóły zapisano w logu.'
+    if isinstance(reason, (TimeoutError, OSError)):
+        return 'Nie udało się połączyć z GitHubem. Sprawdź połączenie internetowe lub dostęp przez sieć firmową.'
+    return 'Nie udało się odczytać informacji o wydaniu GitHub. Szczegóły zapisano w logu.'
 
 
 def version(value):
@@ -45,7 +64,7 @@ def show_result(owner, newer, url=None, error=False):
     dialog.resizable(False, False)
     panel = ttk.Frame(dialog, padding=24)
     panel.pack(fill='both', expand=True)
-    text = ('Nie udało się sprawdzić aktualizacji. Spróbuj ponownie później.' if error else
+    text = ((error if isinstance(error, str) else 'Nie udało się sprawdzić aktualizacji. Spróbuj ponownie później.') if error else
             'Nowa wersja aplikacji jest dostępna' if newer else
             'Najnowsza wersja aplikacji jest zainstalowana')
     message = ttk.Label(panel, text=text, wraplength=420)
@@ -85,8 +104,9 @@ def check_updates(owner, button):
     def work():
         try:
             results.put(latest_release())
-        except Exception:
-            results.put(None)
+        except Exception as error:
+            LOG.exception('Nie udało się sprawdzić najnowszego wydania GitHub')
+            results.put(failure_message(error))
 
     def poll():
         if not owner.winfo_exists():
@@ -99,8 +119,8 @@ def check_updates(owner, button):
         button.configure(state='normal')
         if owner.state() == 'withdrawn':
             return
-        if result is None:
-            show_result(owner, False, error=True)
+        if isinstance(result, str):
+            show_result(owner, False, error=result)
         else:
             show_result(owner, *result)
 

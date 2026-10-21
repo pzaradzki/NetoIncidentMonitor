@@ -1,6 +1,8 @@
 import json
 import tkinter as tk
 import unittest
+import ssl
+from urllib.error import HTTPError, URLError
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor import release_check as checks
@@ -14,6 +16,13 @@ def descendants(widget):
 
 
 class ReleaseCheckTests(unittest.TestCase):
+    def test_errors_distinguish_certificate_network_and_server_failures(self):
+        self.assertIn('bezpiecznego', checks.failure_message(URLError(ssl.SSLCertVerificationError('certificate'))))
+        self.assertIn('połączyć', checks.failure_message(URLError(TimeoutError())))
+        self.assertIn('ograniczył', checks.failure_message(HTTPError(checks.API, 403, '', {}, None)))
+        self.assertIn('Nie znaleziono', checks.failure_message(HTTPError(checks.API, 404, '', {}, None)))
+        self.assertIn('HTTP 502', checks.failure_message(HTTPError(checks.API, 502, '', {}, None)))
+
     def test_version_comparison_and_validated_release_link(self):
         for tag, newer in [('v1.6.0', False), ('v1.5.9', False), ('v1.10.0', True), ('v2.0.0', True)]:
             with self.subTest(tag=tag), patch.object(checks, '__version__', '1.6.0'), patch.object(checks, 'urlopen') as fetch:
