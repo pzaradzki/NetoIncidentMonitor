@@ -19,6 +19,10 @@ def build_settings(app, settings):
     footer = ttk.Frame(window, style="White.TFrame", padding=(28, 12, 28, 24))
     footer.pack(fill="x", side="bottom")
     RoundedButton(footer, text="Zamknij", command=window.withdraw).pack(side="right")
+    from neto_incident_monitor.release_check import check_updates
+    update_button = RoundedButton(footer, text="Sprawdź aktualizacje",
+                                  command=lambda: check_updates(window, update_button))
+    update_button.pack(side="left")
     viewport = ttk.Frame(window, style="White.TFrame")
     viewport.pack(fill="both", expand=True)
     viewport.columnconfigure(0, weight=1)
