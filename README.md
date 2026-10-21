@@ -1,206 +1,41 @@
 # Neto Incident Monitor
 
-Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monitoruje listy incydentów w ServiceNow i powiadamia o nowych zgłoszeniach. Dane są odczytywane z interfejsu internetowego ServiceNow za pomocą Playwright i przeglądarki Chromium. Aplikacja nie korzysta z API ServiceNow.
+Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych **SCTASK** w ServiceNow. Odczytuje dane przez przeglądarkę Chromium, bez korzystania z API ServiceNow.
 
-## Główne funkcje
+## Funkcje
 
-- Monitorowanie wielu filtrów z możliwością ich włączania i wyłączania podczas pracy.
-- Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams i Google Chat.
-- Oddzielna historia każdego filtra i lokalne oznaczanie incydentów jako przeczytanych.
-- Otwieranie incydentów oraz kopiowanie ich numerów i adresów z menu kontekstowego.
-- Konfigurowanie widoczności, kolejności i szerokości kolumn.
-- Zapamiętywanie układu interfejsu, rozmiaru okna i stanu maksymalizacji.
-- Praca w zasobniku systemowym oraz obsługa wybranych scenariuszy automatycznego logowania.
+- Monitorowanie wielu list z niezależnymi ustawieniami.
+- Powiadomienia Windows, Microsoft Teams i Google Chat.
+- Oddzielne harmonogramy odczytu dla INC i SCTASK.
+- Historia zgłoszeń oraz konfiguracja kolumn dla każdej listy.
+- Praca w zasobniku systemowym i obsługa zapamiętanej sesji logowania.
+- Sprawdzanie dostępności aktualizacji i formularz zgłoszeń.
 
-## Wymagania
+## Uruchomienie
 
-- Windows 10 lub Windows 11 w wersji 64-bitowej.
-- Dostęp sieciowy do instancji ServiceNow i uprawnienia do odczytu monitorowanych list.
-- Python 3.12 w przypadku uruchamiania aplikacji z kodu źródłowego.
-
-Pakiet aplikacji udostępniany w Releases zawiera wymagane biblioteki i przeglądarkę Chromium. Nie wymaga instalacji Pythona. Instalacja zależności dla kodu źródłowego wymaga dostępu do internetu.
-
-## Instalacja i uruchomienie
-
-### Gotowy pakiet dla Windows
-
-1. Pobierz plik `Neto.Incident.Monitor.zip` z [najnowszego wydania](https://github.com/pzaradzki/NetoIncidentMonitor/releases/latest).
-2. Rozpakuj całe archiwum do wybranego katalogu.
+1. Pobierz ZIP z [najnowszego wydania](https://github.com/pzaradzki/NetoIncidentMonitor/releases/latest).
+2. Rozpakuj całe archiwum.
 3. Uruchom `Neto Incident Monitor.exe`.
+4. Dodaj adres listy ServiceNow, wybierz **Uruchom monitoring** i zaloguj się.
 
-Katalog `_internal` musi znajdować się obok pliku wykonywalnego. Zawiera biblioteki, zasoby graficzne i przeglądarkę niezbędne do działania aplikacji.
+Katalog `_internal` musi pozostać obok pliku EXE. Pakiet zawiera Chromium i wymagane biblioteki; instalacja Pythona nie jest potrzebna.
 
-Aby zainstalować aktualizację, zamknij aplikację i zastąp jej katalog zawartością nowego pakietu. Ustawienia i historia pozostaną zachowane, ponieważ są przechowywane poza katalogiem instalacji.
+**Wymagania:** Windows 10/11 (64-bit), dostęp do ServiceNow oraz uprawnienia do monitorowanych list. Powiadomienia Teams i Google Chat wymagają konfiguracji webhooka.
 
-### Uruchomienie z kodu źródłowego
+## Aktualizacja i dane
 
-W katalogu projektu uruchom `start.bat`. Skrypt tworzy środowisko wirtualne `.venv`, instaluje zależności i Chromium, a następnie uruchamia aplikację.
+Aby zaktualizować aplikację, zamknij ją i zastąp katalog aplikacji zawartością nowego pakietu.
 
-Środowisko można również przygotować ręcznie w PowerShell:
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m playwright install chromium
-.\.venv\Scripts\python.exe launcher.pyw
-```
-
-Po przygotowaniu środowiska plik `Neto Incident Monitor.vbs` umożliwia uruchamianie aplikacji bez okna konsoli.
-
-## Obsługa aplikacji
-
-### Konfiguracja monitorowania
-
-1. Wybierz **Dodaj filtr** i wprowadź nazwę oraz pełny adres listy ServiceNow z zastosowanym filtrem.
-2. Wybierz **Uruchom monitoring** i zaloguj się w otwartym oknie Chromium. Aplikacja automatycznie rozpoznaje zakończenie logowania.
-3. Korzystaj z przełączników przy filtrach, aby włączać lub wyłączać poszczególne listy, również podczas monitorowania.
-
-Każdy filtr ma własną listę bieżących incydentów i własną historię. Czerwone zaznaczenie w panelu filtrów określa zawartość obu zakładek. Ten sam numer incydentu może być niezależnie wykryty w kilku filtrach.
-
-Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
-
-Ikona dzwonka przy filtrze otwiera **Ustawienia filtra**, obejmujące powiadomienia i zgodę na duże odczyty:
-
-- **Powiadomienia Windows**, **Powiadomienia Microsoft Teams** i **Powiadomienia Google Chat** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
-- **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
-
-Powrót oznacza ponowne pojawienie się incydentu po poprawnym odczycie, który potwierdził jego nieobecność. Błąd odczytu, wyłączenie filtra i ponowne uruchomienie aplikacji nie stanowią potwierdzenia zniknięcia. Ostatnia potwierdzona obecność i wcześniejsze wystąpienia są zachowywane między uruchomieniami.
-
-Pierwszy odczyt nowego filtra wykrywa znajdujące się w nim incydenty i może wysłać powiadomienia zgodnie z ustawieniami kanałów. Przy aktualizacji istniejące dane wykrywania są zachowywane, aby uniknąć ponownych alertów tylko z powodu aktualizacji.
-
-Powiadomienie zawiera nazwę filtra, liczbę wykrytych incydentów oraz ich numery, lokalizacje i krótkie opisy. Zmiana danych incydentu pozostającego na liście nie powoduje nowego powiadomienia o pojawieniu się.
-
-### Bieżące incydenty i historia
-
-Zakładka **Bieżące zgłoszenia** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
-
-Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.
-
-Przycisk **Przeczytaj wszystkie** oznacza historię wybranego filtra jako przeczytaną. **Wyczyść historię** usuwa wpisy tego filtra po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
-
-### Kolumny i układ interfejsu
-
-Przycisk **Kolumny** otwiera konfigurację widocznych pól. Pola niedostępne w monitorowanych listach ServiceNow są automatycznie ukrywane po odczycie danych.
-
-- Przeciągnięcie nagłówka zmienia kolejność kolumn.
-- Przeciągnięcie krawędzi nagłówka zmienia szerokość kolumny.
-- Kliknięcie nagłówka przełącza sortowanie pomiędzy kolejnością rosnącą, malejącą i domyślną.
-
-Kolejność i szerokości wspólnych kolumn są synchronizowane między zakładkami. Kolumna **Wykryto (historia)** występuje wyłącznie w historii i pozostaje na końcu tabeli.
-
-Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości panelu. Układ kolumn, szerokość panelu oraz rozmiar i stan maksymalizacji okna są zapamiętywane między uruchomieniami.
-
-### Ustawienia i praca w tle
-
-Przycisk **Ustawienia**, oznaczony ikoną koła zębatego, otwiera konfigurację częstotliwości odczytu, powiadomień, logowania i minimalizacji. Zmiana częstotliwości odczytu oraz ustawień powiadomień Windows wymaga zatrzymania monitorowania i ponownego jego uruchomienia.
-
-Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończy działanie aplikacji. Przy włączonej minimalizacji do zasobnika systemowego monitoring pozostaje aktywny po zminimalizowaniu okna.
-
-## Logowanie i powiadomienia
-
-Automatyczne logowanie obsługuje rozpoznane strony logowania ADEO. Może wybrać pojedyncze zapamiętane konto i zatwierdzić formularz, jeśli pole hasła jest już uzupełnione. Gdy wymagane jest podanie hasła, wybór spośród wielu kont, uwierzytelnianie wieloskładnikowe lub obsługa błędu, aplikacja oczekuje na działanie użytkownika. Nie zapisuje samodzielnie hasła. Korzysta z własnego profilu Chromium, niezależnego od profilu przeglądarki Chrome użytkownika.
-
-Opcja „Całkowicie ukryj okno przeglądarki” w ustawieniach jest domyślnie wyłączona. Po włączeniu ukrywa Chromium także na pasku zadań i ma pierwszeństwo przed minimalizacją. Okno pojawia się, gdy potrzebne jest ręczne logowanie, a po zalogowaniu ponownie znika. Można je też przywrócić poleceniem „Pokaż przeglądarkę” w zasobniku aplikacji. Zmiana opcji działa po ponownym uruchomieniu monitoringu.
-
-Kliknięcie przycisku logowania ma limit 5 sekund. Po przekroczeniu limitu aplikacja ponawia je tylko wtedy, gdy obserwator w tym samym dokumencie potwierdza brak zdarzeń aktywacji przycisku lub wysłania formularza. Odstęp między próbami wynosi co najmniej 2 sekundy, a limit to 3 próby. Wykryte zdarzenie, zmiana dokumentu lub niepewny wynik wykluczają ponowne automatyczne wysłanie. Diagnostyka rozróżnia niewykonane kliknięcie, zaobserwowaną aktywację i nieznany wynik.
-
-Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [film instruktażowy konfiguracji powiadomień Teams](https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
-
-Google Chat jest trzecim, niezależnym kanałem. W ustawieniach globalnych wybierz **Google Chat → Konfiguruj**, wklej adres webhooka, użyj **Wyślij test**, zapisz konfigurację i włącz kanał. Przycisk **Instrukcja** prowadzi do [instrukcji Google](https://developers.google.com/workspace/chat/quickstart/webhooks). Webhook tworzysz w przeglądarkowej wersji Google Chat: wybrana przestrzeń → **Aplikacje i integracje → Dodaj webhooki**. Organizacja Google Workspace musi zezwalać na używanie webhooków. Power Automate i logowanie do Google w naszej aplikacji nie są potrzebne.
-
-Google Chat jest domyślnie wyłączony globalnie. Po skonfigurowaniu można wybierać powiadomienia osobno dla każdego filtra, tak samo jak Windows i Teams. Kanały mogą działać jednocześnie. Obsługiwane są INC i SCTASK, hiperłącza pod numerami oraz **Test powiadomienia** z menu kontekstowego. Ustawienia i webhook są zapamiętywane między sesjami. Wysyłanie działa w tle z ograniczoną kolejką i odstępem między wiadomościami; większe zestawy zgłoszeń są dzielone na części. Adres jest maskowany w oknie konfiguracji, a komunikaty błędów nie zawierają parametrów `key` ani `token`. Pełny adres webhooka jest zapisywany lokalnie w ustawieniach, podobnie jak adres Teams; nie udostępniaj pliku konfiguracji.
-
-## Przechowywanie danych
-
-| Sposób uruchomienia | Katalog danych |
-| --- | --- |
-| Pakiet z plikiem EXE | `%LOCALAPPDATA%\NetoIncidentMonitor` |
-| Kod źródłowy | `data` w katalogu projektu |
-
-Katalog danych zawiera ustawienia, historię, logi i profil przeglądarki. Wersja wykonywalna i wersja uruchamiana z kodu źródłowego korzystają z oddzielnych katalogów danych.
-
-W ustawieniach, w sekcji **Uruchamianie i okno aplikacji**, można włączyć automatyczny monitoring po uruchomieniu aplikacji, start aplikacji po zalogowaniu do Windows oraz uruchamianie ze zminimalizowanym oknem. Opcje są domyślnie wyłączone. Po jednoczesnym włączeniu **Uruchom aplikację zminimalizowaną** oraz **Minimalizacja do zasobnika** okno przy starcie trafia do zasobnika, również gdy ikona pojawi się z opóźnieniem. Przy błędzie zasobnika okno zostaje przywrócone. Automatyczny monitoring wymaga przynajmniej jednego włączonego filtra; logowanie do ServiceNow działa zgodnie z ustawieniami logowania. Autostart dotyczy bieżącego użytkownika i zapisuje ścieżkę do aplikacji, dlatego po przeniesieniu jej katalogu należy wyłączyć i ponownie włączyć tę opcję.
-
-Dane użytkownika, w tym adres webhook i dane sesji przeglądarki, nie powinny być dodawane do repozytorium ani do pakietów dystrybucyjnych. Repozytorium zawiera kod źródłowy; pliki wykonywalne, Chromium i katalog `dist` są udostępniane jako pakiety wydań.
-
-## Przygotowanie pakietu dystrybucyjnego
-
-Po utworzeniu środowiska `.venv` uruchom w PowerShell:
-
-```powershell
-.\scripts\build_exe.ps1
-```
-
-Skrypt instaluje narzędzia do budowania oraz Chromium, a następnie przygotowuje pakiet za pomocą PyInstaller:
+Ustawienia, historia, logi i profil przeglądarki są przechowywane w:
 
 ```text
-dist/
-  Neto Incident Monitor/
-    Neto Incident Monitor.exe
-    _internal/
+%LOCALAPPDATA%\NetoIncidentMonitor
 ```
 
-Do dystrybucji wymagany jest cały katalog `Neto Incident Monitor`. Dane i konfiguracja użytkownika nie są częścią pakietu.
+Aktualizacja zachowuje dane użytkownika. Nie udostępniaj katalogu danych, ponieważ zawiera konfigurację webhooków i sesję przeglądarki.
 
-## Testy i diagnostyka
+## Kod źródłowy
 
-Uruchomienie testów automatycznych:
+Wymagany Python 3.12. Uruchom `start.bat`, aby przygotować środowisko i uruchomić aplikację.
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-Testy interfejsu wymagają aktywnej sesji pulpitu Windows. Testy odczytu danych korzystają z lokalnych stron testowych i Chromium; nie wymagają konta ServiceNow. Integrację z docelową instancją, filtrami i procesem logowania należy zweryfikować oddzielnie.
-
-Podstawowy test uruchomienia pakietu, bez połączenia z ServiceNow:
-
-```powershell
-& '.\dist\Neto Incident Monitor\Neto Incident Monitor.exe' --smoke-test "$PWD\smoke-result.json"
-```
-
-Raport potwierdza uruchomienie interfejsu i dołączonej przeglądarki Chromium. Log błędów `monitor.log` znajduje się w katalogu danych aplikacji. Rotacja logów zachowuje do trzech plików archiwalnych.
-
-Szczegółowy przebieg logowania jest automatycznie zapisywany w `login-diagnostics.jsonl` w tym samym katalogu. Dla wersji EXE jest to `%LOCALAPPDATA%\NetoIncidentMonitor`, a dla kodu źródłowego katalog `data`. Każda próba ma własny identyfikator i czas zdarzeń. Log zawiera stan formularza (obecność i autouzupełnienie hasła, dostępność przycisku, liczba kont), próby kliknięć, przyczyny oczekiwania i przejścia do ręcznego logowania oraz typy błędów. Nie zapisuje wartości pól, loginów, haseł, treści strony, ciasteczek, ścieżek ani parametrów adresów SSO. Niezmieniony stan jest odnotowywany co 10 sekund. Plik ma limit 2 MB i trzy archiwalne kopie. Przy problemie z logowaniem zachowaj `login-diagnostics.jsonl` wraz z jego plikami `.1`, `.2`, `.3` oraz `monitor.log`.
-
-## Struktura projektu
-
-```text
-NetoIncidentMonitor/
-├── neto_incident_monitor/   # kod aplikacji
-├── tests/                  # testy automatyczne
-├── tools/                  # narzędzia diagnostyczne i podgląd interfejsu
-├── scripts/                # skrypt budowania i konfiguracja PyInstaller
-├── docs/                   # dokumentacja konfiguracji
-├── assets/                 # zasoby graficzne i ikony
-├── launcher.pyw            # punkt wejścia aplikacji
-├── start.bat               # przygotowanie środowiska i uruchomienie
-├── Neto Incident Monitor.vbs
-├── requirements.txt
-└── requirements-build.txt
-```
-
-Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia pomocnicze należy uruchamiać z katalogu głównego projektu, np. `python -m tools.preview_ui`.
-
-Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.
-
-Opcja **Podświetlaj nieprzeczytane incydenty** znajduje się w sekcji **Lista incydentów** na końcu ustawień i jest domyślnie wyłączona. Zapisany wcześniej wybór użytkownika jest zachowywany. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
-
-### Zadania katalogowe (SCTASK)
-
-Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_task_list.do`). Obsługiwane są zarówno adresy bezpośrednie, jak i linki nawigacyjne `/now/nav/ui/classic/params/target/`. Po dodaniu filtra zadania SCTASK są odczytywane ze wszystkich stron listy i korzystają z osobnej historii oraz ustawień powiadomień tego filtra.
-
-W wyborze kolumn dostępne są także **Wnioskowane dla** i **Otwarte przez**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.
-
-Przycisk **Kolumny** konfiguruje widoczność pól osobno dla zaznaczonego filtra, wspólnie dla jego bieżącej listy i historii. Wybór jest zapamiętywany między uruchomieniami. Konfigurator pokazuje pola odpowiednie dla INC lub SCTASK; **Przywróć domyślne** wybiera zestaw właściwy dla rodzaju listy. Dotychczasowy globalny wybór jest zachowany jako ustawienie początkowe dla filtrów incydentów. Nowe filtry SCTASK otrzymują zestaw obejmujący numer, wnioskowaną osobę, priorytet, stan, krótki opis, grupę przypisania i przypisaną osobę.
-
-W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **SCTASK** (minimum 15 sekund). Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał SCTASK wynosi 3600 sekund (godzinę); wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty nadal odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
-
-### Ochrona przed dużymi listami
-
-Przy listach zawierających ponad 1000 wpisów aplikacja pyta o zgodę na pełny odczyt. Pytanie dotyczy zarówno INC, jak i SCTASK. Masz 15 sekund na odpowiedź: **Kontynuuj odczyt** pozwala na bieżący odczyt, **Wyłącz filtr** wyłącza filtr, a brak odpowiedzi pomija bieżący odczyt bez wyłączania filtra. Zaznaczenie **Zapamiętaj zgodę dla tego filtra** przy potwierdzeniu zapisuje zgodę między sesjami. Bez zaznaczenia pytanie wróci przy każdym odczycie dużej listy. Gdy licznik wszystkich wpisów w SNOW jest niedostępny, pytanie pojawia się po przekroczeniu 1000 odczytanych rekordów. Pominięcie nie zapisuje częściowego wyniku, nie zmienia historii ani potwierdzonej obecności zgłoszeń.
-
-Zapamiętaną zgodę na duże odczyty można cofnąć w **Ustawieniach filtra**: wyłącz **Pobieraj duże listy bez pytania** i wybierz **Zapisz**. Pytanie wróci przy następnym odczycie listy ponad 1000 wpisów; bieżący odczyt nie jest przerywany.
-
-W powiadomieniach Teams numery INC i SCTASK są hiperłączami do rekordów ServiceNow. Format INC: numer, lokalizacja, krótki opis. Format SCTASK: numer, krótki opis, wnioskowane dla. W powiadomieniach Windows numery pozostają zwykłym tekstem. Przepływ korzystający z `triggerBody()?['text']` otrzymuje gotową treść HTML z hiperłączami.
-
-Opcja **Test powiadomienia** na dole menu kontekstowego wysyła powiadomienie z klikniętym INC lub SCTASK, korzystając z danych bieżącej listy albo historii. Obowiązują globalne i indywidualne ustawienia kanałów powiadomień. Test nie zmienia oznaczenia przeczytania ani pamięci wykrytych zgłoszeń i działa także dla wyłączonego filtra.
+Szczegółowe informacje zawiera [dokumentacja użytkownika i projektu](docs/user-guide.md).
