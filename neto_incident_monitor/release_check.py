@@ -10,6 +10,7 @@ import webbrowser
 from tkinter import ttk
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse, unquote
 
 from neto_incident_monitor import __version__
 from neto_incident_monitor.theme import BG
@@ -20,10 +21,25 @@ RELEASES = 'https://github.com/pzaradzki/NetoIncidentMonitor/releases/tag/'
 LOG = logging.getLogger(__name__)
 
 
+def release_page_tag():
+    request = Request('https://github.com/pzaradzki/NetoIncidentMonitor/releases/latest',
+                      headers={'User-Agent': f'NetoIncidentMonitor/{__version__}'}, method='HEAD')
+    with urlopen(request, timeout=15) as response:
+        address = urlparse(response.geturl())
+    prefix = '/pzaradzki/NetoIncidentMonitor/releases/tag/'
+    if address.scheme != 'https' or address.netloc != 'github.com' or not address.path.startswith(prefix):
+        raise ValueError('Nieprawidłowy adres wydania GitHub.')
+    tag = unquote(address.path[len(prefix):])
+    version(tag)
+    return version(tag) > version(__version__), RELEASES + tag
+
+
 def failure_message(error):
     if isinstance(error, HTTPError):
-        if error.code in (403, 429):
+        if error.code == 429 or (error.code == 403 and error.headers.get('X-RateLimit-Remaining') == '0'):
             return 'GitHub ograniczył dostęp do sprawdzania wydań. Spróbuj ponownie później.'
+        if error.code == 403:
+            return 'Dostęp do informacji o wydaniu został odrzucony (HTTP 403). Szczegóły zapisano w logu.'
         if error.code == 404:
             return 'Nie znaleziono opublikowanego wydania aplikacji na GitHubie.'
         return f'GitHub zwrócił błąd HTTP {error.code}. Spróbuj ponownie później.'
@@ -44,8 +60,16 @@ def version(value):
 def latest_release():
     request = Request(API, headers={'Accept': 'application/vnd.github+json',
                                   'User-Agent': f'NetoIncidentMonitor/{__version__}'})
-    with urlopen(request, timeout=15) as response:
-        content = response.read(1_000_001)
+    try:
+        with urlopen(request, timeout=15) as response:
+            content = response.read(1_000_001)
+    except HTTPError as error:
+        LOG.warning('GitHub HTTP %s, remaining=%s, reset=%s, retry_after=%s',
+                    error.code, error.headers.get('X-RateLimit-Remaining'),
+                    error.headers.get('X-RateLimit-Reset'), error.headers.get('Retry-After'))
+        if error.code == 429 or (error.code == 403 and error.headers.get('X-RateLimit-Remaining') == '0'):
+            return release_page_tag()
+        raise
     if len(content) > 1_000_000:
         raise ValueError('Nieprawidłowa odpowiedź GitHub.')
     data = json.loads(content)

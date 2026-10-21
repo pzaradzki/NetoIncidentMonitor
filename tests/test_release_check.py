@@ -19,7 +19,8 @@ class ReleaseCheckTests(unittest.TestCase):
     def test_errors_distinguish_certificate_network_and_server_failures(self):
         self.assertIn('bezpiecznego', checks.failure_message(URLError(ssl.SSLCertVerificationError('certificate'))))
         self.assertIn('połączyć', checks.failure_message(URLError(TimeoutError())))
-        self.assertIn('ograniczył', checks.failure_message(HTTPError(checks.API, 403, '', {}, None)))
+        self.assertIn('ograniczył', checks.failure_message(HTTPError(checks.API, 403, '', {'X-RateLimit-Remaining': '0'}, None)))
+        self.assertIn('odrzucony', checks.failure_message(HTTPError(checks.API, 403, '', {}, None)))
         self.assertIn('Nie znaleziono', checks.failure_message(HTTPError(checks.API, 404, '', {}, None)))
         self.assertIn('HTTP 502', checks.failure_message(HTTPError(checks.API, 502, '', {}, None)))
 
@@ -34,6 +35,23 @@ class ReleaseCheckTests(unittest.TestCase):
                 fetch.return_value.__enter__.return_value.read.return_value = json.dumps(data).encode()
                 with self.assertRaises(ValueError):
                     checks.latest_release()
+
+    def test_rate_limit_uses_official_release_redirect(self):
+        response = Mock()
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        response.geturl.return_value = checks.RELEASES + 'v2.0.0'
+        error = HTTPError(checks.API, 403, '', {'X-RateLimit-Remaining': '0'}, None)
+        with patch.object(checks, 'urlopen', side_effect=[error, response]):
+            self.assertEqual(checks.latest_release(), (True, checks.RELEASES + 'v2.0.0'))
+        with patch.object(checks, 'urlopen', side_effect=HTTPError(checks.API, 403, '', {}, None)) as fetch:
+            with self.assertRaises(HTTPError):
+                checks.latest_release()
+            self.assertEqual(fetch.call_count, 1)
+        response.geturl.return_value = 'https://example.com/releases/tag/v2.0.0'
+        with patch.object(checks, 'urlopen', return_value=response):
+            with self.assertRaises(ValueError):
+                checks.release_page_tag()
 
     def test_result_buttons_open_only_on_user_click(self):
         root = tk.Tk()
