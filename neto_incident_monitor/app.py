@@ -74,13 +74,24 @@ def validate_urls(text):
     return list(dict.fromkeys(normalize_url(url) for url in urls))
 
 
-def load_filters(settings):
+def load_filters(settings, tolerate_invalid=False):
     """Migrate the previous URL-only configuration without touching seen state."""
     entries = settings.get("filters") or [
         {"name": f"Filtr {index}", "url": url}
         for index, url in enumerate(settings.get("urls", []), 1)
     ]
-    return [{**entry, "url": normalize_url(entry["url"])} for entry in entries]
+    result = []
+    for entry in entries:
+        try:
+            validated = {**entry, "url": normalize_url(entry["url"])}
+            validated.pop('url_invalid', None)
+            result.append(validated)
+        except ValueError:
+            if not tolerate_invalid:
+                raise
+            # Keep the original value editable, but never navigate to it.
+            result.append({**entry, "enabled": False, "url_invalid": True})
+    return result
 
 
 def incident_values(incident):
@@ -313,7 +324,7 @@ class App:
         self.google_chat_webhook = settings.get("google_chat_webhook", "")
         self.saved_google_chat = settings.get("google_chat_enabled", False), self.google_chat_webhook
         self.saving_google_chat = False
-        self.filters = load_filters(settings)
+        self.filters = load_filters(settings, tolerate_invalid=True)
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.legacy_visible_columns = settings.get("visible_columns", DEFAULT)
         self.filter_visible_columns = settings.get("filter_visible_columns", {})
@@ -324,6 +335,9 @@ class App:
         self.column_widths = settings.get("column_widths", {})
         from neto_incident_monitor.ui import build_ui
         build_ui(self, settings)
+        invalid_count = sum(bool(entry.get('url_invalid')) for entry in self.filters)
+        if invalid_count:
+            self.status.set(f'Wyłączono filtry z nieprawidłowym adresem: {invalid_count}. Popraw ich adresy w edycji filtra.')
         self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
         from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
@@ -969,6 +983,12 @@ class App:
         index = int(item)
         entry = self.filters[index]
         old = entry.get("enabled", True)
+        if not old:
+            try:
+                normalize_url(entry['url'])
+            except ValueError as error:
+                messagebox.showerror('Adres filtra', str(error), parent=self.root)
+                return
         entry["enabled"] = not old
         try:
             self.persist_filters()
@@ -1017,9 +1037,10 @@ class App:
                 urls = validate_urls(address.get("1.0", "end"))
                 if len(urls) != 1 or not name.get().strip():
                     raise ValueError("Podaj nazwę i jeden adres filtra.")
-                if any(normalize_url(other["url"]) == urls[0] for i, other in enumerate(self.filters) if i != index):
+                if any(other["url"] == urls[0] for i, other in enumerate(self.filters) if i != index):
                     raise ValueError("Ten adres jest już zapisany jako inny filtr.")
                 updated = {**entry, "name": name.get().strip(), "url": urls[0], "enabled": entry.get("enabled", True)}
+                updated.pop('url_invalid', None)
                 proposed = [dict(item) for item in self.filters]
                 if edit:
                     proposed[index] = updated
@@ -1407,12 +1428,12 @@ class App:
         if self.worker and self.worker.is_alive():
             return
         try:
-            urls = validate_urls("\n".join(entry["url"] for entry in self.filters))
+            filters = load_filters({"filters": self.filters}, tolerate_invalid=True)
+            urls = validate_urls("\n".join(entry["url"] for entry in filters if entry.get('enabled', True)))
             interval = int(self.interval.get())
             task_interval = int(self.task_interval.get())
             if min(interval, task_interval) < 15:
                 raise ValueError("Minimalny odstęp wynosi 15 sekund.")
-            filters = load_filters({"filters": self.filters})
             settings = {"urls": urls, "filters": filters,
                         "interval": interval, "task_interval": task_interval, "notify": self.notify.get(), "auto_login": self.auto_login.get(),
                         "minimize_to_tray": self.minimize_to_tray.get(),

@@ -13,7 +13,11 @@ class FilterState:
             for url, numbers in raw.items()}
         normalized = {}
         for url, state in self.filters.items():
-            key = normalize(url)
+            try:
+                key = normalize(url)
+            except ValueError:
+                # Old membership data must not prevent safe filters from running.
+                continue
             current = normalized.setdefault(key, {"present": [], "ever": []})
             for field in ("present", "ever"):
                 current[field] = sorted(set(current[field]) | set(state.get(field, [])))

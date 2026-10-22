@@ -11,6 +11,31 @@ BASE = 'https://adeo.service-now.com'
 
 
 class SecurityTests(unittest.TestCase):
+    def test_saved_invalid_filter_is_preserved_disabled_without_blocking_ui(self):
+        import tempfile
+        import tkinter as tk
+        from pathlib import Path
+        from unittest.mock import patch
+        from neto_incident_monitor.app import App
+        settings = {'filters': [{'name': 'Old', 'url': 'https://evil.test/admin'},
+                                {'name': 'Valid', 'url': BASE + '/incident_list.do'}]}
+        root = tk.Tk()
+        try:
+            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.app.read_json', return_value=settings):
+                app = App(root, history_path=Path(folder)/'history.json', enable_tray=False, apply_startup=False)
+            root.update()
+            self.assertFalse(app.filters[0]['enabled'])
+            self.assertEqual(app.filters[0]['url'], 'https://evil.test/admin')
+            self.assertIn('1', app.status.get())
+            with patch('neto_incident_monitor.app.messagebox.showerror') as error:
+                app.toggle_filter('0')
+                error.assert_called_once()
+            self.assertFalse(app.filters[0]['enabled'])
+        finally:
+            for timer in root.tk.call('after', 'info'):
+                root.after_cancel(timer)
+            root.destroy()
+
     def test_list_policy_rejects_untrusted_inputs_at_config_and_navigation(self):
         bad = [
             'https://attacker.invalid/incident_list.do', 'https://localhost/incident_list.do',
