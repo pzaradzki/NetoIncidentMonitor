@@ -6,6 +6,9 @@ import threading
 from urllib.parse import urlparse, parse_qs
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
+from urllib.parse import quote
+from neto_incident_monitor.service_now_urls import safe_record_url
+from neto_incident_monitor.notification_text import card_text, plain_text
 
 
 def validate_webhook(value):
@@ -48,19 +51,20 @@ def payload(title, message, links=None):
     lines, card_lines = [], []
     for line in message.split("\n"):
         number = line.split(" - ", 1)[0]
-        url = (links or {}).get(number, "")
-        parsed = urlparse(url)
-        if parsed.scheme == "https" and parsed.hostname and not parsed.username and not parsed.password:
-            lines.append(f'<a href="{html.escape(url, quote=True)}">{html.escape(number)}</a>' + html.escape(line[len(number):]))
-            card_lines.append(f'[{number}]({url.replace("(", "%28").replace(")", "%29")})' + line[len(number):])
+        url = safe_record_url((links or {}).get(number, ""), number)
+        if url:
+            url = quote(url, safe=":/?#@!$&'*,;=%~-._")
+            lines.append(f'<a href="{html.escape(url, quote=True)}">{html.escape(number)}</a>' + html.escape(plain_text(line[len(number):])))
+            card_lines.append(f'[{number}]({url})' + card_text(line[len(number):]))
         else:
-            lines.append(html.escape(line))
-            card_lines.append(line)
-    text = html.escape(title) + "<br>" + "<br>".join(lines)
+            lines.append(html.escape(plain_text(line)))
+            card_lines.append(card_text(line))
+    title = ' '.join(title.splitlines())
+    text = html.escape(plain_text(title)) + "<br>" + "<br>".join(lines)
     return {"type": "message", "text": text, "attachments": [{
         "contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": None,
         "content": {"type": "AdaptiveCard", "version": "1.2", "body": [
-            {"type": "TextBlock", "text": title, "weight": "Bolder", "wrap": True},
+            {"type": "TextBlock", "text": card_text(title), "weight": "Bolder", "wrap": True},
             {"type": "TextBlock", "text": "\n".join(card_lines), "wrap": True}]}}]}
 
 

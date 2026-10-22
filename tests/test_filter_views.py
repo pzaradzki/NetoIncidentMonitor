@@ -13,8 +13,8 @@ class FilterViewTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory() as folder:
-                settings = {"highlight_unread": True, "filters": [{"name": "A", "url": "https://example.test/a"},
-                                        {"name": "B", "url": "https://example.test/b"}]}
+                settings = {"highlight_unread": True, "filters": [{"name": "A", "url": "https://adeo.service-now.com/incident_list.do?fixture=a"},
+                                        {"name": "B", "url": "https://adeo.service-now.com/incident_list.do?fixture=b"}]}
                 with patch("neto_incident_monitor.app.read_json", return_value=settings):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
                 root.update()
@@ -33,7 +33,7 @@ class FilterViewTests(unittest.TestCase):
                 app.filter_table.selection_set("0")
                 self.assertEqual(app.visible_columns, ["number", "state"])
                 app.visible_columns = list(app.legacy_visible_columns)
-                app.filters[1]["url"] = "https://example.test/sc_task_list.do"
+                app.filters[1]["url"] = "https://adeo.service-now.com/sc_task_list.do"
                 app.filter_table.selection_set("1")
                 self.assertIn("requested_for", app.applicable_columns())
                 self.assertNotIn("caller", app.applicable_columns())

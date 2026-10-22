@@ -26,8 +26,8 @@ class FilterStateTests(unittest.TestCase):
                 clock[0] += seconds
                 return len(waits) == 3
             app.schedule.wait.side_effect = wait
-            app.filters = [{"name": "INC", "url": "https://example.test/incident_list.do"},
-                           {"name": "TASK", "url": "https://example.test/sc_task_list.do"}]
+            app.filters = [{"name": "INC", "url": "https://adeo.service-now.com/incident_list.do"},
+                           {"name": "TASK", "url": "https://adeo.service-now.com/sc_task_list.do"}]
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder)/"history.json")
             settings = {"urls": [f["url"] for f in app.filters], "filters": app.filters,
@@ -57,8 +57,8 @@ class FilterStateTests(unittest.TestCase):
             app.stop = threading.Event()
             app.schedule = Mock()
             app.schedule.wait.return_value = True
-            app.filters = [{"name": "A", "url": "https://example.test/a"},
-                           {"name": "B", "url": "https://example.test/b"}]
+            app.filters = [{"name": "A", "url": "https://adeo.service-now.com/incident_list.do?fixture=a"},
+                           {"name": "B", "url": "https://adeo.service-now.com/incident_list.do?fixture=b"}]
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder)/"history.json")
             settings = {"urls": [entry["url"] for entry in app.filters], "filters": app.filters, "interval": 60}
@@ -68,7 +68,7 @@ class FilterStateTests(unittest.TestCase):
             context.pages = [page]
             playwright = MagicMock()
             playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-            incident = {"number": "INC1", "url": "https://example.test/incident"}
+            incident = {"number": "INC1", "url": "https://adeo.service-now.com/incident"}
 
             def cycle(a, b):
                 reads = [a if isinstance(a, Exception) else (a, 1), (b, 1)]
@@ -124,7 +124,7 @@ class FilterStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "history.json"
             history = History(path)
-            incident = {"number": "INC1", "url": "https://example.test/incident"}
+            incident = {"number": "INC1", "url": "https://adeo.service-now.com/incident"}
             history.add(incident, "Filter A", "A")
             history.add(incident, "Filter B", "B")
             history.mark_read(["INC1"], "A")

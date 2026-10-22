@@ -14,6 +14,14 @@ Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monito
 
 ## Wymagania
 
+### Walidacja adresów i treści powiadomień
+
+Ta konfiguracja aplikacji ufa wyłącznie instancji `adeo.service-now.com`. Filtry muszą używać HTTPS, portu 443 (jawnego lub domyślnego) i ścieżki `/incident_list.do` albo `/sc_task_list.do`. Obsługiwane są także linki classic normalizowane do tych ścieżek. Dane logowania w adresie, fragmenty oraz znaki sterujące są odrzucane. Walidacja działa przy odczycie konfiguracji i przed nawigacją. Zmiana zaufanej instancji wymaga świadomej zmiany polityki w `service_now_urls.py`.
+
+Linki INC i SCTASK są ograniczone do tej samej instancji oraz odpowiednich ścieżek `/incident.do` i `/sc_task.do`. Nieprawidłowy link pozostawia numer jako zwykły tekst; nie można go otworzyć z menu ani dwukrotnym kliknięciem. Zewnętrzna treść powiadomień nie może wprowadzać własnych hiperłączy lub formatowania Markdown. Jawne adresy w opisach są wyświetlane jako tekst bez automatycznego linkowania.
+
+Pillow jest przypięte do wersji 13.0.0 z poprawkami bezpieczeństwa. Aktualizacja biblioteki i kodu wymaga ponownej budowy dystrybucji; wcześniej przygotowane EXE i ZIP nie zmieniają się automatycznie.
+
 - Windows 10 lub Windows 11 w wersji 64-bitowej.
 - Dostęp sieciowy do instancji ServiceNow i uprawnienia do odczytu monitorowanych list.
 - Python 3.12 w przypadku uruchamiania aplikacji z kodu źródłowego.

@@ -48,7 +48,7 @@ class ReleaseCheckTests(unittest.TestCase):
             with self.assertRaises(HTTPError):
                 checks.latest_release()
             self.assertEqual(fetch.call_count, 1)
-        response.geturl.return_value = 'https://example.com/releases/tag/v2.0.0'
+        response.geturl.return_value = 'https://adeo.service-now.com/releases/tag/v2.0.0'
         with patch.object(checks, 'urlopen', return_value=response):
             with self.assertRaises(ValueError):
                 checks.release_page_tag()

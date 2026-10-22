@@ -63,18 +63,8 @@ def save_json(path, value):
 
 
 def normalize_url(url):
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.username:
-        raise ValueError("Każdy adres musi być poprawnym adresem HTTPS.")
-    prefix = "/now/nav/ui/classic/params/target/"
-    if not parsed.path.startswith(prefix):
-        return url
-    # Decode the navigation envelope exactly once. Encoded filter values
-    # inside sysparm_query must retain their own percent escaping.
-    target = urlparse(unquote(parsed.path[len(prefix):]))
-    if target.scheme or target.netloc or target.path not in ("incident_list.do", "/incident_list.do", "sc_task_list.do", "/sc_task_list.do"):
-        raise ValueError("Link nawigacyjny musi wskazywać listę incydentów lub zadań katalogowych na tym samym serwerze.")
-    return parsed._replace(path="/" + target.path.lstrip("/"), params="", query=target.query, fragment=target.fragment).geturl()
+    from neto_incident_monitor.service_now_urls import normalize_list_url
+    return normalize_list_url(url)
 
 
 def validate_urls(text):
@@ -108,7 +98,12 @@ def incident_values(incident):
 def collect(page, available=None):
     """Read incident fields by header identity, including empty-list metadata."""
     found = {}
+    from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
     for frame in page.frames:
+        try:
+            frame_url = normalize_list_url(frame.url)
+        except ValueError:
+            continue
         rows = frame.locator("table:visible").evaluate_all("""tables => tables.flatMap(table => {
           const visible = el => !!(el.getClientRects().length &&
             getComputedStyle(el).visibility !== 'hidden');
@@ -160,7 +155,7 @@ def collect(page, available=None):
             match = INC.fullmatch(row["label"].strip())
             if match:
                 number = match.group().upper()
-                found[number] = {"number": number, "url": row["href"],
+                found[number] = {"number": number, "url": safe_record_url(row["href"], number, frame_url),
                                  **{key: " ".join(value.split()) for key, value in row["fields"].items()},
                                  "summary": " ".join(row["fields"]["short_description"].split())
                                  or number}
@@ -169,10 +164,11 @@ def collect(page, available=None):
 
 def empty_list(page, url):
     """Accept the empty-list message only on the expected incident-list frame."""
+    from neto_incident_monitor.service_now_urls import trusted_url
     expected_host = urlparse(url).hostname
     for frame in page.frames:
         parsed = urlparse(frame.url)
-        if parsed.hostname != expected_host or parsed.path != urlparse(url).path:
+        if not trusted_url(frame.url) or parsed.hostname != expected_host or parsed.path != urlparse(url).path:
             continue
         messages = frame.get_by_text(re.compile(
             r"Brak\s+rekordów\s+do\s+wyświetlenia|No\s+records\s+to\s+display", re.I))
@@ -1758,16 +1754,18 @@ class App:
             self.root.after(200, self.drain)
 
     def open_incident(self, event):
+        from neto_incident_monitor.service_now_urls import safe_record_url
         if event.widget.identify_region(event.x, event.y) == "heading":
             return self.column_drag_start(event)
         item = event.widget.identify_row(event.y)
         if item:
             key = (event.widget, item)
-            url = self.items[key]
-            if urlparse(url).scheme == "https" and webbrowser.open(url):
+            url = safe_record_url(self.items[key], self.row_numbers[key])
+            if url and webbrowser.open(url):
                 self.mark_read([self.row_numbers[key]])
 
     def incident_context_menu(self, event):
+        from neto_incident_monitor.service_now_urls import safe_record_url
         table = event.widget
         item = table.identify_row(event.y)
         key = (table, item)
@@ -1776,21 +1774,24 @@ class App:
         table.selection_set(item)
         table.focus(item)
         number, url = self.row_numbers[key], self.items[key]
+        url = safe_record_url(url, number)
         menu = getattr(self, "incident_menu", None)
         if menu is not None:
             menu.destroy()
         menu = IncidentMenu(self.root)
         self.incident_menu = menu
         def open_selected():
-            if urlparse(url).scheme == "https" and webbrowser.open(url):
+            if url and webbrowser.open(url):
                 self.mark_read([number])
         def copy(value):
             self.root.clipboard_clear()
             self.root.clipboard_append(value)
-        menu.add_command(label="Otwórz incydent", command=open_selected)
+        if url:
+            menu.add_command(label="Otwórz incydent", command=open_selected)
         menu.add_separator()
         menu.add_command(label="Kopiuj numer", command=lambda: copy(number))
-        menu.add_command(label="Kopiuj link", command=lambda: copy(url))
+        if url:
+            menu.add_command(label="Kopiuj link", command=lambda: copy(url))
         if self.unread_highlighting_enabled():
             menu.add_separator()
             menu.add_command(label="Oznacz jako przeczytany", command=lambda: self.mark_read([number]))

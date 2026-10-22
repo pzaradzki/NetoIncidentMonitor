@@ -26,10 +26,11 @@ class GoogleChatTests(unittest.TestCase):
         records = [{'number': 'INC123', 'location': 'Store', 'short_description': 'Printer'},
                    {'number': 'SCTASK456', 'short_description': 'Laptop', 'requested_for': 'Anna'}]
         _, message = incident_text(records)
-        link = 'https://example.test/record.do?id=123&view=default'
-        result = chat.payloads('Filter', message, {'INC123': link, 'SCTASK456': link})[0]['text']
+        link = 'https://adeo.service-now.com/incident.do?sys_id=123&view=default'
+        task_link = link.replace('/incident.do', '/sc_task.do')
+        result = chat.payloads('Filter', message, {'INC123': link, 'SCTASK456': task_link})[0]['text']
         self.assertIn(f'<{link}|INC123> - Store - Printer', result)
-        self.assertIn(f'<{link}|SCTASK456> - Laptop - Anna', result)
+        self.assertIn(f'<{task_link}|SCTASK456> - Laptop - Anna', result)
         unsafe = chat.payloads('<users/all>', 'INC123 - <users/all>', {'INC123': 'javascript:alert(1)'})[0]['text']
         self.assertNotIn('<users/all>', unsafe)
         self.assertNotIn('javascript', unsafe)
@@ -44,7 +45,7 @@ class GoogleChatTests(unittest.TestCase):
         for record in records:
             self.assertEqual(combined.count(record['number']), 1)
         long_line = chat.payloads('X' * 1000, 'SCTASK123 - ' + '😀' * 30000,
-                                  {'SCTASK123': 'https://example.test/' + '😀' * 3900})
+                                  {'SCTASK123': 'https://adeo.service-now.com/' + '😀' * 3900})
         self.assertTrue(all(len(item['text'].encode('utf-8')) < 28000 for item in long_line))
         quoted = chat.payloads('Title', '\n'.join('INC123 - ' + '"' * 5990 for _ in range(20)))
         self.assertTrue(all(len(json.dumps(item, ensure_ascii=False).encode('utf-8')) < 32000 for item in quoted))
@@ -107,7 +108,7 @@ class GoogleChatTests(unittest.TestCase):
 
     def test_global_and_per_filter_preferences_are_independent(self):
         app = self.make_app()
-        record = {'number': 'SCTASK123', 'short_description': 'Laptop', 'requested_for': 'Anna', 'url': 'https://example.test/task'}
+        record = {'number': 'SCTASK123', 'short_description': 'Laptop', 'requested_for': 'Anna', 'url': 'https://adeo.service-now.com/task'}
         with patch('plyer.notification.notify') as windows:
             app.notify_filter('filter', [record])
             windows.assert_not_called()
@@ -129,7 +130,7 @@ class GoogleChatTests(unittest.TestCase):
         app.selected_filter_url = Mock(return_value='filter')
         app.selected_filter_index = Mock(return_value=1)
         app.snapshots = {1: {'INC123': {'short_description': 'Printer'}}}
-        app.test_record_notification(app.current_table, 'INC123', 'https://example.test/inc')
+        app.test_record_notification(app.current_table, 'INC123', 'https://adeo.service-now.com/inc')
         app.google_chat_sender.submit.assert_called_once()
         app.history.mark_read.assert_not_called()
 

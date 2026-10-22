@@ -19,7 +19,7 @@ class SortingTests(unittest.TestCase):
             app.filters = [{'name': 'Test'}]
             app.current_table = app.make_table(ttk.Frame(root), False)
             for prefix in ('INC', 'SCTASK'):
-                app.snapshots = {1: {prefix+number: {'number': prefix+number, 'url': 'https://example.test/task'}
+                app.snapshots = {1: {prefix+number: {'number': prefix+number, 'url': 'https://adeo.service-now.com/task'}
                                      for number in ('9', '11', '10')}}
                 app.refresh_current()
                 expected = [prefix+'11', prefix+'10', prefix+'9']

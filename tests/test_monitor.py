@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from neto_incident_monitor.app import App, authentication_page, collect, empty_list, navigate, load_filters
 from neto_incident_monitor.history import History
 
-URL = "https://example.com/incident_list.do?sysparm_query=active%3Dtrue"
+URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue"
 
 
 class MonitorTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class MonitorTests(unittest.TestCase):
                 table = Mock()
                 table.identify_row.return_value = row
                 event = Mock(widget=table, y=42)
-                monitor.items = {(table, "row"): URL}
+                monitor.items = {(table, "row"): "https://adeo.service-now.com/incident.do?sys_id=test"}
                 monitor.row_numbers = {(table, "row"): "INC1234567"}
                 with patch("neto_incident_monitor.app.webbrowser.open", return_value=opened) as browser:
                     App.open_incident(monitor, event)
@@ -250,7 +250,7 @@ class MonitorTests(unittest.TestCase):
 
     def test_authentication_redirect(self):
         self.assertTrue(authentication_page(Mock(url="https://idp.example.com/SSO.ping"), URL))
-        self.assertTrue(authentication_page(Mock(url="https://example.com/login.do"), URL))
+        self.assertTrue(authentication_page(Mock(url="https://adeo.service-now.com/login.do"), URL))
         self.assertFalse(authentication_page(Mock(url=URL), URL))
 
     def test_real_browser_empty_then_first_incident(self):
@@ -261,7 +261,7 @@ class MonitorTests(unittest.TestCase):
                 page = browser.new_page()
                 page.set_default_timeout(5000)
                 page.set_default_navigation_timeout(10000)
-                page.route("https://example.com/**", lambda route: route.fulfill(
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(
                     content_type="text/html; charset=utf-8", body="<div>Brak rekordów do wyświetlenia</div>"))
                 navigate(page, URL)
                 self.assertEqual(collect(page), {})

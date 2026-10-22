@@ -9,6 +9,8 @@ from urllib.parse import parse_qs, urlparse, quote
 from urllib.request import Request, build_opener
 
 from neto_incident_monitor.teams_notifications import NoRedirect
+from neto_incident_monitor.service_now_urls import safe_record_url
+from neto_incident_monitor.notification_text import plain_text
 
 
 class DeliveryError(RuntimeError):
@@ -33,7 +35,7 @@ def validate_webhook(value):
 
 def plain(value):
     # Prevent record descriptions from introducing Google Chat mentions or link markup.
-    return value.replace('<', '‹').replace('>', '›')
+    return plain_text(value).translate(str.maketrans({'<': '‹', '>': '›', '*': '＊', '_': '＿', '~': '～', '`': 'ˋ'}))
 
 
 def payloads(title, message, links=None):
@@ -43,7 +45,7 @@ def payloads(title, message, links=None):
     for line in message.split('\n'):
         number = line.split(' - ', 1)[0]
         text = plain(line[:6000]) + ('…' if len(line) > 6000 else '')
-        url = (links or {}).get(number, '')
+        url = safe_record_url((links or {}).get(number, ''), number)
         try:
             parsed = urlparse(url)
             safe = (parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password

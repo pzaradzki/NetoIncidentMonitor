@@ -22,6 +22,8 @@ Katalog `_internal` musi pozostać obok pliku EXE. Pakiet zawiera Chromium i wym
 
 **Wymagania:** Windows 10/11 (64-bit), dostęp do ServiceNow oraz uprawnienia do monitorowanych list. Powiadomienia Teams i Google Chat wymagają konfiguracji webhooka.
 
+Ta konfiguracja aplikacji obsługuje listy z instancji `adeo.service-now.com`.
+
 ## Aktualizacja i dane
 
 Aby zaktualizować aplikację, zamknij ją i zastąp katalog aplikacji zawartością nowego pakietu.

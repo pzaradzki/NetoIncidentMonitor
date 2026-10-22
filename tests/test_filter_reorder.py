@@ -20,14 +20,14 @@ class FilterReorderTests(unittest.TestCase):
 
     def test_filter_scrollbar_hides_when_all_rows_fit(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
-            filters = [{'name': f'Filter {i}', 'url': f'https://example.test/list?id={i}'} for i in range(6)]
+            filters = [{'name': f'Filter {i}', 'url': f'https://adeo.service-now.com/incident_list.do?fixture=list&id={i}'} for i in range(6)]
             with patch('neto_incident_monitor.app.read_json', return_value={'filters': filters}):
                 app = App(self.root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
             self.root.geometry('1440x900')
             self.root.update()
             self.assertGreaterEqual(app.filter_table.winfo_height(), 6 * FilterList.ROW)
             self.assertEqual(app.filter_scroll.winfo_manager(), '')
-            app.filters += [{'name': f'More {i}', 'url': f'https://example.test/more?id={i}'} for i in range(30)]
+            app.filters += [{'name': f'More {i}', 'url': f'https://adeo.service-now.com/incident_list.do?fixture=more&id={i}'} for i in range(30)]
             app.refresh_filters()
             self.root.update()
             self.assertEqual(app.filter_scroll.winfo_manager(), 'grid')
@@ -73,7 +73,7 @@ class FilterReorderTests(unittest.TestCase):
         self.assertFalse(table.find_withtag("drop_marker"))
 
     def test_persistence_and_queued_reads_follow_filter_identity(self):
-        settings = {"filters": [{"name": name, "url": f"https://example.test/{name}"}
+        settings = {"filters": [{"name": name, "url": f"https://adeo.service-now.com/incident_list.do?name={name}"}
                                 for name in ("A", "B", "C")]}
         with tempfile.TemporaryDirectory() as folder, \
                 patch("neto_incident_monitor.app.read_json", return_value=settings), \

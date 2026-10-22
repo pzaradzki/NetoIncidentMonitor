@@ -28,8 +28,8 @@ class LargeListTests(unittest.TestCase):
             browser = p.chromium.launch(headless=True)
             try:
                 page = browser.new_page()
-                url = "https://example.test/sc_task_list.do"
-                page.route("https://example.test/**", lambda route: route.fulfill(
+                url = "https://adeo.service-now.com/sc_task_list.do"
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(
                     content_type="text/html; charset=utf-8", body='<div class="list2_paging">1 do 20 z 81 527</div>'))
                 page.goto(url)
                 self.assertEqual(list_total(page, url), 81527)

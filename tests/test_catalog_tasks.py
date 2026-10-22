@@ -8,8 +8,8 @@ from neto_incident_monitor.pagination import first_page, next_button
 class CatalogTaskTests(unittest.TestCase):
     def test_navigation_url_preserves_query_encoding(self):
         target = "sc_task_list.do?sysparm_query=request.requested_for.companyDYNAMIC123%5Eopened_by%3D456&sysparm_first_row=1&sysparm_view="
-        direct = "https://example.test/" + target
-        wrapped = "https://example.test/now/nav/ui/classic/params/target/" + quote(target, safe="")
+        direct = "https://adeo.service-now.com/" + target
+        wrapped = "https://adeo.service-now.com/now/nav/ui/classic/params/target/" + quote(target, safe="")
         self.assertEqual(normalize_url(wrapped), direct)
         self.assertEqual(normalize_url(direct), direct)
         self.assertIn("/sc_task_list.do?", first_page(direct))
@@ -20,7 +20,7 @@ class CatalogTaskTests(unittest.TestCase):
             browser = p.chromium.launch(headless=True)
             try:
                 page = browser.new_page()
-                page.route("https://example.test/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body='''
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body='''
                     <table><tr>
                     <th name="sc_task.number">Numer</th>
                     <th name="sc_task.request.state">Stan</th>
@@ -34,7 +34,7 @@ class CatalogTaskTests(unittest.TestCase):
                     <td>RITM1234567</td><td>Przygotowanie sprzętu</td></tr></table>
                     <button data-type="list_nav_next" disabled>Next page</button>
                 '''))
-                page.goto("https://example.test/sc_task_list.do")
+                page.goto("https://adeo.service-now.com/sc_task_list.do")
                 available = set()
                 rows = collect(page, available)
                 self.assertEqual(set(rows), {"SCTASK1954200"})

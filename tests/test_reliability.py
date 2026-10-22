@@ -12,7 +12,7 @@ from neto_incident_monitor.monitoring import Health, Schedule
 from neto_incident_monitor.pagination import read_all, first_page, AuthenticationRequired, Cancelled
 from neto_incident_monitor.single_instance import SingleInstance
 
-URL = "https://example.com/incident_list.do?sysparm_query=active%3Dtrue&sysparm_first_row=21"
+URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue&sysparm_first_row=21"
 
 
 class ReliabilityTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class ReliabilityTests(unittest.TestCase):
                 html = '''<div style="display:none">Brak rekordów do wyświetlenia</div>
                     <div>\n Brak rekordów\n do wyświetlenia. \n</div>
                     <input class="list2_page" value="1"><div class="list2_paging"></div>'''
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
                 result, pages = read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
                 self.assertEqual(result, {})
                 self.assertEqual(pages, 1)
@@ -77,7 +77,7 @@ class ReliabilityTests(unittest.TestCase):
                     sessionStorage.setItem('row',n);}
                   function firstPage(){setTimeout(()=>{n=1;render();},400);}
                   function nextPage(){n++;render();}render();</script>'''
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html", body=html))
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body=html))
                 for cycle in range(3):
                     progress = []
                     result, pages = read_all(page, URL, threading.Event(), collect, empty_list,
@@ -92,8 +92,8 @@ class ReliabilityTests(unittest.TestCase):
                 field_only = html.replace('<button data-type="list_nav_first" title="First page" onclick="firstPage()">First</button>', '')
                 field_only = field_only.replace("document.querySelector('[data-type=list_nav_first]').disabled=n===1;", '')
                 field_only = field_only.replace('<input class="list2_page">', '<input class="list2_page" onkeydown="if(event.key===\'Enter\')firstPage()">')
-                page.unroute("https://example.com/**")
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html", body=field_only))
+                page.unroute("https://adeo.service-now.com/**")
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body=field_only))
                 result, pages = read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
                 self.assertEqual(pages, 3)
                 self.assertEqual(len(result), 3)
@@ -158,7 +158,7 @@ class ReliabilityTests(unittest.TestCase):
                   <button data-type="list_nav_next" title="Następna strona" onclick="step()">Next</button>
                   <script>let n=1;function step(){n++;document.querySelector('#inc').textContent='INC000000'+n;
                   if(n===3)document.querySelector('button').disabled=true;}</script>'''
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
                 progress = []
                 result, count = read_all(page, URL, threading.Event(), collect, empty_list,
                                          authentication_page, navigate, lambda index, total: progress.append((index, total)))
@@ -169,14 +169,14 @@ class ReliabilityTests(unittest.TestCase):
                 result, count = read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
                 self.assertEqual(count, 3)
                 # Unknown pager fails rather than silently saving one page.
-                page.unroute("https://example.com/**")
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html", body='<table><tr><th>Number</th></tr><tr><td><a href="/incident.do">INC0000001</a></td></tr></table><input class="list2_page">'))
+                page.unroute("https://adeo.service-now.com/**")
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body='<table><tr><th>Number</th></tr><tr><td><a href="/incident.do">INC0000001</a></td></tr></table><input class="list2_page">'))
                 with self.assertRaisesRegex(RuntimeError, "Nie rozpoznano"):
                     read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
                 # A broken second page must not return a partial result.
-                page.unroute("https://example.com/**")
+                page.unroute("https://adeo.service-now.com/**")
                 broken = html.replace("n++;", "n++;document.querySelector('table').remove();")
-                page.route("https://example.com/**", lambda route: route.fulfill(content_type="text/html", body=broken))
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body=broken))
                 with self.assertRaisesRegex(RuntimeError, "Nie udało się odczytać"):
                     read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
             finally:

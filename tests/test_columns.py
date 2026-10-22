@@ -14,13 +14,15 @@ class ColumnTests(unittest.TestCase):
             browser = p.chromium.launch(headless=True)
             try:
                 page = browser.new_page()
+                page.route('https://adeo.service-now.com/**', lambda route: route.fulfill(body=''))
+                page.goto('https://adeo.service-now.com/incident_list.do')
                 headers = '<tr><th name="incident.cmdb_ci">Objęty element konfiguracji</th><th name="incident.assignment_group">Grupa przypisania</th><th name="incident.description">Opis</th><th name="incident.number">Numer</th><th name="incident.short_description">Krótki opis</th><th name="incident.sys_updated_on">Zaktualizowano</th><th name="incident.state">Stan</th><th name="incident.caller_id">Zgłaszający</th><th name="incident.assigned_to">Przypisane do</th><th name="incident.parent_incident">Incydent nadrzędny</th><th name="incident.location" style="display:none">Lokalizacja</th></tr>'
                 page.set_content('<table>' + headers + '</table>')
                 available = set()
                 self.assertEqual(collect(page, available), {})
                 self.assertIn('description', available)
                 self.assertNotIn('location', available)
-                page.set_content('<table>' + headers + '<tr><td>Drukarka</td><td>LMPL-L1-Support</td><td>Pełny opis</td><td><a href="https://example.com/incident.do">INC1234567</a></td><td>Krótki opis testowy</td><td>2026-10-08 12:00:00</td><td>Nowy</td><td>Anna</td><td></td><td><a href="https://example.com/incident.do">INC7654321</a></td><td style="display:none">Sklep</td></tr></table>')
+                page.set_content('<table>' + headers + '<tr><td>Drukarka</td><td>LMPL-L1-Support</td><td>Pełny opis</td><td><a href="https://adeo.service-now.com/incident.do">INC1234567</a></td><td>Krótki opis testowy</td><td>2026-10-08 12:00:00</td><td>Nowy</td><td>Anna</td><td></td><td><a href="https://adeo.service-now.com/incident.do">INC7654321</a></td><td style="display:none">Sklep</td></tr></table>')
                 rows = collect(page)
                 self.assertEqual(set(rows), {'INC1234567'})
                 row = rows['INC1234567']
@@ -52,7 +54,7 @@ class ColumnTests(unittest.TestCase):
                 app.column_availability[1].remove('state')
                 app.apply_visible_columns()
                 self.assertNotIn('state', app.current_table['displaycolumns'])
-                app.history.add({'number':'INC1234567','url':'https://example.com/incident.do', 'description':'Opis', '_available_columns':['number','description']}, 'Filtr', 'https://example.com')
+                app.history.add({'number':'INC1234567','url':'https://adeo.service-now.com/incident.do', 'description':'Opis', '_available_columns':['number','description']}, 'Filtr', 'https://example.com')
                 app.apply_visible_columns()
                 self.assertIn('description', app.table['displaycolumns'])
                 self.assertNotIn('state', app.table['displaycolumns'])

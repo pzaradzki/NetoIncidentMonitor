@@ -75,7 +75,8 @@ class TeamsTests(unittest.TestCase):
                                     "requested_for": "Anna", "location": "Unused"}])
         self.assertEqual(message, "SCTASK1234567 - Laptop <test> - Anna")
         for number in ("INC1234567", "SCTASK1234567"):
-            url = "https://example.test/task.do?sys_id=123&view=default"
+            path = 'sc_task' if number.startswith('SCTASK') else 'incident'
+            url = f"https://adeo.service-now.com/{path}.do?sys_id=123&view=default"
             value = payload("Filtr", f"{number} - Opis <test> - Anna", {number: url})
             self.assertIn(f'>{number}</a>', value["text"])
             self.assertIn("&amp;view=default", value["text"])
@@ -92,7 +93,7 @@ class TeamsTests(unittest.TestCase):
     def test_incident_numbers_keep_original_plain_text(self):
         original = 'INC7164358 - STORE 014 - Telefon 123456789\nINC7164363 - <Opis>'
         value = payload('Nowe incydenty: 2', original)
-        self.assertEqual(value['attachments'][0]['content']['body'][1]['text'], original)
+        self.assertEqual(value['attachments'][0]['content']['body'][1]['text'], original.replace('<', r'\<').replace('>', r'\>'))
         self.assertIn('INC7164358 - STORE 014', value['text'])
         self.assertIn('<br>INC7164363 - &lt;Opis&gt;', value['text'])
         self.assertNotIn('<code>', value['text'])

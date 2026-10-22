@@ -39,7 +39,7 @@ class LoginDiagnosticsTests(unittest.TestCase):
     def test_failed_inspection_records_only_exception_type(self):
         with self.assertLogs(diagnostics._logger, level='INFO') as captured:
             log = diagnostics.LoginDiagnostics()
-            page = Mock(url='https://example.com/private')
+            page = Mock(url='https://adeo.service-now.com/private')
             page.evaluate.side_effect = RuntimeError('PRIVATE_PASSWORD PRIVATE_TOKEN')
             log.inspect(page, None)
         self.assertNotIn('PRIVATE_', '\n'.join(captured.output))
