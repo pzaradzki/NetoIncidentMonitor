@@ -127,15 +127,26 @@ def collect(page, available=None):
         rows = frame.locator("table:visible").evaluate_all("""tables => tables.flatMap(table => {
           const visible = el => !!(el.getClientRects().length &&
             getComputedStyle(el).visibility !== 'hidden');
-          const headers = Array.from(table.querySelectorAll('th'))
-            .filter(th => th.closest('table') === table && visible(th));
+          const fieldName = th => (th.getAttribute('glide_field') || th.getAttribute('name') || th.getAttribute('data-name') || (/^(Numer|Number)$/i.test(th.textContent.trim()) ? 'number' : th.textContent.trim())).replace(/^(?:incident|sc_task)\\./, '');
+          const fieldLabel = th => (th.getAttribute('glide_label') || th.querySelector('a.column_head')?.textContent || th.textContent).trim();
+          const rows = Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr)
+            && !tr.classList.contains('list_header_search_row'));
+          const candidates = rows.map(tr => Array.from(tr.cells).filter(th => th.tagName === 'TH' && visible(th)
+            && !th.classList.contains('col-control') && !th.classList.contains('list-decoration-table')
+            && !th.querySelector('input, select, textarea, button, .list_header_search_toggle')
+            && !!fieldName(th)));
+          const marked = candidates.filter(cells => cells.some(th => th.hasAttribute('glide_field')));
+          const eligible = (marked.length ? marked : candidates).filter(cells => cells.some(th => fieldName(th) === 'number'));
+          if (!eligible.length) return [];
+          if (eligible.length !== 1) throw new Error('Ambiguous ServiceNow column headers');
+          const headers = eligible[0].filter(th => !marked.length || th.hasAttribute('glide_field'));
           const header = headers.find(th => {
-            const name = th.getAttribute('name') || th.getAttribute('data-name') || '';
+            const name = fieldName(th);
             return /^(?:(?:incident|sc_task)\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
           });
           if (!header) return [];
           const column = (names, labels) => headers.find(th => {
-            const name = (th.getAttribute('name') || th.getAttribute('data-name') || '').replace(/^(?:incident|sc_task)\\./, '');
+            const name = fieldName(th);
             return names.includes(name);
           }) || headers.find(th => labels.includes(th.innerText.trim().toLowerCase()));
           const fields = {
@@ -155,9 +166,9 @@ def collect(page, available=None):
             assignment_group: column(['assignment_group'], ['grupa przypisania', 'assignment group'])
           };
           const used = new Map();
-          const schema = headers.filter(th => th === header || th.innerText.trim()).map(th => {
-            const label = th.innerText.replace(/\\s+/g, ' ').trim();
-            const raw = (th.getAttribute('name') || th.getAttribute('data-name') || label).replace(/^(?:incident|sc_task)\\./, '');
+          const schema = headers.map(th => {
+            const label = fieldLabel(th).replace(/\\s+/g, ' ').trim();
+            const raw = fieldName(th);
             const known = th === header ? 'number' : Object.keys(fields).find(key => fields[key] === th);
             const base = known || 'sn:' + raw;
             const occurrence = used.get(base) || 0;
