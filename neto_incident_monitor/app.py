@@ -1693,6 +1693,8 @@ class App(DynamicColumns):
 
     def open_incident(self, event):
         from neto_incident_monitor.service_now_urls import safe_record_url
+        if event.widget.identify_region(event.x, event.y) == "separator":
+            return self.fit_column(event)
         if event.widget.identify_region(event.x, event.y) == "heading":
             return self.column_drag_start(event)
         item = event.widget.identify_row(event.y)

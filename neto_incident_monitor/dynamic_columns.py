@@ -48,7 +48,7 @@ def load_profiles(value):
         widths = profile.get('widths', {})
         result[url] = {'schema': schema, 'order': order,
                        'visible': [k for k in visible if isinstance(k, str) and k in keys] if isinstance(visible, list) else [],
-                       'widths': {k: max(70, min(1500, v)) for k, v in widths.items()
+                       'widths': {k: max(70, v) for k, v in widths.items()
                                   if k in keys and isinstance(v, int)} if isinstance(widths, dict) else {}}
     return result
 
@@ -118,7 +118,7 @@ class DynamicColumns:
             widths = profile.get('widths', {}) if profile else {}
             for key, _, width in definitions:
                 table.heading(key, text=titles[key], anchor='w', command=lambda column=key, t=table: self.toggle_sort(t, column))
-                table.column(key, width=max(70, min(1500, int(widths.get(key, width)))), minwidth=70, stretch=False)
+                table.column(key, width=max(70, int(widths.get(key, width))), minwidth=70, stretch=False)
 
     def table_values(self, table, incident, read_label, detected=''):
         values = dict(incident)
@@ -190,6 +190,27 @@ class DynamicColumns:
             messagebox.showerror('Kolumny', 'Nie udało się zapisać kolejności kolumn.', parent=self.root)
             return
         self.apply_visible_columns()
+
+    def fit_column(self, event):
+        from tkinter.font import Font
+        table = event.widget
+        column = self.column_at(table, event.x)
+        if column is None:
+            return 'break'
+        table.column_drag = None
+        table.column_resizing = False
+        self.hide_column_drop_marker(table)
+        table.configure(cursor='')
+        style = ttk.Style(table)
+        body = Font(table, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
+        heading = Font(table, font=style.lookup('Treeview.Heading', 'font') or 'TkHeadingFont')
+        width = heading.measure(table.heading(column, 'text')) + 24
+        for item in table.get_children():
+            # Measure every loaded row, including rows outside the viewport.
+            width = max(width, body.measure(table.set(item, column)) + 16)
+        table.column(column, width=max(int(table.column(column, 'minwidth')), width))
+        self.sync_column_widths(table)
+        return 'break'
 
     def sync_column_widths(self, source):
         if not self.column_profile():

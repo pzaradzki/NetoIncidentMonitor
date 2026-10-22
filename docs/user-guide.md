@@ -94,6 +94,7 @@ Przycisk **Kolumny** jest dostępny po pierwszym pełnym odczycie filtra. Aplika
 
 - Przeciągnięcie nagłówka zmienia kolejność kolumn.
 - Przeciągnięcie krawędzi nagłówka zmienia szerokość kolumny.
+- Dwukrotne kliknięcie separatora dopasowuje kolumnę po jego lewej stronie do nagłówka i zawartości wszystkich wczytanych wierszy. Dopasowana szerokość jest zapamiętywana dla filtra.
 - Kliknięcie nagłówka przełącza sortowanie pomiędzy kolejnością rosnącą, malejącą i domyślną.
 
 Widoczność, kolejność i szerokości kolumn są zapisywane osobno dla każdego filtra, wspólnie dla jego bieżącej listy i historii. Dodanie lub usunięcie kolumny w ServiceNow przywraca pełny zestaw i kolejność ze strony. Sama zmiana kolejności na stronie zachowuje własny układ użytkownika. Niepełny lub nieudany odczyt nie zmienia zapisanej konfiguracji.

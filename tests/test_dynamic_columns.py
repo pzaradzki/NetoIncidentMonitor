@@ -2,6 +2,7 @@ import copy
 import tempfile
 import tkinter as tk
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -211,3 +212,29 @@ class DynamicUITests(unittest.TestCase):
         app.filter_table.selection_set('0')
         self.assertEqual(app.current_table.column('sn:u_custom', 'width'), 277)
         self.assertEqual(app.column_profiles, saved)
+
+    def test_separator_double_click_fits_left_column_and_persists(self):
+        self.accept()
+        app = self.app
+        table = app.current_table
+        text = 'Długi opis zawartości ' * 20
+        table.insert('', 'end', values=app.table_values(table, {'number': 'INC1234567', '_values': {'sn:u_custom': text}}, ''))
+        table.column('sn:u_custom', width=80)
+        self.root.update()
+        x = table.column('number', 'width') + table.column('sn:u_custom', 'width')
+        self.assertEqual(table.identify_region(x, 10), 'separator')
+        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json') as save, patch('neto_incident_monitor.app.webbrowser.open') as opened:
+            result = app.open_incident(SimpleNamespace(widget=table, x=x, y=10))
+        self.assertEqual(result, 'break')
+        opened.assert_not_called()
+        from tkinter.font import Font
+        from tkinter import ttk
+        font = Font(table, font=ttk.Style(table).lookup('Treeview', 'font'))
+        width = table.column('sn:u_custom', 'width')
+        self.assertEqual(width, font.measure(text) + 16)
+        self.assertGreater(width, 1500)
+        self.assertEqual(app.table.column('sn:u_custom', 'width'), width)
+        self.assertEqual(save.call_args.args[1]['filter_column_profiles'][URL]['widths']['sn:u_custom'], width)
+        app.filter_selected()
+        self.assertEqual(table.column('sn:u_custom', 'width'), width)
+        self.assertEqual(table.column('number', 'width'), 125)
