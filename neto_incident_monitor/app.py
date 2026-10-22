@@ -15,6 +15,7 @@ from pathlib import Path
 from tkinter import ttk
 from neto_incident_monitor import themed_dialogs as messagebox
 from urllib.parse import urlparse, unquote
+from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url, resolved_list_url
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import Schedule, Health
 from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled, LargeListRejected
@@ -112,7 +113,7 @@ def collect(page, available=None):
     from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
     for frame in page.frames:
         try:
-            frame_url = normalize_list_url(frame.url)
+            frame_url = normalize_list_url(frame.url, allow_short=False)
         except ValueError:
             continue
         rows = frame.locator("table:visible").evaluate_all("""tables => tables.flatMap(table => {
@@ -196,7 +197,7 @@ def navigate(page, url):
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
         actual = page.url
-        if (isinstance(actual, str) and urlparse(actual).hostname == urlparse(url).hostname
+        if (not is_short_url(url) and isinstance(actual, str) and urlparse(actual).hostname == urlparse(url).hostname
                 and actual.startswith(f"https://{urlparse(url).netloc}/now/nav/ui/classic/params/target/")):
             # Authentication/session restoration can wrap an otherwise direct
             # URL. Reopen the requested list rather than the navigation shell.
@@ -242,11 +243,13 @@ def wait_for_login(page, url, stop, auto_login=False, minimize_after_login=False
                     manual_shown = True
                     diagnostics.record("manual_login_shown", automatic_blocked=bool(automatic and automatic.blocked))
             if not authentication_page(page, url):
+                from neto_incident_monitor.service_now_urls import is_short_url, resolved_list_url
+                target_url = resolved_list_url(page, url) if is_short_url(url) else url
                 expected_host = urlparse(url).hostname
                 list_loaded = any(urlparse(frame.url).hostname == expected_host
-                                  and urlparse(frame.url).path == urlparse(url).path
+                                  and urlparse(frame.url).path == urlparse(target_url or '').path
                                   for frame in page.frames)
-                if list_loaded and (collect(page) or empty_list(page, url)):
+                if list_loaded and (collect(page) or empty_list(page, target_url)):
                     if browser_window:
                         browser_window.hide()
                     elif minimize_after_login:
@@ -749,7 +752,7 @@ class App:
                     badge.grid_remove()
 
     def applicable_columns(self):
-        task = urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do")
+        task = urlparse(effective_list_url(self.selected_filter_url(), self.filters)).path.endswith("/sc_task_list.do")
         excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by"}
         if task:
             excluded.add("age_minutes")
@@ -758,7 +761,7 @@ class App:
         return [key for key, _, _ in FIELDS if key not in excluded]
 
     def default_filter_columns(self):
-        if urlparse(self.selected_filter_url()).path.endswith("/sc_task_list.do"):
+        if urlparse(effective_list_url(self.selected_filter_url(), self.filters)).path.endswith("/sc_task_list.do"):
             return ["number", "requested_for", "priority", "state", "short_description", "assignment_group", "assigned_to"]
         return DEFAULT
 
@@ -875,7 +878,7 @@ class App:
         url = self.selected_filter_url()
         if url != self.columns_filter_url:
             self.columns_filter_url = url
-            fallback = self.default_filter_columns() if urlparse(url).path.endswith("/sc_task_list.do") else self.legacy_visible_columns
+            fallback = self.default_filter_columns() if urlparse(effective_list_url(url, self.filters)).path.endswith("/sc_task_list.do") else self.legacy_visible_columns
             self.visible_columns = list(self.filter_visible_columns.get(url, fallback))
         if hasattr(self, "phase"):
             self.update_phase_text()
@@ -1041,6 +1044,8 @@ class App:
                     raise ValueError("Ten adres jest już zapisany jako inny filtr.")
                 updated = {**entry, "name": name.get().strip(), "url": urls[0], "enabled": entry.get("enabled", True)}
                 updated.pop('url_invalid', None)
+                if entry.get('url') != urls[0]:
+                    updated.pop('resolved_list_url', None)
                 proposed = [dict(item) for item in self.filters]
                 if edit:
                     proposed[index] = updated
@@ -1429,7 +1434,7 @@ class App:
             return
         try:
             filters = load_filters({"filters": self.filters}, tolerate_invalid=True)
-            urls = validate_urls("\n".join(entry["url"] for entry in filters if entry.get('enabled', True)))
+            urls = validate_urls("\n".join(entry["url"] for entry in filters if not entry.get('url_invalid')))
             interval = int(self.interval.get())
             task_interval = int(self.task_interval.get())
             if min(interval, task_interval) < 15:
@@ -1516,22 +1521,25 @@ class App:
                     if not wait_for_login(page, settings["urls"][0], self.stop, settings.get("auto_login", False), settings.get("minimize_browser", False), self.browser_window):
                         return
                     intervals = {"inc": settings["interval"], "task": settings.get("task_interval", 3600)}
+                    resolved = {url: effective_list_url(url, settings['filters']) for url in settings['urls']}
+                    def list_kind(url):
+                        return 'task' if urlparse(resolved[url]).path.endswith('/sc_task_list.do') else 'inc'
                     deadlines = {"inc": 0, "task": 0}
                     force = True
                     while not self.stop.is_set():
                         due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
-                        active = {"task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                        active = {list_kind(url)
                                   for url in settings["urls"] if url not in self.disabled_filter_urls}
                         self.events.put(("check_deadlines", {kind: deadlines[kind] for kind in active - due}))
                         self.events.put(("checking", None))
                         cycle_error = False
                         for filter_index, url in enumerate(settings["urls"], 1):
-                            kind = "task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                            kind = list_kind(url)
                             if kind not in due:
                                 continue
                             if url in self.disabled_filter_urls:
                                 continue
-                            filter_name = settings["filters"][filter_index - 1]["name"]
+                            filter_name = next(entry['name'] for entry in settings['filters'] if entry['url'] == url)
                             if self.stop.is_set():
                                 break
                             self.events.put(("filter_updating", url))
@@ -1555,6 +1563,12 @@ class App:
                                     approve_large=lambda count: self.approve_large_list(url, filter_name, count))
                                 if url in self.disabled_filter_urls:
                                     continue
+                                if is_short_url(url):
+                                    direct = resolved_list_url(current, url)
+                                    if not direct:
+                                        raise ValueError('Nie rozpoznano docelowej listy skrótu.')
+                                    resolved[url] = direct
+                                    self.events.put(('filter_resolved', (url, direct)))
                                 for incident in incidents.values():
                                     incident["_available_columns"] = sorted(available)
                                 self.events.put(("columns", (url, available)))
@@ -1601,7 +1615,7 @@ class App:
                         now = time.monotonic()
                         for kind in due:
                             deadlines[kind] = now + intervals[kind]
-                        active = {"task" if urlparse(url).path.endswith("/sc_task_list.do") else "inc"
+                        active = {list_kind(url)
                                   for url in settings["urls"] if url not in self.disabled_filter_urls}
                         next_read = min((deadlines[kind] for kind in active), default=now + min(intervals.values()))
                         self.events.put(("waiting", (next_read, cycle_error)))
@@ -1628,7 +1642,20 @@ class App:
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == "filter_updating":
+                if kind == 'filter_resolved':
+                    short, direct = value
+                    from neto_incident_monitor.service_now_urls import normalize_list_url
+                    direct = normalize_list_url(direct, allow_short=False)
+                    entry = next((entry for entry in self.filters if entry['url'] == short), None)
+                    if entry is not None and entry.get('resolved_list_url') != direct:
+                        entry['resolved_list_url'] = direct
+                        try:
+                            self.persist_filters()
+                        except OSError:
+                            self.status.set('Rozpoznano listę, ale nie udało się zapisać jej rodzaju.')
+                        self.columns_filter_url = None
+                        self.filter_selected()
+                elif kind == "filter_updating":
                     self.updating_filter_url = value
                     index = self.event_filter_index(value)
                     self.filter_table.updating_item = str(index - 1) if index is not None else None

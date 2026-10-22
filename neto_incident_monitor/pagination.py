@@ -2,7 +2,7 @@
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import re
 from itertools import count as page_numbers
-from neto_incident_monitor.service_now_urls import normalize_list_url, trusted_url
+from neto_incident_monitor.service_now_urls import normalize_list_url, trusted_url, is_short_url, resolved_list_url
 
 
 class AuthenticationRequired(Exception):
@@ -36,6 +36,8 @@ def list_total(page, url):
 
 def first_page(url):
     url = normalize_list_url(url)
+    if is_short_url(url):
+        return url
     parsed = urlparse(url)
     query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
              if key != "sysparm_first_row"]
@@ -87,6 +89,20 @@ def row_input(page):
 
 def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None):
     navigate(page, first_page(url))
+    if is_short_url(url):
+        for _ in range(60):
+            if stop.is_set():
+                raise Cancelled()
+            if authentication_page(page, url):
+                raise AuthenticationRequired()
+            direct = resolved_list_url(page, url)
+            if direct:
+                url = direct
+                navigate(page, first_page(url))
+                break
+            page.wait_for_timeout(250)
+        else:
+            raise ValueError('Nie udało się rozpoznać listy ze skrótu. Użyj bezpośredniego adresu filtra.')
     result = {}
     previous = None
     signatures = set()

@@ -23,11 +23,18 @@ def trusted_url(value):
         return False
 
 
-def normalize_list_url(value):
+def is_short_url(value):
+    return (trusted_url(value) and not urlparse(value).query and
+            bool(re.fullmatch(r'/now/nav/ui/classic/__tinyId__/[A-Za-z0-9_-]{16,128}', urlparse(value).path)))
+
+
+def normalize_list_url(value, allow_short=True):
     message = 'Podaj adres listy INC lub SCTASK w https://adeo.service-now.com, bez danych logowania i fragmentu.'
     if not trusted_url(value):
         raise ValueError(message)
     parsed = urlparse(value)
+    if allow_short and is_short_url(value):
+        return parsed._replace(netloc=TENANT_HOST).geturl()
     prefix = '/now/nav/ui/classic/params/target/'
     if parsed.path.startswith(prefix):
         target = urlparse(unquote(parsed.path[len(prefix):]))
@@ -38,6 +45,34 @@ def normalize_list_url(value):
     if parsed.path not in LIST_PATHS or not trusted_url(parsed.geturl()):
         raise ValueError(message)
     return parsed._replace(netloc=TENANT_HOST).geturl()
+
+
+def resolved_list_url(page, requested):
+    """Resolve a short link from a loaded, visible list frame, never foreign content."""
+    if not is_short_url(requested):
+        return normalize_list_url(requested, allow_short=False)
+    candidates = set()
+    for frame in page.frames:
+        try:
+            direct = normalize_list_url(frame.url, allow_short=False)
+        except ValueError:
+            continue
+        if frame.locator('body').is_visible():
+            candidates.add(direct)
+    if len(candidates) > 1:
+        raise ValueError('Skrót wskazuje więcej niż jedną listę. Użyj bezpośredniego adresu filtra.')
+    return next(iter(candidates), None)
+
+
+def effective_list_url(url, filters):
+    if is_short_url(url):
+        for entry in filters:
+            if entry.get('url') == url:
+                try:
+                    return normalize_list_url(entry.get('resolved_list_url'), allow_short=False)
+                except ValueError:
+                    break
+    return url
 
 
 def safe_record_url(value, number, list_url=None):
