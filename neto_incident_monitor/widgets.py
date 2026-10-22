@@ -343,7 +343,6 @@ class FilterList(tk.Canvas):
         self.updating_item = None
         self.on_toggle = None
         self.on_select = None
-        self.on_settings = None
         self.on_reorder = None
         self.drag = None
         self.bind("<Configure>", self.redraw)
@@ -385,9 +384,6 @@ class FilterList(tk.Canvas):
         index = int(self.canvasy(event.y) // self.ROW)
         items = self.get_children()
         if 0 <= index < len(items):
-            if self.winfo_width() - 70 <= event.x < self.winfo_width() - 42 and self.on_settings:
-                self.on_settings(items[index])
-                return "break"
             if event.x >= self.winfo_width() - 42 and self.on_toggle is not None:
                 self.on_toggle(items[index])
                 return "break"
@@ -466,26 +462,15 @@ class FilterList(tk.Canvas):
                                    outline=ACCENT if chosen else "#444b56", width=4)
             enabled = self.enabled_rows.get(iid, True)
             updating = iid == self.updating_item
-            badge_left = width - 155
+            badge_left = width - 127
             if updating:
-                draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 78) * 4, 33 * 4),
+                draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 50) * 4, 33 * 4),
                                        radius=11 * 4, fill="#244b37")
             left = width - 38
             draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
                                    fill=ACCENT if enabled else "#555c68")
             center = left + (21 if enabled else 9)
             draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
-            # Draw the notification bell at 4x resolution like the other icons.
-            bell_x = width - 65
-            def bell_points(coords):
-                return [((bell_x + x) * 4, (13 + y) * 4) for x, y in coords]
-            draw.line(bell_points([(2, 13), (4, 10), (4, 6), (5, 3),
-                                   (7, 2), (11, 2), (13, 3), (14, 6),
-                                   (14, 10), (16, 13), (2, 13)]),
-                      fill=TEXT, width=6, joint="curve")
-            draw.line(bell_points([(9, 0), (9, 2)]), fill=TEXT, width=6)
-            draw.arc(((bell_x + 6) * 4, 25 * 4, (bell_x + 12) * 4, 30 * 4),
-                     start=0, end=180, fill=TEXT, width=6)
             radius = 3 if chosen else 1.5
             draw.ellipse(((14 - radius) * 4, (22 - radius) * 4,
                           (14 + radius) * 4, (22 + radius) * 4),
@@ -498,7 +483,7 @@ class FilterList(tk.Canvas):
             from tkinter.font import Font
             font = Font(self, font=("Segoe UI", 9))
             label = name
-            while label and font.measure(label) > width - (190 if updating else 100):
+            while label and font.measure(label) > width - (162 if updating else 72):
                 label = label[:-1]
             if label != name:
                 label = label[:-1] + "…"
@@ -603,7 +588,7 @@ class TabTooltip:
 
 
 class FilterControlTooltip(TabTooltip):
-    """Tooltips for the settings and monitoring controls inside filter cards."""
+    """Tooltips for monitoring switches inside filter cards."""
     def __init__(self, widget):
         super().__init__(widget, None, "")
         self.target = None
@@ -617,10 +602,7 @@ class FilterControlTooltip(TabTooltip):
         if not widget.drag and 0 <= index < len(items):
             item = items[index]
             width = widget.winfo_width()
-            if width - 70 <= event.x < width - 42:
-                target = (item, "settings")
-                text = "Ustawienia filtra"
-            elif event.x >= width - 42:
+            if event.x >= width - 42:
                 enabled = widget.enabled_rows.get(item, True)
                 target = (item, "toggle", enabled)
                 text = "Wyłącz monitoring filtra" if enabled else "Włącz monitoring filtra"

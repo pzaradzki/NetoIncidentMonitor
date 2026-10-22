@@ -82,7 +82,8 @@ class FilterViewTests(unittest.TestCase):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
                 app.filters[1]["allow_large_list"] = True
-                app.configure_filter_notifications("1")
+                self.assertTrue(app.configure_filter_button.enabled)
+                app.configure_filter_button.invoke()
                 root.update()
                 dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel) and w.title()=="Ustawienia filtra")
                 def descendants(widget):

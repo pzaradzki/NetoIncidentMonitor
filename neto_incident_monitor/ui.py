@@ -260,6 +260,10 @@ def build_ui(app, settings):
     app.columns_button = columns_button
     columns_button.configure(state="disabled")
     columns_button.pack(side="right", padx=(8, 0))
+    app.configure_filter_button = RoundedButton(actions, text="Konfiguruj", icon="gear",
+                                                command=app.configure_selected_filter, background=BG)
+    app.configure_filter_button.configure(state="disabled")
+    app.configure_filter_button.pack(side="right", padx=(8, 0))
     app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
     app.mark_all_button = RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG)
     if app.highlight_unread.get():

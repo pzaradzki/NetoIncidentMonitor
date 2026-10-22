@@ -44,7 +44,6 @@ class FilterReorderTests(unittest.TestCase):
         for i in range(3):
             table.insert("", "end", str(i), (f"Filter {i}",))
         table.on_reorder = Mock()
-        table.on_settings = Mock()
         table.on_toggle = Mock()
         self.root.update()
         event = lambda x, y: SimpleNamespace(x=x, y=y)
@@ -57,12 +56,14 @@ class FilterReorderTests(unittest.TestCase):
         table.drag_end(event(30, 110))
         table.on_reorder.assert_called_once_with("0", 2)
         self.assertFalse(table.find_withtag("drop_marker"))
-        for x, callback in [(table.winfo_width()-56, table.on_settings),
-                            (table.winfo_width()-20, table.on_toggle)]:
-            table.select_at(event(x, 20))
-            table.drag_motion(event(x, 110))
-            self.assertIsNone(table.drag)
-            callback.assert_called_once_with("0")
+        # The former bell area now selects the filter normally.
+        table.select_at(event(table.winfo_width()-56, 20))
+        self.assertEqual(table.selection(), ("0",))
+        self.assertIsNotNone(table.drag)
+        table.drag_cancel()
+        table.select_at(event(table.winfo_width()-20, 20))
+        self.assertIsNone(table.drag)
+        table.on_toggle.assert_called_once_with("0")
         table.select_at(event(30, 20))
         table.drag_motion(event(30, 110))
         table.drag_end(event(-10, 110))

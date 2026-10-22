@@ -762,6 +762,7 @@ class App(DynamicColumns):
         if hasattr(self, "phase"):
             self.update_phase_text()
         if hasattr(self, "current_table"):
+            self.configure_filter_button.configure(state="normal" if self.selected_filter_index() else "disabled")
             self.prepare_dynamic_tables()
             self.refresh_current()
             self.refresh_history()
@@ -771,6 +772,11 @@ class App(DynamicColumns):
     def configure_filter_notifications(self, item):
         from neto_incident_monitor.filter_settings import show_filter_settings
         show_filter_settings(self, int(item))
+
+    def configure_selected_filter(self):
+        selected = self.filter_table.selection()
+        if selected:
+            self.configure_filter_notifications(selected[0])
 
     def notify_filter(self, url, incidents, manual=False):
         entry = next((entry for entry in self.filters if entry["url"] == url), None)
@@ -804,7 +810,6 @@ class App(DynamicColumns):
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.filter_table.enabled_rows = {str(i): entry.get("enabled", True) for i, entry in enumerate(self.filters)}
         self.filter_table.on_toggle = self.toggle_filter
-        self.filter_table.on_settings = self.configure_filter_notifications
         self.filter_table.on_select = self.filter_selected
         self.filter_table.on_reorder = self.reorder_filter
         selected = self.filter_table.selection()

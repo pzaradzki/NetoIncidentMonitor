@@ -69,7 +69,7 @@ Każdy filtr ma własną listę bieżących incydentów i własną historię. Cz
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
 
-Ikona dzwonka przy filtrze otwiera **Ustawienia filtra**, obejmujące powiadomienia i zgodę na duże odczyty:
+Przycisk **Konfiguruj** obok przycisku **Kolumny** otwiera **Ustawienia filtra** zaznaczonego na liście, obejmujące powiadomienia i zgodę na duże odczyty:
 
 - **Powiadomienia Windows**, **Powiadomienia Microsoft Teams** i **Powiadomienia Google Chat** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego przełącznik jest nieaktywny.
 - **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
