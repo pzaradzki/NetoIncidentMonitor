@@ -126,9 +126,6 @@ def build_ui(app, settings):
     app.check_button = RoundedButton(app.controls, text="Sprawdź teraz", icon="refresh", command=app.check_now, background=BG)
     app.check_button.configure(state="disabled")
     app.check_button.pack(side="left", padx=4)
-    from neto_incident_monitor.report_ui import show_report
-    RoundedButton(app.controls, text="Zgłoś", icon="bug", command=lambda: show_report(app),
-                  background=BG).pack(side="left", padx=4)
 
     def show_settings():
         window = app.settings_window

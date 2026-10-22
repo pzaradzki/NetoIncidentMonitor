@@ -320,15 +320,6 @@ class RoundedButton(tk.Canvas):
             line([(10, 2), (10, 14)])
         elif self.icon == "gear":
             draw_gear(draw, x, y, color)
-        elif self.icon == "bug":
-            draw.ellipse(box(4, 5, 12, 15), outline=color, width=6)
-            draw.arc(box(5, 2, 11, 9), 180, 360, fill=color, width=6)
-            line([(6, 3), (4, 1)])
-            line([(10, 3), (12, 1)])
-            line([(8, 6), (8, 14)])
-            for offset in (6, 10, 14):
-                line([(1, offset), (4, offset-1)])
-                line([(12, offset-1), (15, offset)])
 
     def configure(self, cnf=None, **kwargs):
         state = kwargs.pop("state", None)

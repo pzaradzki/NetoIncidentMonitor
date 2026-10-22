@@ -9,7 +9,7 @@ Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych
 - Oddzielne harmonogramy odczytu dla INC i SCTASK.
 - Historia zgłoszeń oraz konfiguracja kolumn dla każdej listy.
 - Praca w zasobniku systemowym i obsługa zapamiętanej sesji logowania.
-- Sprawdzanie dostępności aktualizacji i formularz zgłoszeń.
+- Sprawdzanie dostępności aktualizacji.
 
 ## Uruchomienie
 
