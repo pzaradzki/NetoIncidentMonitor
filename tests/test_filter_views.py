@@ -20,39 +20,64 @@ class FilterViewTests(unittest.TestCase):
             app.notify.get.return_value = False
             app.teams_enabled.get.return_value = True
             app.google_chat_enabled.get.return_value = True
-            show_filter_settings(app, 0)
-            root.update()
-            dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
             def descendants(widget):
                 for child in widget.winfo_children():
                     yield child
                     yield from descendants(child)
-            entries = [w for w in descendants(dialog) if isinstance(w, ttk.Entry)]
-            self.assertEqual(len(entries), 2)
-            self.assertTrue(all(w.cget('show') for w in entries))
-            save = next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text == 'Zapisz')
-            entries[0].insert(0, 'http://invalid.example')
+            def button(widget, text):
+                return next(w for w in descendants(widget) if isinstance(w, RoundedButton) and w.text == text)
+            def open_channel(dialog, index):
+                gears = [w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.icon == 'gear']
+                self.assertEqual(len(gears), 2)
+                gear = gears[index]
+                self.assertEqual(int(gear.grid_info()['column']), 1)
+                self.assertEqual(int(gear.cget('width')), 36)
+                gear.invoke()
+                child = next(w for w in dialog.winfo_children() if isinstance(w, tk.Toplevel))
+                field = next(w for w in descendants(child) if isinstance(w, ttk.Entry))
+                self.assertTrue(field.cget('show'))
+                return child, field
+            show_filter_settings(app, 0)
+            root.update()
+            dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+            self.assertFalse(any(isinstance(w, ttk.Entry) for w in descendants(dialog)))
+            child, field = open_channel(dialog, 0)
+            field.insert(0, 'http://invalid.example')
             with patch('neto_incident_monitor.filter_settings.messagebox.showerror') as error:
-                save.invoke()
+                button(child, 'Zastosuj').invoke()
             error.assert_called_once()
             app.persist_filters.assert_not_called()
-            entries[0].delete(0, 'end')
+            button(child, 'Anuluj').invoke()
+            self.assertIs(root.grab_current(), dialog)
             teams = 'https://test.api.powerplatform.com/invoke?sig=dummy'
             chat = 'https://chat.googleapis.com/v1/spaces/test/messages?key=dummy&token=dummy'
-            entries[0].insert(0, teams); entries[1].insert(0, chat)
+            for index, value in enumerate([teams, chat]):
+                child, field = open_channel(dialog, index)
+                field.insert(0, value)
+                button(child, 'Zastosuj').invoke()
+            self.assertNotIn('teams_webhook', app.filters[0])  # Parent Save commits the draft.
             app.persist_filters.side_effect = OSError('failure')
             with patch('neto_incident_monitor.filter_settings.messagebox.showerror'):
-                save.invoke()
+                button(dialog, 'Zapisz').invoke()
             self.assertNotIn('teams_webhook', app.filters[0])
             app.persist_filters.side_effect = None
-            save.invoke()
+            button(dialog, 'Zapisz').invoke()
             self.assertEqual(app.filters[0]['teams_webhook'], teams)
             self.assertEqual(app.filters[0]['google_chat_webhook'], chat)
             show_filter_settings(app, 0)
             dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
-            for entry in [w for w in descendants(dialog) if isinstance(w, ttk.Entry)]:
-                entry.delete(0, 'end')
-            next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
+            # Cancelling the nested editor preserves its previous value.
+            child, field = open_channel(dialog, 0)
+            field.delete(0, 'end')
+            button(child, 'Anuluj').invoke()
+            child, field = open_channel(dialog, 0)
+            self.assertEqual(field.get(), teams)
+            button(child, 'Anuluj').invoke()
+            for index in range(2):
+                child, field = open_channel(dialog, index)
+                field.delete(0, 'end')
+                button(child, 'Zastosuj').invoke()
+            button(dialog, 'Zapisz').invoke()
             self.assertEqual(app.filters[0]['teams_webhook'], '')
             self.assertEqual(app.filters[0]['google_chat_webhook'], '')
         finally:

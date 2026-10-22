@@ -7,6 +7,51 @@ from neto_incident_monitor.widgets import RoundedButton, Toggle
 from neto_incident_monitor import themed_dialogs as messagebox
 
 
+def show_channel_settings(parent, title, key, value):
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.configure(background=SURFACE)
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    panel = ttk.Frame(dialog, style='White.TFrame', padding=24)
+    panel.pack(fill='both', expand=True)
+    ttk.Label(panel, text='Webhook filtra (opcjonalnie)', style='White.TLabel').pack(anchor='w')
+    draft = tk.StringVar(value=value.get())
+    address = ttk.Entry(panel, textvariable=draft, show='•', width=48)
+    address.pack(fill='x', pady=(8, 6))
+    ttk.Label(panel, text='Puste pole używa webhooka globalnego.', style='WhiteMuted.TLabel').pack(anchor='w')
+
+    def close():
+        dialog.destroy()
+        if parent.winfo_exists():
+            parent.grab_set()
+
+    def apply():
+        from neto_incident_monitor.teams_notifications import validate_webhook as teams_validate
+        from neto_incident_monitor.google_chat_notifications import validate_webhook as chat_validate
+        text = draft.get().strip()
+        try:
+            if text:
+                text = (teams_validate if key == 'teams_webhook' else chat_validate)(text)
+        except ValueError as error:
+            messagebox.showerror(title, str(error), parent=dialog)
+            dialog.grab_set()
+            return
+        value.set(text)
+        close()
+
+    footer = ttk.Frame(panel, style='White.TFrame')
+    footer.pack(fill='x', pady=(20, 0))
+    RoundedButton(footer, text='Zastosuj', command=apply, primary=True).pack(side='right')
+    RoundedButton(footer, text='Anuluj', command=close).pack(side='right', padx=8)
+    dialog.protocol('WM_DELETE_WINDOW', close)
+    dialog.bind('<Escape>', lambda _: close())
+    dialog.update_idletasks()
+    dialog.geometry(f'+{max(0, (dialog.winfo_screenwidth()-dialog.winfo_reqwidth())//2)}+{max(0, (dialog.winfo_screenheight()-dialog.winfo_reqheight())//2)}')
+    dialog.grab_set()
+    address.focus_set()
+
+
 def show_filter_settings(app, index):
     entry = app.filters[index]
     window = tk.Toplevel(app.root)
@@ -37,17 +82,14 @@ def show_filter_settings(app, index):
         ttk.Label(row, text=description, style="WhiteMuted.TLabel", wraplength=350).grid(row=1, column=0, sticky="w", pady=(4, 0))
         values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams", "notify_google_chat")))
         controls[key] = Toggle(row, values[key])
-        controls[key].grid(row=0, column=1, rowspan=2, padx=(18, 0))
+        controls[key].grid(row=0, column=2, rowspan=2, padx=(10, 0))
         controls[key].configure(state="normal" if enabled else "disabled")
         if key in ('notify_teams', 'notify_google_chat'):
             webhook_key = key.removeprefix('notify_') + '_webhook'
-            ttk.Label(row, text='Webhook filtra (opcjonalnie)', style='WhiteMuted.TLabel').grid(
-                row=2, column=0, columnspan=2, sticky='w', pady=(10, 4))
             webhooks[webhook_key] = tk.StringVar(value=entry.get(webhook_key, ''))
-            ttk.Entry(row, textvariable=webhooks[webhook_key], show='•', width=48).grid(
-                row=3, column=0, columnspan=2, sticky='ew')
-            ttk.Label(row, text='Puste pole używa webhooka globalnego.', style='WhiteMuted.TLabel').grid(
-                row=4, column=0, columnspan=2, sticky='w', pady=(4, 0))
+            gear = RoundedButton(row, text='', icon='gear', command=lambda k=webhook_key, t=title:
+                                 show_channel_settings(window, t, k, webhooks[k]))
+            gear.grid(row=0, column=1, rowspan=2, padx=(18, 0))
 
     def save():
         from neto_incident_monitor.teams_notifications import validate_webhook as teams_validate

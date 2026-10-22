@@ -240,7 +240,8 @@ class RoundedButton(tk.Canvas):
         from tkinter.font import Font
         self.text_width = Font(parent, font=("Segoe UI", 9)).measure(text)
         self.icon = icon
-        width = max(90, self.text_width + 24 + (22 if icon else 0))
+        self.min_width = 36 if icon and not text else 90
+        width = max(self.min_width, self.text_width + 24 + (22 if icon and text else 0))
         super().__init__(parent, width=width, height=36, bg=background, bd=0,
                          highlightthickness=0, takefocus=True, cursor="hand2")
         self.text, self.command, self.primary = text, command, primary
@@ -266,7 +267,7 @@ class RoundedButton(tk.Canvas):
 
     def redraw(self, event=None):
         self.delete("all")
-        width, height = max(90, self.winfo_width()), 36
+        width, height = max(self.min_width, self.winfo_width()), 36
         color = (ACCENT if self.primary else "#373c46")
         if self.hover and self.enabled:
             color = "#f04b59" if self.primary else "#484f5c"
@@ -278,7 +279,7 @@ class RoundedButton(tk.Canvas):
                                fill=color, outline=ACCENT if self.focus_get() == self else color, width=4)
         foreground = TEXT if self.enabled else "#747b88"
         if self.icon:
-            self.draw_icon(draw, (width - self.text_width - 22) / 2, 10, foreground)
+            self.draw_icon(draw, (width - self.text_width - 22) / 2 if self.text else (width - 16) / 2, 10, foreground)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         self.create_image(0, 0, image=self.picture, anchor="nw")
         self.create_text(width / 2 + (11 if self.icon else 0), height / 2, text=self.text,

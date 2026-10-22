@@ -71,7 +71,7 @@ Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia 
 
 Przycisk **Konfiguruj** obok przycisku **Kolumny** otwiera **Ustawienia filtra** zaznaczonego na liście, obejmujące powiadomienia i zgodę na duże odczyty.
 
-Dla Microsoft Teams i Google Chat można podać osobny webhook filtra. Puste pole korzysta z adresu globalnego. Webhook filtra ma pierwszeństwo także dla opcji **Test powiadomienia**. Adresy są maskowane w oknie i szyfrowane dla bieżącego konta Windows przez DPAPI. Globalne wyłączenie kanału nadal blokuje wysyłanie i ukrywa jego ustawienia w filtrze, zachowując zapisany adres.
+Zębatka po lewej stronie przełącznika Microsoft Teams lub Google Chat otwiera konfigurację powiadomienia danego kanału. Można w niej podać osobny webhook filtra. Przycisk **Zastosuj** zatwierdza adres w otwartych ustawieniach; całość zapisuje przycisk **Zapisz** w oknie filtra. Puste pole korzysta z adresu globalnego. Webhook filtra ma pierwszeństwo także dla opcji **Test powiadomienia**. Adresy są maskowane w oknie i szyfrowane dla bieżącego konta Windows przez DPAPI. Globalne wyłączenie kanału nadal blokuje wysyłanie i ukrywa jego ustawienia w filtrze, zachowując zapisany adres.
 
 - **Powiadomienia Windows**, **Powiadomienia Microsoft Teams** i **Powiadomienia Google Chat** są włączane osobno. Odpowiedni kanał musi być również włączony globalnie; w przeciwnym razie jego ustawienia w filtrze są ukryte.
 - **Tylko pierwsze wystąpienie** ogranicza powiadomienia do pierwszego wykrycia numeru w danym filtrze. Domyślnie opcja jest wyłączona, więc powiadomienie jest wysyłane także po potwierdzonym powrocie incydentu.
