@@ -11,6 +11,30 @@ CHAT = 'https://chat.googleapis.com/v1/spaces/test/messages?key=dummy&token=dumm
 
 
 class SecretConfigTests(unittest.TestCase):
+    def test_filter_webhooks_are_protected_migrated_and_preserved_on_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'config.json'
+            settings = {'filters': [{'name': 'A', 'teams_webhook': TEAMS, 'google_chat_webhook': CHAT}]}
+            path.write_text(json.dumps(settings), encoding='utf-8')
+            loaded = secrets.load_config(path, {})
+            self.assertEqual(loaded, settings)
+            self.assertNotIn('dummy-chat-secret', path.read_text())
+            self.assertNotIn('dummy-teams-secret', path.read_text())
+            encrypted = json.loads(path.read_text())['filters'][0]['teams_webhook']
+            with patch.object(secrets, 'unprotect', side_effect=secrets.SecretStorageError()):
+                failed = secrets.load_config(path, {})
+            self.assertFalse(failed['filters'][0]['notify_teams'])
+            self.assertIsInstance(failed['filters'][0]['teams_webhook'], secrets.UnavailableSecret)
+            secrets.save_config(path, failed)
+            self.assertEqual(json.loads(path.read_text())['filters'][0]['teams_webhook'], encrypted)
+            self.assertEqual(secrets.load_config(path, {})['filters'][0]['teams_webhook'], TEAMS)
+            before = path.read_bytes()
+            with patch.object(secrets, 'protect', side_effect=secrets.SecretStorageError()):
+                with self.assertRaises(secrets.SecretStorageError):
+                    secrets.save_config(path, settings)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(settings['filters'][0]['teams_webhook'], TEAMS)
+
     def test_real_dpapi_roundtrip_and_legacy_migration_through_app_io(self):
         from neto_incident_monitor import app
         with tempfile.TemporaryDirectory() as folder:

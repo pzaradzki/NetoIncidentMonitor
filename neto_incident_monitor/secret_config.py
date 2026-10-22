@@ -82,19 +82,30 @@ class Settings(dict):
         self.protection_errors = []
 
 
+def secret_containers(settings):
+    yield settings, False
+    entries = settings.get('filters')
+    for entry in entries if isinstance(entries, list) else []:
+        if isinstance(entry, dict):
+            yield entry, True
+
+
 def save_config(path, settings):
     with LOCK:
         encoded = dict(settings)
-        for key in KEYS:
-            if key not in encoded:
-                continue
-            value = encoded[key]
-            if isinstance(value, UnavailableSecret):
-                encoded[key] = value.original
-            elif isinstance(value, str):
-                encoded[key] = protect(value) if value else ''
-            else:
-                raise SecretStorageError('Nieprawidłowa konfiguracja webhooka. Zapis został przerwany.')
+        if isinstance(encoded.get('filters'), list):
+            encoded['filters'] = [dict(entry) if isinstance(entry, dict) else entry for entry in encoded['filters']]
+        for container, _ in secret_containers(encoded):
+            for key in KEYS:
+                if key not in container:
+                    continue
+                value = container[key]
+                if isinstance(value, UnavailableSecret):
+                    container[key] = value.original
+                elif isinstance(value, str):
+                    container[key] = protect(value) if value else ''
+                else:
+                    raise SecretStorageError('Nieprawidłowa konfiguracja webhooka. Zapis został przerwany.')
         # Encryption must finish before creating or replacing any file.
         temporary = path.with_suffix('.tmp')
         try:
@@ -112,17 +123,19 @@ def load_config(path, default):
         raw = json.loads(path.read_text(encoding='utf-8'))
         settings = Settings(raw)
         migrate = False
-        for key in KEYS:
-            value = settings.get(key, '')
-            if isinstance(value, str):
-                migrate |= bool(value)
-                continue
-            try:
-                settings[key] = unprotect(value)
-            except SecretStorageError:
-                settings[key] = UnavailableSecret(value)
-                settings[key.replace('_webhook', '_enabled')] = False
-                settings.protection_errors.append('Nie można odczytać zapisanego webhooka. Wprowadź go ponownie w ustawieniach powiadomień.')
+        for container, per_filter in secret_containers(settings):
+            for key in KEYS:
+                value = container.get(key, '')
+                if isinstance(value, str):
+                    migrate |= bool(value)
+                    continue
+                try:
+                    container[key] = unprotect(value)
+                except SecretStorageError:
+                    container[key] = UnavailableSecret(value)
+                    enabled_key = 'notify_' + key.removesuffix('_webhook') if per_filter else key.replace('_webhook', '_enabled')
+                    container[enabled_key] = False
+                    settings.protection_errors.append('Nie można odczytać zapisanego webhooka. Wprowadź go ponownie w ustawieniach powiadomień.')
         if migrate:
             try:
                 save_config(path, settings)

@@ -9,6 +9,80 @@ from neto_incident_monitor.widgets import Toggle
 
 
 class FilterViewTests(unittest.TestCase):
+    def test_filter_webhook_inputs_validate_save_and_clear(self):
+        from neto_incident_monitor.filter_settings import show_filter_settings
+        from neto_incident_monitor.widgets import RoundedButton
+        from tkinter import ttk
+        root = tk.Tk()
+        try:
+            app = Mock(root=root)
+            app.filters = [{'name': 'A', 'url': 'A'}]
+            app.notify.get.return_value = False
+            app.teams_enabled.get.return_value = True
+            app.google_chat_enabled.get.return_value = True
+            show_filter_settings(app, 0)
+            root.update()
+            dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+            def descendants(widget):
+                for child in widget.winfo_children():
+                    yield child
+                    yield from descendants(child)
+            entries = [w for w in descendants(dialog) if isinstance(w, ttk.Entry)]
+            self.assertEqual(len(entries), 2)
+            self.assertTrue(all(w.cget('show') for w in entries))
+            save = next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text == 'Zapisz')
+            entries[0].insert(0, 'http://invalid.example')
+            with patch('neto_incident_monitor.filter_settings.messagebox.showerror') as error:
+                save.invoke()
+            error.assert_called_once()
+            app.persist_filters.assert_not_called()
+            entries[0].delete(0, 'end')
+            teams = 'https://test.api.powerplatform.com/invoke?sig=dummy'
+            chat = 'https://chat.googleapis.com/v1/spaces/test/messages?key=dummy&token=dummy'
+            entries[0].insert(0, teams); entries[1].insert(0, chat)
+            app.persist_filters.side_effect = OSError('failure')
+            with patch('neto_incident_monitor.filter_settings.messagebox.showerror'):
+                save.invoke()
+            self.assertNotIn('teams_webhook', app.filters[0])
+            app.persist_filters.side_effect = None
+            save.invoke()
+            self.assertEqual(app.filters[0]['teams_webhook'], teams)
+            self.assertEqual(app.filters[0]['google_chat_webhook'], chat)
+            show_filter_settings(app, 0)
+            dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
+            for entry in [w for w in descendants(dialog) if isinstance(w, ttk.Entry)]:
+                entry.delete(0, 'end')
+            next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
+            self.assertEqual(app.filters[0]['teams_webhook'], '')
+            self.assertEqual(app.filters[0]['google_chat_webhook'], '')
+        finally:
+            root.destroy()
+
+    def test_per_filter_webhooks_override_globals_and_empty_uses_global(self):
+        from neto_incident_monitor.secret_config import UnavailableSecret
+        app = App.__new__(App)
+        app.filters = [{'url': 'A', 'name': 'A', 'teams_webhook': 'teams-custom', 'google_chat_webhook': 'chat-custom'},
+                       {'url': 'B', 'name': 'B', 'teams_webhook': '', 'google_chat_webhook': ''}]
+        app.notify = Mock(); app.notify.get.return_value = False
+        app.teams_enabled = Mock(); app.teams_enabled.get.return_value = True
+        app.google_chat_enabled = Mock(); app.google_chat_enabled.get.return_value = True
+        app.teams_webhook = 'teams-global'; app.google_chat_webhook = 'chat-global'
+        app.teams_sender = Mock(); app.google_chat_sender = Mock()
+        incident = {'number': 'INC1234567'}
+        for url, teams, chat in [('A', 'teams-custom', 'chat-custom'), ('B', 'teams-global', 'chat-global')]:
+            app.notify_filter(url, [incident], manual=True)
+            self.assertEqual(app.teams_sender.submit.call_args.args[0], teams)
+            self.assertEqual(app.google_chat_sender.submit.call_args.args[0], chat)
+        app.filters[0]['teams_webhook'] = UnavailableSecret({})
+        count = app.teams_sender.submit.call_count
+        app.notify_filter('A', [incident])
+        self.assertEqual(app.teams_sender.submit.call_count, count)
+        app.teams_enabled.get.return_value = False
+        app.google_chat_enabled.get.return_value = False
+        count = app.google_chat_sender.submit.call_count
+        app.notify_filter('A', [incident])
+        self.assertEqual(app.google_chat_sender.submit.call_count, count)
+
     def test_selection_scopes_both_tables_and_read_actions(self):
         root = tk.Tk()
         try:

@@ -789,12 +789,18 @@ class App(DynamicColumns):
         heading = f"Wykryto {singular}" if len(incidents) == 1 else f"Wykryto {plural}: {len(incidents)}"
         title = entry["name"]
         message = heading + "\n" + message
-        if self.teams_enabled.get() and entry.get("notify_teams", True) and self.teams_webhook:
+        from neto_incident_monitor.secret_config import UnavailableSecret
+        def webhook(key):
+            custom = entry.get(key, '')
+            return '' if isinstance(custom, UnavailableSecret) else custom or getattr(self, key, '')
+        teams_webhook = webhook('teams_webhook')
+        google_chat_webhook = webhook('google_chat_webhook')
+        if self.teams_enabled.get() and entry.get("notify_teams", True) and teams_webhook:
             links = {item["number"]: item["url"] for item in incidents if item.get("url")}
-            self.teams_sender.submit(self.teams_webhook, title, message, **({"links": links} if links else {}))
-        if self.google_chat_enabled.get() and entry.get("notify_google_chat", True) and self.google_chat_webhook:
+            self.teams_sender.submit(teams_webhook, title, message, **({"links": links} if links else {}))
+        if self.google_chat_enabled.get() and entry.get("notify_google_chat", True) and google_chat_webhook:
             links = {item["number"]: item["url"] for item in incidents if item.get("url")}
-            self.google_chat_sender.submit(self.google_chat_webhook, title, message, links=links)
+            self.google_chat_sender.submit(google_chat_webhook, title, message, links=links)
         if self.notify.get() and entry.get("notify_windows", True):
             try:
                 from plyer import notification

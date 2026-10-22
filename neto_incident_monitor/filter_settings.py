@@ -20,6 +20,7 @@ def show_filter_settings(app, index):
               font=("Segoe UI", 14, "bold"), wraplength=430).pack(anchor="w", pady=(0, 18))
     values = {}
     controls = {}
+    webhooks = {}
     for key, title, description, enabled in [
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
@@ -38,16 +39,40 @@ def show_filter_settings(app, index):
         controls[key] = Toggle(row, values[key])
         controls[key].grid(row=0, column=1, rowspan=2, padx=(18, 0))
         controls[key].configure(state="normal" if enabled else "disabled")
+        if key in ('notify_teams', 'notify_google_chat'):
+            webhook_key = key.removeprefix('notify_') + '_webhook'
+            ttk.Label(row, text='Webhook filtra (opcjonalnie)', style='WhiteMuted.TLabel').grid(
+                row=2, column=0, columnspan=2, sticky='w', pady=(10, 4))
+            webhooks[webhook_key] = tk.StringVar(value=entry.get(webhook_key, ''))
+            ttk.Entry(row, textvariable=webhooks[webhook_key], show='•', width=48).grid(
+                row=3, column=0, columnspan=2, sticky='ew')
+            ttk.Label(row, text='Puste pole używa webhooka globalnego.', style='WhiteMuted.TLabel').grid(
+                row=4, column=0, columnspan=2, sticky='w', pady=(4, 0))
 
     def save():
+        from neto_incident_monitor.teams_notifications import validate_webhook as teams_validate
+        from neto_incident_monitor.google_chat_notifications import validate_webhook as chat_validate
+        addresses = {}
+        try:
+            for key, variable in webhooks.items():
+                value = variable.get().strip()
+                # Preserve unreadable protected values on unrelated edits.
+                original = entry.get(key, '')
+                addresses[key] = original if value == original else value
+                if value:
+                    addresses[key] = (teams_validate if key == 'teams_webhook' else chat_validate)(value)
+        except ValueError as error:
+            messagebox.showerror('Ustawienia filtra', str(error), parent=window)
+            return
         previous = dict(entry)
         entry.update({key: value.get() for key, value in values.items()})
+        entry.update(addresses)
         try:
             app.persist_filters()
-        except OSError as error:
+        except (OSError, ValueError):
             entry.clear()
             entry.update(previous)
-            messagebox.showerror("Ustawienia filtra", str(error), parent=window)
+            messagebox.showerror("Ustawienia filtra", 'Nie udało się zapisać ustawień filtra.', parent=window)
             return
         window.destroy()
 
