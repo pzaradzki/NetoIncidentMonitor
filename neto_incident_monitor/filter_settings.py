@@ -124,5 +124,7 @@ def show_filter_settings(app, index):
     RoundedButton(footer, text="Anuluj", command=window.destroy).pack(side="right", padx=8)
     window.bind("<Escape>", lambda event: window.destroy())
     window.update_idletasks()
-    window.geometry(f"+{max(0, (window.winfo_screenwidth()-window.winfo_reqwidth())//2)}+{max(0, (window.winfo_screenheight()-window.winfo_reqheight())//2)}")
+    width = max(520, window.winfo_reqwidth())
+    height = window.winfo_reqheight()
+    window.geometry(f"{width}x{height}+{max(0, (window.winfo_screenwidth()-width)//2)}+{max(0, (window.winfo_screenheight()-height)//2)}")
     window.grab_set()
