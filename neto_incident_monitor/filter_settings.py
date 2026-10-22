@@ -15,11 +15,11 @@ def show_channel_settings(parent, title, key, value):
     dialog.resizable(False, False)
     panel = ttk.Frame(dialog, style='White.TFrame', padding=24)
     panel.pack(fill='both', expand=True)
-    ttk.Label(panel, text='Webhook filtra (opcjonalnie)', style='White.TLabel').pack(anchor='w')
+    ttk.Label(panel, text='Adres webhooka (opcjonalnie)', style='White.TLabel').pack(anchor='w')
     draft = tk.StringVar(value=value.get())
     address = ttk.Entry(panel, textvariable=draft, show='•', width=48)
     address.pack(fill='x', pady=(8, 6))
-    ttk.Label(panel, text='Puste pole używa webhooka globalnego.', style='WhiteMuted.TLabel').pack(anchor='w')
+    ttk.Label(panel, text='Pozostaw puste, aby użyć ustawień globalnych.', style='WhiteMuted.TLabel').pack(anchor='w')
 
     def close():
         dialog.destroy()
@@ -47,7 +47,9 @@ def show_channel_settings(parent, title, key, value):
     dialog.protocol('WM_DELETE_WINDOW', close)
     dialog.bind('<Escape>', lambda _: close())
     dialog.update_idletasks()
-    dialog.geometry(f'+{max(0, (dialog.winfo_screenwidth()-dialog.winfo_reqwidth())//2)}+{max(0, (dialog.winfo_screenheight()-dialog.winfo_reqheight())//2)}')
+    width = max(520, dialog.winfo_reqwidth())
+    height = dialog.winfo_reqheight()
+    dialog.geometry(f'{width}x{height}+{max(0, (dialog.winfo_screenwidth()-width)//2)}+{max(0, (dialog.winfo_screenheight()-height)//2)}')
     dialog.grab_set()
     address.focus_set()
 
