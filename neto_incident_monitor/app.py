@@ -28,7 +28,7 @@ from neto_incident_monitor.runtime_paths import ROOT, DATA
 DATA.mkdir(parents=True, exist_ok=True)
 CONFIG = DATA / "config.json"
 STATE = DATA / "seen.json"
-INC = re.compile(r"\b(?:INC|SCTASK)\d{7,}\b", re.I)
+INC = re.compile(r"\b(?:INC|SCTASK|REQ|RITM)\d{7,}\b", re.I)
 LOG = logging.getLogger("servicenow")
 
 
@@ -127,7 +127,7 @@ def collect(page, available=None):
         rows = frame.locator("table:visible").evaluate_all("""tables => tables.flatMap(table => {
           const visible = el => !!(el.getClientRects().length &&
             getComputedStyle(el).visibility !== 'hidden');
-          const fieldName = th => (th.getAttribute('glide_field') || th.getAttribute('name') || th.getAttribute('data-name') || (/^(Numer|Number)$/i.test(th.textContent.trim()) ? 'number' : th.textContent.trim())).replace(/^(?:incident|sc_task)\\./, '');
+          const fieldName = th => (th.getAttribute('glide_field') || th.getAttribute('name') || th.getAttribute('data-name') || (/^(Numer|Number)$/i.test(th.textContent.trim()) ? 'number' : th.textContent.trim())).replace(/^(?:incident|sc_task|sc_request|sc_req_item)\\./, '');
           const fieldLabel = th => (th.getAttribute('glide_label') || th.querySelector('a.column_head')?.textContent || th.textContent).trim();
           const rows = Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr)
             && !tr.classList.contains('list_header_search_row'));
@@ -142,7 +142,7 @@ def collect(page, available=None):
           const headers = eligible[0].filter(th => !marked.length || th.hasAttribute('glide_field'));
           const header = headers.find(th => {
             const name = fieldName(th);
-            return /^(?:(?:incident|sc_task)\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
+            return /^(?:(?:incident|sc_task|sc_request|sc_req_item)\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
           });
           if (!header) return [];
           const column = (names, labels) => headers.find(th => {
@@ -363,6 +363,8 @@ class App(DynamicColumns):
         self.saved_google_chat = settings.get("google_chat_enabled", False), self.google_chat_webhook
         self.saving_google_chat = False
         self.filters = load_filters(settings, tolerate_invalid=True)
+        from neto_incident_monitor.template_library import migrate
+        self.notification_library, self.filters = migrate(settings.get('notification_library', {}), self.filters)
         self.disabled_filter_urls = frozenset(entry["url"] for entry in self.filters if not entry.get("enabled", True))
         self.legacy_visible_columns = settings.get("visible_columns", DEFAULT)
         self.filter_visible_columns = settings.get("filter_visible_columns", {})
@@ -782,25 +784,28 @@ class App(DynamicColumns):
         entry = next((entry for entry in self.filters if entry["url"] == url), None)
         if not entry or (not manual and not entry.get("enabled", True)) or not incidents:
             return
-        from neto_incident_monitor.teams_notifications import incident_text
-        _, message = incident_text(incidents)
-        catalog_tasks = all(item["number"].startswith("SCTASK") for item in incidents)
-        singular, plural = ("zadanie katalogowe", "zadania katalogowe") if catalog_tasks else ("incydent", "incydenty")
-        heading = f"Wykryto {singular}" if len(incidents) == 1 else f"Wykryto {plural}: {len(incidents)}"
-        title = entry["name"]
-        message = heading + "\n" + message
+        from neto_incident_monitor.notification_templates import standard
+        title, message = standard(entry['name'], incidents)
         from neto_incident_monitor.secret_config import UnavailableSecret
         def webhook(key):
             custom = entry.get(key, '')
             return '' if isinstance(custom, UnavailableSecret) else custom or getattr(self, key, '')
         teams_webhook = webhook('teams_webhook')
         google_chat_webhook = webhook('google_chat_webhook')
+        def channel_text(key):
+            config = entry.get('notification_templates', {}).get(key, {})
+            from neto_incident_monitor.template_library import resolve
+            config = resolve(config, getattr(self, 'notification_library', {}))
+            if config.get('enabled'):
+                from neto_incident_monitor.notification_templates import render
+                return '', render(config, entry['name'], incidents)
+            return title, message
         if self.teams_enabled.get() and entry.get("notify_teams", True) and teams_webhook:
             links = {item["number"]: item["url"] for item in incidents if item.get("url")}
-            self.teams_sender.submit(teams_webhook, title, message, **({"links": links} if links else {}))
+            self.teams_sender.submit(teams_webhook, *channel_text('teams_webhook'), **({"links": links} if links else {}))
         if self.google_chat_enabled.get() and entry.get("notify_google_chat", True) and google_chat_webhook:
             links = {item["number"]: item["url"] for item in incidents if item.get("url")}
-            self.google_chat_sender.submit(google_chat_webhook, title, message, links=links)
+            self.google_chat_sender.submit(google_chat_webhook, *channel_text('google_chat_webhook'), links=links)
         if self.notify.get() and entry.get("notify_windows", True):
             try:
                 from plyer import notification
@@ -860,6 +865,8 @@ class App(DynamicColumns):
     def persist_filters(self):
         settings = read_json(CONFIG, {})
         settings["filters"] = self.filters
+        if isinstance(getattr(self, 'notification_library', None), dict):
+            settings['notification_library'] = self.notification_library
         settings["urls"] = [entry["url"] for entry in self.filters]
         save_json(CONFIG, settings)
 
@@ -1423,7 +1430,7 @@ class App(DynamicColumns):
                     intervals = {"inc": settings["interval"], "task": settings.get("task_interval", 3600)}
                     resolved = {url: effective_list_url(url, settings['filters']) for url in settings['urls']}
                     def list_kind(url):
-                        return 'task' if urlparse(resolved[url]).path.endswith('/sc_task_list.do') else 'inc'
+                        return 'task' if urlparse(resolved[url]).path in ('/sc_task_list.do', '/sc_request_list.do', '/sc_req_item_list.do') else 'inc'
                     deadlines = {"inc": 0, "task": 0}
                     force = True
                     while not self.stop.is_set():
@@ -1698,7 +1705,7 @@ class App(DynamicColumns):
         def remaining(kind):
             deadline = self.check_deadlines.get(kind)
             return "-" if deadline is None else f"{max(0, int(deadline - now + 0.999))} s"
-        self.countdown.set(f"Następna aktualizacja INC: {remaining('inc')}  STASK: {remaining('task')}")
+        self.countdown.set(f"Następna aktualizacja INC: {remaining('inc')}  SCTASK/REQ/RITM: {remaining('task')}")
         if not self.quitting:
             self.root.after(200, self.drain)
 

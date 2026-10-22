@@ -52,7 +52,7 @@ class StatusPill(tk.Canvas):
 
 class PriorityDots:
     """Small cell overlays, following scrolling and column rearrangements."""
-    COLORS = {"1": "#ef4858", "2": "#f59b45", "3": "#e6c44b", "4": "#69bf91", "5": "#919aa8"}
+    COLORS = {"1": "#ff3b57", "2": "#ff901f", "3": "#ffe13b", "4": "#35e893", "5": "#8ab4ff"}
 
     def __init__(self, table):
         self.table = table
@@ -106,7 +106,7 @@ class PriorityDots:
                     scale = 8
                     picture = Image.new("RGB", (14 * scale, 14 * scale), background)
                     draw = ImageDraw.Draw(picture)
-                    draw.ellipse((3 * scale, 3 * scale, 11 * scale, 11 * scale), fill=color)
+                    draw.ellipse((1 * scale, 1 * scale, 13 * scale, 13 * scale), fill=color)
                     self.images[key] = ImageTk.PhotoImage(
                         picture.resize((14, 14), Image.Resampling.LANCZOS), master=table)
                 dot.create_image(0, 0, anchor="nw", image=self.images[key])
@@ -236,13 +236,14 @@ class Toggle(tk.Canvas):
 
 class RoundedButton(tk.Canvas):
     """A button with the same command/state interface as the sidebar buttons."""
-    def __init__(self, parent, text, command, primary=False, background=SURFACE, icon=None):
+    def __init__(self, parent, text, command, primary=False, background=SURFACE, icon=None, compact=False):
         from tkinter.font import Font
         self.text_width = Font(parent, font=("Segoe UI", 9)).measure(text)
         self.icon = icon
-        self.min_width = 36 if icon and not text else 90
-        width = max(self.min_width, self.text_width + 24 + (22 if icon and text else 0))
-        super().__init__(parent, width=width, height=36, bg=background, bd=0,
+        self.button_height = 26 if compact else 36
+        self.min_width = 36 if icon and not text else (45 if compact else 90)
+        width = max(self.min_width, self.text_width + (18 if compact else 24) + (22 if icon and text else 0))
+        super().__init__(parent, width=width, height=self.button_height, bg=background, bd=0,
                          highlightthickness=0, takefocus=True, cursor="hand2")
         self.text, self.command, self.primary = text, command, primary
         self.enabled, self.hover = True, False
@@ -267,7 +268,7 @@ class RoundedButton(tk.Canvas):
 
     def redraw(self, event=None):
         self.delete("all")
-        width, height = max(self.min_width, self.winfo_width()), 36
+        width, height = max(self.min_width, self.winfo_width()), self.button_height
         color = (ACCENT if self.primary else "#373c46")
         if self.hover and self.enabled:
             color = "#f04b59" if self.primary else "#484f5c"
@@ -276,10 +277,10 @@ class RoundedButton(tk.Canvas):
         picture = Image.new("RGB", (width * 4, height * 4), self.cget("background"))
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=8 * 4,
-                               fill=color, outline=ACCENT if self.focus_get() == self else color, width=4)
+                               fill=color, outline='#606875' if self.focus_get() == self else color, width=4)
         foreground = TEXT if self.enabled else "#747b88"
         if self.icon:
-            self.draw_icon(draw, (width - self.text_width - 22) / 2 if self.text else (width - 16) / 2, 10, foreground)
+            self.draw_icon(draw, (width - self.text_width - 22) / 2 if self.text else (width - 16) / 2, (height - 16) / 2, foreground)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         self.create_image(0, 0, image=self.picture, anchor="nw")
         self.create_text(width / 2 + (11 if self.icon else 0), height / 2, text=self.text,

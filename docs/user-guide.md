@@ -59,6 +59,8 @@ Po przygotowaniu środowiska plik `Neto Incident Monitor.vbs` umożliwia urucham
 
 ## Obsługa aplikacji
 
+Obsługiwane listy to INC (`incident_list.do`), SCTASK (`sc_task_list.do`), REQ (`sc_request_list.do`) i RITM (`sc_req_item_list.do`) w instancji `adeo.service-now.com`. REQ i RITM dodaje się tak samo jak inne filtry; działają dynamiczne kolumny, historia oraz powiadomienia z linkami do rekordów. SCTASK, REQ i RITM korzystają ze wspólnego interwału „Zgłoszenia katalogowe”. Licznik czasu od utworzenia INC pozostaje dostępny tylko dla incydentów.
+
 ### Konfiguracja monitorowania
 
 1. Wybierz **Dodaj filtr** i wprowadź nazwę oraz pełny adres listy ServiceNow z zastosowanym filtrem.
@@ -81,6 +83,19 @@ Powrót oznacza ponowne pojawienie się incydentu po poprawnym odczycie, który 
 Pierwszy odczyt nowego filtra wykrywa znajdujące się w nim incydenty i może wysłać powiadomienia zgodnie z ustawieniami kanałów. Przy aktualizacji istniejące dane wykrywania są zachowywane, aby uniknąć ponownych alertów tylko z powodu aktualizacji.
 
 Powiadomienie zawiera nazwę filtra, liczbę wykrytych incydentów oraz ich numery, lokalizacje i krótkie opisy. Zmiana danych incydentu pozostającego na liście nie powoduje nowego powiadomienia o pojawieniu się.
+
+### Własny format powiadomień filtra
+
+W zębatce przy Teams lub Google Chat wybierz **Szablon powiadomienia**. Biblioteka nazwanych szablonów jest wspólna dla filtrów i obu kanałów, natomiast wybór jest niezależny dla każdego filtra i kanału. Windows zachowuje standardowy format.
+
+**Dodaj** otwiera edytor z polem nazwy. **Edytuj** zmienia wybrany szablon we wszystkich miejscach użycia. Nazwy muszą być unikalne. **Usuń** wymaga potwierdzenia i przełącza używające go filtry na **Standardowy**. Dla pozycji **Standardowy** przyciski **Edytuj** i **Usuń** są nieaktywne. Standardowy format to `Nazwa filtra · liczba`, a poniżej lista `Numer — Krótki opis`, jednakowo dla INC i SCTASK.
+
+- **Szablon wiadomości** opisuje całą wiadomość i obsługuje `{filtr}`, `{liczba}` oraz `{lista incydentów}`. Lista jest wymagana i może znaleźć się w dowolnym miejscu wiadomości.
+- **Szablon elementu listy** jest powtarzany dla każdego INC/SCTASK. Wybierz kolumnę filtra i kliknij **Wstaw kolumnę**. Dostępne są wszystkie kolumny odczytane z tej listy ServiceNow, także niestandardowe i ukryte w tabeli aplikacji. Przed pierwszym odczytem uruchom monitoring filtra.
+
+Przykład elementu: `{Numer} — {Krótki opis}`. Selektor pokazuje nagłówki kolumn, a przycisk **Wstaw** umieszcza wybrany nagłówek w nawiasach klamrowych. Powiązania z identyfikatorami kolumn są zachowane wewnętrznie: zmiana nagłówka nie psuje zapisanego szablonu. Powtarzające się nazwy dostają przyrostek `(2)`, `(3)` itd. Starsze zmienne techniczne nadal działają i są przedstawiane czytelnie po otwarciu edytora. Brakująca wartość jest pusta, a wpisane separatory pozostają. Edytor wskazuje niedostępne kolumny. Numery pozostają klikalne w obu kanałach.
+
+Podgląd aktualizuje się podczas edycji. **Wyślij test** wysyła dane przykładowe na webhook filtra lub adres globalny, bez zapisywania zmian. **Zapisz szablon** od razu zapisuje szablon w bibliotece na dysku. Potwierdzone usunięcie również zapisuje bibliotekę od razu. **Zastosuj** zatwierdza wybór szablonu i webhook w szkicu kanału; **Zapisz** w oknie filtra zapisuje te ustawienia filtra. Anulowanie nadrzędnych okien nie cofa zapisania ani potwierdzonego usunięcia szablonu. Dotychczasowe własne formaty są automatycznie przenoszone do biblioteki; wybór **Standardowy** nie usuwa własnych szablonów.
 
 ### Bieżące incydenty i historia
 

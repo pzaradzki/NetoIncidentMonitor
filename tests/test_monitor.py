@@ -123,7 +123,7 @@ class MonitorTests(unittest.TestCase):
             monitor.events.put(("check_deadlines", {"inc": time.monotonic() + 60, "task": time.monotonic() + 3600}))
             monitor.drain()
             self.assertIn("INC: 60 s", monitor.countdown.get())
-            self.assertIn("STASK: 3600 s", monitor.countdown.get())
+            self.assertIn("SCTASK/REQ/RITM: 3600 s", monitor.countdown.get())
             monitor.events.put(("phase", "Oczekiwanie na logowanie"))
             monitor.drain()
             self.assertIsNone(monitor.next_check)

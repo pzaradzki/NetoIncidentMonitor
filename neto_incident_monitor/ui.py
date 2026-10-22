@@ -40,6 +40,25 @@ def build_ui(app, settings):
     style.map("TEntry", bordercolor=[("focus", "#929dab")],
               lightcolor=[("focus", "#929dab")], darkcolor=[("focus", "#929dab")],
               fieldbackground=[("disabled", "#292c33")], foreground=[("disabled", "#747b88")])
+    style.configure('TCombobox', padding=(10, 7), fieldbackground=SURFACE,
+                    background='#373c46', foreground=TEXT, arrowcolor=MUTED,
+                    bordercolor='#484e58', lightcolor=SURFACE, darkcolor=SURFACE,
+                    selectbackground=SURFACE, selectforeground=TEXT, arrowsize=16)
+    style.map('TCombobox',
+              fieldbackground=[('disabled', '#292c33'), ('readonly', SURFACE)],
+              foreground=[('disabled', '#747b88'), ('readonly', TEXT)],
+              selectbackground=[('readonly', SURFACE)], selectforeground=[('readonly', TEXT)],
+              background=[('active', '#424751'), ('!active', '#373c46')],
+              bordercolor=[('focus', '#929dab'), ('!focus', '#484e58')],
+              lightcolor=[('focus', '#929dab'), ('!focus', SURFACE)],
+              darkcolor=[('focus', '#929dab'), ('!focus', SURFACE)])
+    root.option_add('*TCombobox*Listbox.background', SURFACE)
+    root.option_add('*TCombobox*Listbox.foreground', TEXT)
+    root.option_add('*TCombobox*Listbox.selectBackground', '#513039')
+    root.option_add('*TCombobox*Listbox.selectForeground', '#ffe3e6')
+    root.option_add('*TCombobox*Listbox.font', ('Segoe UI', 10))
+    root.option_add('*TCombobox*Listbox.relief', 'flat')
+    root.option_add('*TCombobox*Listbox.borderWidth', 0)
     style.configure("TSeparator", background="#424751")
     style.map("Treeview.Heading", background=[("active", "#424751")])
     style.configure("TCheckbutton", background=BG, foreground=TEXT, padding=(0, 4),
@@ -245,7 +264,7 @@ def build_ui(app, settings):
     app.phase_label = StatusPill(state)
     app.phase_label.pack(side="left")
     app.update_phase_text()
-    app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  STASK: -")
+    app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  SCTASK/REQ/RITM: -")
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
     app.current_count = tk.StringVar(value="0")
@@ -288,7 +307,7 @@ def build_ui(app, settings):
     app.tabs.bind("<Configure>", align_actions)
     def update_history_action(event=None):
         if app.tabs.select() == str(history):
-            app.clear_history_button.pack(side="right", padx=(8, 0), after=columns_button)
+            app.clear_history_button.pack(side="right", padx=(8, 0), after=app.configure_filter_button)
         else:
             app.clear_history_button.pack_forget()
         align_actions()

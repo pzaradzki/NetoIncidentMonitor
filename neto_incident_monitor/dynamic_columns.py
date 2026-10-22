@@ -145,7 +145,7 @@ class DynamicColumns:
         keys = [c['key'] for c in profile['schema']] if profile else []
         if self.unread_highlighting_enabled():
             keys.append('read')
-        if not effective_list_url(self.selected_filter_url(), self.filters).split('?', 1)[0].endswith('/sc_task_list.do'):
+        if effective_list_url(self.selected_filter_url(), self.filters).split('?', 1)[0].endswith('/incident_list.do'):
             keys.append('age_minutes')
         return keys + ['time']
 

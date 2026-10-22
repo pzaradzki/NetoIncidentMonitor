@@ -4,7 +4,8 @@ from urllib.parse import urlparse, unquote
 
 # This deployment monitors one tenant. Do not infer trust from a pasted URL.
 TENANT_HOST = 'adeo.service-now.com'
-LIST_PATHS = ('/incident_list.do', '/sc_task_list.do')
+RECORD_TABLES = {'INC': 'incident', 'SCTASK': 'sc_task', 'REQ': 'sc_request', 'RITM': 'sc_req_item'}
+LIST_PATHS = tuple('/' + table + '_list.do' for table in RECORD_TABLES.values())
 
 
 def trusted_url(value):
@@ -29,7 +30,7 @@ def is_short_url(value):
 
 
 def normalize_list_url(value, allow_short=True):
-    message = 'Podaj adres listy INC lub SCTASK w https://adeo.service-now.com, bez danych logowania i fragmentu.'
+    message = 'Podaj adres listy INC, SCTASK, REQ lub RITM w https://adeo.service-now.com, bez danych logowania i fragmentu.'
     if not trusted_url(value):
         raise ValueError(message)
     parsed = urlparse(value)
@@ -39,7 +40,7 @@ def normalize_list_url(value, allow_short=True):
     if parsed.path.startswith(prefix):
         target = urlparse(unquote(parsed.path[len(prefix):]))
         if (target.scheme or target.netloc or target.params or target.fragment
-                or target.path not in ('incident_list.do', '/incident_list.do', 'sc_task_list.do', '/sc_task_list.do')):
+                or '/' + target.path.lstrip('/') not in LIST_PATHS):
             raise ValueError(message)
         parsed = parsed._replace(path='/' + target.path.lstrip('/'), query=target.query)
     if parsed.path not in LIST_PATHS or not trusted_url(parsed.geturl()):
@@ -77,12 +78,13 @@ def effective_list_url(url, filters):
 
 def safe_record_url(value, number, list_url=None):
     """Invalid or mismatched links become plain record numbers, never URLs."""
-    if not isinstance(number, str) or not re.fullmatch(r'(INC|SCTASK)\d{1,20}', number):
+    if not isinstance(number, str) or not re.fullmatch(r'(INC|SCTASK|REQ|RITM)\d{1,20}', number):
         return ''
     if not trusted_url(value):
         return ''
     parsed = urlparse(value)
-    expected = '/sc_task.do' if number.startswith('SCTASK') else '/incident.do'
+    prefix = re.match(r'[A-Z]+', number)[0]
+    expected = '/' + RECORD_TABLES[prefix] + '.do'
     if parsed.path != expected:
         return ''
     if list_url is not None:

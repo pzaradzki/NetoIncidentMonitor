@@ -6,7 +6,7 @@ from neto_incident_monitor.widgets import RoundedButton
 from neto_incident_monitor.window_style import apply_window_style
 
 
-def _show(title, message, parent=None, error=False, **kwargs):
+def _show(title, message, parent=None, error=False, question=False, **kwargs):
     owner = parent or tk._default_root
     temporary = owner is None
     if temporary:
@@ -24,11 +24,27 @@ def _show(title, message, parent=None, error=False, **kwargs):
              font=("Segoe UI", 14, "bold"), anchor="w").pack(fill="x", pady=(0, 14))
     tk.Label(frame, text=message, background=BG, foreground=MUTED, wraplength=460,
              justify="left", font=("Segoe UI", 10)).pack(anchor="w")
-    button = RoundedButton(frame, text="OK", command=dialog.destroy, background=BG)
-    button.pack(anchor="e", pady=(22, 0))
+    result = False
+
+    def accept():
+        nonlocal result
+        result = True
+        dialog.destroy()
+
+    if question:
+        footer = tk.Frame(frame, background=BG)
+        footer.pack(fill='x', pady=(22, 0))
+        button = RoundedButton(footer, text='Nie', command=dialog.destroy, background=BG)
+        button.pack(side='right')
+        RoundedButton(footer, text='Tak, usuń', command=accept, primary=True,
+                      background=BG).pack(side='right', padx=(0, 8))
+    else:
+        button = RoundedButton(frame, text="OK", command=dialog.destroy, background=BG)
+        button.pack(anchor="e", pady=(22, 0))
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
     dialog.bind("<Escape>", lambda _: dialog.destroy())
-    dialog.bind("<Return>", lambda _: dialog.destroy())
+    if not question:
+        dialog.bind("<Return>", lambda _: dialog.destroy())
     dialog.update_idletasks()
     if not temporary:
         x = owner.winfo_rootx() + (owner.winfo_width() - dialog.winfo_reqwidth()) // 2
@@ -42,7 +58,7 @@ def _show(title, message, parent=None, error=False, **kwargs):
         previous_grab.grab_set()
     if temporary:
         owner.destroy()
-    return "ok"
+    return result if question else "ok"
 
 
 def showinfo(title, message, **kwargs):
@@ -51,3 +67,7 @@ def showinfo(title, message, **kwargs):
 
 def showerror(title, message, **kwargs):
     return _show(title, message, error=True, **kwargs)
+
+
+def askyesno(title, message, **kwargs):
+    return _show(title, message, question=True, **kwargs)

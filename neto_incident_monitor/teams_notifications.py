@@ -48,29 +48,47 @@ def incident_text(incidents):
 
 
 def payload(title, message, links=None):
+    from neto_incident_monitor.notification_templates import linked_parts
     lines, card_lines = [], []
     for line in message.split("\n"):
-        number = line.split(" - ", 1)[0]
-        url = safe_record_url((links or {}).get(number, ""), number)
-        if url:
-            url = quote(url, safe=":/?#@!$&'*,;=%~-._")
-            lines.append(f'<a href="{html.escape(url, quote=True)}">{html.escape(number)}</a>' + html.escape(plain_text(line[len(number):])))
-            card_lines.append(f'[{number}]({url})' + card_text(line[len(number):]))
-        else:
-            lines.append(html.escape(plain_text(line)))
-            card_lines.append(card_text(line))
+        rich, card = [], []
+        for text, url in linked_parts(line, links):
+            if url:
+                url = quote(url, safe=":/?#@!$&'*,;=%~-._")
+                rich.append(f'<a href="{html.escape(url, quote=True)}">{text}</a>')
+                card.append(f'[{text}]({url})')
+            else:
+                rich.append(html.escape(plain_text(text)))
+                card.append(card_text(text))
+        lines.append(''.join(rich))
+        card_lines.append(''.join(card))
     title = ' '.join(title.splitlines())
-    text = html.escape(plain_text(title)) + "<br>" + "<br>".join(lines)
+    text = (html.escape(plain_text(title)) + "<br>" if title else '') + "<br>".join(lines)
     return {"type": "message", "text": text, "attachments": [{
         "contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": None,
         "content": {"type": "AdaptiveCard", "version": "1.2", "body": [
-            {"type": "TextBlock", "text": card_text(title), "weight": "Bolder", "wrap": True},
+            *([{"type": "TextBlock", "text": card_text(title), "weight": "Bolder", "wrap": True}] if title else []),
             {"type": "TextBlock", "text": "\n".join(card_lines), "wrap": True}]}}]}
 
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
+
+
+def message_chunks(title, message, links=None):
+    """Bound the actual escaped payload, retaining every character."""
+    from neto_incident_monitor.notification_templates import slices
+    current = ''
+    for line in message.splitlines(keepends=True):
+        for part in slices(line, 1000):
+            candidate = current + part
+            if current and len(json.dumps(payload(title, candidate, links)).encode('utf-8')) > 25000:
+                yield current
+                current = ''
+            current += part
+    if current or not message:
+        yield current
 
 
 def send(webhook, title, message, links=None):
@@ -103,7 +121,8 @@ class Sender:
         while True:
             webhook, title, message, test, links = self.jobs.get()
             try:
-                send(webhook, title, message, links)
+                for chunk in message_chunks(title, message, links):
+                    send(webhook, title, chunk, links)
                 result = True, test, "Teams przyjął żądanie. Sprawdź wiadomość i historię uruchomień przepływu."
             except Exception as error:
                 result = False, test, str(error)

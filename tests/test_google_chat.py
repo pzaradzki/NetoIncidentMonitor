@@ -113,7 +113,7 @@ class GoogleChatTests(unittest.TestCase):
             app.notify_filter('filter', [record])
             windows.assert_not_called()
         args = app.google_chat_sender.submit.call_args
-        self.assertIn('SCTASK123 - Laptop - Anna', args.args[2])
+        self.assertIn('SCTASK123 - Laptop', args.args[2])
         self.assertEqual(args.kwargs['links'], {'SCTASK123': record['url']})
         app.filters[0]['notify_google_chat'] = False
         app.notify_filter('filter', [record])

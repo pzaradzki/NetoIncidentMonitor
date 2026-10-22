@@ -39,31 +39,27 @@ def plain(value):
 
 
 def payloads(title, message, links=None):
+    from neto_incident_monitor.notification_templates import linked_parts, slices
     header = plain(title[:300])
     current = header
     result = []
-    for line in message.split('\n'):
-        number = line.split(' - ', 1)[0]
-        text = plain(line[:6000]) + ('…' if len(line) > 6000 else '')
-        url = safe_record_url((links or {}).get(number, ''), number)
-        try:
-            parsed = urlparse(url)
-            safe = (parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password
-                    and len(url) <= 4000 and re.fullmatch(r'(?:INC|SCTASK)\d{1,20}', number))
-        except ValueError:
-            safe = False
-        if safe:
-            url = quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
-            if len(url) <= 8000:
-                text = f'<{url}|{number}>' + text[len(number):]
+    for line in (part for line in message.split('\n') for part in slices(line, 3000)):
+        parts = []
+        for value, url in linked_parts(line, links):
+            if url and len(url) <= 4000:
+                url = quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
+                parts.append(f'<{url}|{value}>' if len(url) <= 8000 else plain(value))
+            else:
+                parts.append(plain(value))
+        text = ''.join(parts)
         if len(text.encode('utf-8')) > 26000:
             text = text.encode('utf-8')[:26000].decode('utf-8', errors='ignore') + '…'
-        candidate = current + '\n' + text
+        candidate = current + ('\n' if current else '') + text
         if (len(candidate.encode('utf-8')) > 28000
                 or len(json.dumps({'text': candidate}, ensure_ascii=False).encode('utf-8')) > 30000):
             result.append({'text': current})
             current = header
-        current += '\n' + text
+        current += ('\n' if current else '') + text
     result.append({'text': current})
     return result
 

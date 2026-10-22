@@ -2,7 +2,7 @@
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import re
 from itertools import count as page_numbers
-from neto_incident_monitor.service_now_urls import normalize_list_url, trusted_url, is_short_url, resolved_list_url
+from neto_incident_monitor.service_now_urls import normalize_list_url, trusted_url, is_short_url, resolved_list_url, LIST_PATHS
 
 
 class AuthenticationRequired(Exception):
@@ -47,7 +47,7 @@ def first_page(url):
 
 def navigation_button(page, direction):
     for frame in page.frames:
-        if not trusted_url(frame.url) or urlparse(frame.url).path not in ("/incident_list.do", "/sc_task_list.do"):
+        if not trusted_url(frame.url) or urlparse(frame.url).path not in LIST_PATHS:
             continue
         english, polish = ("First page", "Pierwsza strona") if direction == "first" else ("Next page", "Następna strona")
         selector = ", ".join(
@@ -75,7 +75,7 @@ def next_button(page):
 
 def row_input(page):
     for frame in page.frames:
-        if not trusted_url(frame.url) or urlparse(frame.url).path not in ("/incident_list.do", "/sc_task_list.do"):
+        if not trusted_url(frame.url) or urlparse(frame.url).path not in LIST_PATHS:
             continue
         inputs = frame.locator('input.list2_page, input[data-type="list_nav_input"], input[name="sysparm_first_row"]')
         for index in range(inputs.count()):
@@ -189,7 +189,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
         if button is None:
             # A missing pager is safe only when the list has no pagination at all.
             for frame in page.frames:
-                if trusted_url(frame.url) and urlparse(frame.url).path in ("/incident_list.do", "/sc_task_list.do") and frame.locator(
+                if trusted_url(frame.url) and urlparse(frame.url).path in LIST_PATHS and frame.locator(
                     '[data-type^="list_nav"], input.list2_page, .list2_paging').count():
                     raise RuntimeError("Nie rozpoznano przycisku następnej strony. Nie zapisano częściowego wyniku.")
             return result, page_index

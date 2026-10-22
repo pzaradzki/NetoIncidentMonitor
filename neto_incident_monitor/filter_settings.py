@@ -7,51 +7,7 @@ from neto_incident_monitor.widgets import RoundedButton, Toggle
 from neto_incident_monitor import themed_dialogs as messagebox
 
 
-def show_channel_settings(parent, title, key, value):
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.configure(background=SURFACE)
-    dialog.transient(parent)
-    dialog.resizable(False, False)
-    panel = ttk.Frame(dialog, style='White.TFrame', padding=24)
-    panel.pack(fill='both', expand=True)
-    ttk.Label(panel, text='Adres webhooka (opcjonalnie)', style='White.TLabel').pack(anchor='w')
-    draft = tk.StringVar(value=value.get())
-    address = ttk.Entry(panel, textvariable=draft, show='•', width=48)
-    address.pack(fill='x', pady=(8, 6))
-    ttk.Label(panel, text='Pozostaw puste, aby użyć ustawień globalnych.', style='WhiteMuted.TLabel').pack(anchor='w')
-
-    def close():
-        dialog.destroy()
-        if parent.winfo_exists():
-            parent.grab_set()
-
-    def apply():
-        from neto_incident_monitor.teams_notifications import validate_webhook as teams_validate
-        from neto_incident_monitor.google_chat_notifications import validate_webhook as chat_validate
-        text = draft.get().strip()
-        try:
-            if text:
-                text = (teams_validate if key == 'teams_webhook' else chat_validate)(text)
-        except ValueError as error:
-            messagebox.showerror(title, str(error), parent=dialog)
-            dialog.grab_set()
-            return
-        value.set(text)
-        close()
-
-    footer = ttk.Frame(panel, style='White.TFrame')
-    footer.pack(fill='x', pady=(20, 0))
-    RoundedButton(footer, text='Zastosuj', command=apply, primary=True).pack(side='right')
-    RoundedButton(footer, text='Anuluj', command=close).pack(side='right', padx=8)
-    dialog.protocol('WM_DELETE_WINDOW', close)
-    dialog.bind('<Escape>', lambda _: close())
-    dialog.update_idletasks()
-    width = max(520, dialog.winfo_reqwidth())
-    height = dialog.winfo_reqheight()
-    dialog.geometry(f'{width}x{height}+{max(0, (dialog.winfo_screenwidth()-width)//2)}+{max(0, (dialog.winfo_screenheight()-height)//2)}')
-    dialog.grab_set()
-    address.focus_set()
+from neto_incident_monitor.template_library_ui import show_channel_settings
 
 
 def show_filter_settings(app, index):
@@ -68,6 +24,44 @@ def show_filter_settings(app, index):
     values = {}
     controls = {}
     webhooks = {}
+    import copy
+    from neto_incident_monitor.template_library import migrate, clear_missing
+    library, draft_filters = migrate(getattr(app, 'notification_library', {}), app.filters)
+    templates = draft_filters[index].setdefault('notification_templates', {})
+
+    def save_library(candidate):
+        previous_library = getattr(app, 'notification_library', None)
+        previous_filters = app.filters
+        _, current_filters = migrate(library, app.filters)
+        clear_missing(current_filters, candidate)
+        app.notification_library = copy.deepcopy(candidate)
+        app.filters = current_filters
+        try:
+            app.persist_filters()
+        except (OSError, ValueError):
+            app.notification_library = previous_library
+            app.filters = previous_filters
+            raise
+        library.clear()
+        library.update(copy.deepcopy(candidate))
+        clear_missing(draft_filters, library)
+
+    def save_channel(key, address, selection):
+        nonlocal entry
+        previous_filters = app.filters
+        current_filters = copy.deepcopy(app.filters)
+        current = next(item for item in current_filters if item['url'] == entry['url'])
+        current[key] = address
+        current.setdefault('notification_templates', {})[key] = dict(selection)
+        app.filters = current_filters
+        try:
+            app.persist_filters()
+        except (OSError, ValueError):
+            app.filters = previous_filters
+            raise
+        entry = current
+    profiles = getattr(app, 'column_profiles', {})
+    schema = profiles.get(entry['url'], {}).get('schema', []) if isinstance(profiles, dict) else []
     for key, title, description, enabled in [
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
@@ -89,8 +83,10 @@ def show_filter_settings(app, index):
         if key in ('notify_teams', 'notify_google_chat'):
             webhook_key = key.removeprefix('notify_') + '_webhook'
             webhooks[webhook_key] = tk.StringVar(value=entry.get(webhook_key, ''))
+            templates.setdefault(webhook_key, {})
             gear = RoundedButton(row, text='', icon='gear', command=lambda k=webhook_key, t=title:
-                                 show_channel_settings(window, t, k, webhooks[k]))
+                                 show_channel_settings(window, t, k, webhooks[k], templates[k], schema, entry['name'], app,
+                                                       library, save_library, save_channel))
             gear.grid(row=0, column=1, rowspan=2, padx=(18, 0))
 
     def save():
@@ -109,13 +105,22 @@ def show_filter_settings(app, index):
             messagebox.showerror('Ustawienia filtra', str(error), parent=window)
             return
         previous = dict(entry)
+        previous_filters = app.filters
+        previous_library = getattr(app, 'notification_library', None)
         entry.update({key: value.get() for key, value in values.items()})
         entry.update(addresses)
+        entry['notification_templates'] = templates
+        draft_filters[index] = entry
+        clear_missing(draft_filters, library)
+        app.filters = draft_filters
+        app.notification_library = library
         try:
             app.persist_filters()
         except (OSError, ValueError):
             entry.clear()
             entry.update(previous)
+            app.filters = previous_filters
+            app.notification_library = previous_library
             messagebox.showerror("Ustawienia filtra", 'Nie udało się zapisać ustawień filtra.', parent=window)
             return
         window.destroy()

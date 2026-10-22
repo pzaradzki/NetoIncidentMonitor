@@ -1,6 +1,18 @@
 # Niestandardowe powiadomienia dla filtrów
 
-Status: funkcjonalność odłożona, bez implementacji. Ustalenia zapisane 22.10.2026.
+Status: zaimplementowano wspólną bibliotekę nazwanych, dwupoziomowych szablonów w konfiguracji kanałów filtra (22.10.2026).
+
+## Aktualna obsługa
+
+W ustawieniach filtra otwórz zębatkę przy Teams lub Google Chat i wybierz nazwany szablon. Biblioteka jest wspólna dla wszystkich filtrów i obu kanałów; każdy filtr i kanał wybiera szablon niezależnie. Dodaj/Edytuj otwiera osobny edytor z nazwą, a Usuń wymaga potwierdzenia. Standardowy blokuje edycję i usunięcie. Usunięcie własnego szablonu przełącza jego użycia na Standardowy. Windows zachowuje standardowy format. Globalne przełączniki pozostają nadrzędne; pusty webhook korzysta z adresu globalnego.
+
+Szablon wiadomości obsługuje `{filtr}`, `{liczba}` i `{lista incydentów}`. Szablon elementu listy jest powtarzany dla każdego INC/SCTASK i obsługuje identyfikatory wszystkich kolumn wykrytych na liście tego filtra. Selektor pokazuje etykietę i stabilny identyfikator kolumny, np. `Krótki opis [short_description]`; przycisk wstawia `{short_description}`. Zmiana etykiety nie zmienia znaczenia zmiennej. Kolumny nie muszą być widoczne w tabeli aplikacji.
+
+Podgląd w edytorze i test używają danych przykładowych. Test wysyła wiadomość w tle na wskazany lub globalny webhook. „Zapisz szablon” i „Zastosuj” zatwierdzają szkice; dopiero „Zapisz” w oknie filtra zapisuje konfigurację oraz bibliotekę razem. Anulowanie zachowuje wcześniejsze ustawienia. Dotychczasowe własne formaty migrują do nazwanych szablonów; nazwy są unikalne, a powiązania korzystają ze stabilnych identyfikatorów.
+
+Brakujące wartości i niedostępne kolumny są zastępowane pustym tekstem; separatory wpisane w szablonie pozostają. Edytor ostrzega o niedostępnych kolumnach. Numery są linkowane wyłącznie do zweryfikowanych adresów rekordów ServiceNow; dane nie mogą wstrzykiwać znaczników ani wzmianek. Szablony są zwykłym tekstem, bez wykonywania wyrażeń. Oba kanały dzielą duże wiadomości.
+
+Poniżej zachowano wcześniejsze notatki projektowe; aktualne zachowanie opisuje ta sekcja.
 
 ## Zakres uzgodniony z użytkownikiem
 

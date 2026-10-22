@@ -55,11 +55,16 @@ class FilterViewTests(unittest.TestCase):
                 child, field = open_channel(dialog, index)
                 field.insert(0, value)
                 button(child, 'Zastosuj').invoke()
-            self.assertNotIn('teams_webhook', app.filters[0])  # Parent Save commits the draft.
+            self.assertEqual(app.filters[0]['teams_webhook'], teams)
+            button(dialog, 'Anuluj').invoke()
+            self.assertEqual(app.filters[0]['teams_webhook'], teams)
+            self.assertEqual(app.filters[0]['google_chat_webhook'], chat)
+            show_filter_settings(app, 0)
+            dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
             app.persist_filters.side_effect = OSError('failure')
             with patch('neto_incident_monitor.filter_settings.messagebox.showerror'):
                 button(dialog, 'Zapisz').invoke()
-            self.assertNotIn('teams_webhook', app.filters[0])
+            self.assertEqual(app.filters[0]['teams_webhook'], teams)
             app.persist_filters.side_effect = None
             button(dialog, 'Zapisz').invoke()
             self.assertEqual(app.filters[0]['teams_webhook'], teams)
@@ -215,12 +220,12 @@ class FilterViewTests(unittest.TestCase):
         incident = {"number": "INC1", "location": "Store", "short_description": "Description"}
         with patch("plyer.notification.notify") as notify:
             app.notify_filter("A", [incident])
-            self.assertEqual(notify.call_args.kwargs["title"], "A")
-            self.assertEqual(notify.call_args.kwargs["message"], "Wykryto incydent\nINC1 - Store - Description")
+            self.assertEqual(notify.call_args.kwargs["title"], "A · 1")
+            self.assertEqual(notify.call_args.kwargs["message"], "INC1 - Description")
             app.teams_sender.submit.assert_not_called()
             app.notify_filter("B", [incident])
             self.assertEqual(notify.call_count, 1)
-            app.teams_sender.submit.assert_called_once_with("webhook", "B", "Wykryto incydent\nINC1 - Store - Description")
+            app.teams_sender.submit.assert_called_once_with("webhook", "B · 1", "INC1 - Description")
             app.teams_enabled.get.return_value = False
             app.notify_filter("B", [incident])
             self.assertEqual(app.teams_sender.submit.call_count, 1)
