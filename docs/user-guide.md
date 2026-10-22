@@ -118,9 +118,19 @@ Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power A
 
 Google Chat jest trzecim, niezależnym kanałem. W ustawieniach globalnych wybierz **Google Chat → Konfiguruj**, wklej adres webhooka, użyj **Wyślij test**, zapisz konfigurację i włącz kanał. Przycisk **Instrukcja** prowadzi do [instrukcji Google](https://developers.google.com/workspace/chat/quickstart/webhooks). Webhook tworzysz w przeglądarkowej wersji Google Chat: wybrana przestrzeń → **Aplikacje i integracje → Dodaj webhooki**. Organizacja Google Workspace musi zezwalać na używanie webhooków. Power Automate i logowanie do Google w naszej aplikacji nie są potrzebne.
 
-Google Chat jest domyślnie wyłączony globalnie. Po skonfigurowaniu można wybierać powiadomienia osobno dla każdego filtra, tak samo jak Windows i Teams. Kanały mogą działać jednocześnie. Obsługiwane są INC i SCTASK, hiperłącza pod numerami oraz **Test powiadomienia** z menu kontekstowego. Ustawienia i webhook są zapamiętywane między sesjami. Wysyłanie działa w tle z ograniczoną kolejką i odstępem między wiadomościami; większe zestawy zgłoszeń są dzielone na części. Adres jest maskowany w oknie konfiguracji, a komunikaty błędów nie zawierają parametrów `key` ani `token`. Pełny adres webhooka jest zapisywany lokalnie w ustawieniach, podobnie jak adres Teams; nie udostępniaj pliku konfiguracji.
+Google Chat jest domyślnie wyłączony globalnie. Po skonfigurowaniu można wybierać powiadomienia osobno dla każdego filtra, tak samo jak Windows i Teams. Kanały mogą działać jednocześnie. Obsługiwane są INC i SCTASK, hiperłącza pod numerami oraz **Test powiadomienia** z menu kontekstowego. Ustawienia i webhook są zapamiętywane między sesjami. Wysyłanie działa w tle z ograniczoną kolejką i odstępem między wiadomościami; większe zestawy zgłoszeń są dzielone na części. Adres jest maskowany w oknie konfiguracji, a komunikaty błędów nie zawierają parametrów `key` ani `token`. Webhooki Google Chat i Teams są zapisywane lokalnie w postaci zaszyfrowanej przez Windows DPAPI. Nadal nie należy udostępniać katalogu danych ani profilu przeglądarki.
 
 ## Przechowywanie danych
+
+### Ochrona webhooków
+
+Adresy webhooków Teams i Google Chat są przechowywane jako zaszyfrowane wartości w `config.json`, chronione przez Windows DPAPI w zakresie bieżącego użytkownika. Aplikacja odszyfrowuje je wyłącznie do użycia w pamięci. Nie wymaga to dodatkowego hasła, logowania ani uprawnień administratora.
+
+Przy pierwszym odczycie konfiguracji z wcześniejszej wersji jawne webhooki są automatycznie szyfrowane, a plik atomowo zastępowany bez tworzenia jawnej kopii zapasowej. Jeśli migracja się nie powiedzie, dotychczasowy plik pozostaje bez zmian, a aplikacja informuje o problemie. Nie jest stosowany zapis nowych sekretów jawnym tekstem jako mechanizm zastępczy.
+
+Po skopiowaniu danych na inne konto lub komputer odszyfrowanie może nie być możliwe. Aplikacja wyłącza wtedy odpowiedni kanał i wyświetla informację o konieczności ponownego wpisania webhooka. Nieczytelna zaszyfrowana wartość pozostaje zachowana przy zapisie pozostałych ustawień. Przeniesienie samego katalogu aplikacji na tym samym komputerze i koncie nie wymaga ponownej konfiguracji.
+
+Starsze wersje aplikacji nie obsługują nowego formatu sekretów. Po migracji należy korzystać z wersji obsługującej DPAPI. Ochrona nie zastępuje uprawnień dostępu do katalogu danych i nie chroni przed procesem działającym już jako ten sam użytkownik. Wcześniej utworzone kopie jawnej konfiguracji nie są automatycznie usuwane.
 
 | Sposób uruchomienia | Katalog danych |
 | --- | --- |

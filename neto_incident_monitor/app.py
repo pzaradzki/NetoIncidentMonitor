@@ -52,12 +52,18 @@ def wait_for_browser_cycle(page, schedule, seconds, stop):
 
 
 def read_json(path, default):
+    if path == CONFIG:
+        from neto_incident_monitor.secret_config import load_config
+        return load_config(path, default)
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_json(path, value):
+    if path == CONFIG:
+        from neto_incident_monitor.secret_config import save_config
+        return save_config(path, value)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
@@ -322,6 +328,8 @@ class App:
         from neto_incident_monitor.teams_notifications import Sender
         self.teams_sender = Sender(self.events)
         self.teams_webhook = settings.get("teams_webhook", "")
+        self.saved_teams = settings.get('teams_enabled', False), self.teams_webhook
+        self.saving_teams = False
         from neto_incident_monitor.google_chat_notifications import Sender as GoogleChatSender
         self.google_chat_sender = GoogleChatSender(self.events)
         self.google_chat_webhook = settings.get("google_chat_webhook", "")
@@ -341,6 +349,8 @@ class App:
         invalid_count = sum(bool(entry.get('url_invalid')) for entry in self.filters)
         if invalid_count:
             self.status.set(f'Wyłączono filtry z nieprawidłowym adresem: {invalid_count}. Popraw ich adresy w edycji filtra.')
+        if getattr(settings, 'protection_errors', []):
+            self.status.set(' '.join(dict.fromkeys(settings.protection_errors)))
         self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
         from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
@@ -1329,6 +1339,8 @@ class App:
             self.status.set("Nie udało się zapisać ustawienia minimalizacji przeglądarki.")
 
     def change_teams(self, *_):
+        if self.saving_teams:
+            return
         if self.teams_enabled.get() and not self.teams_webhook:
             self.configure_teams()
             if not self.teams_webhook:
@@ -1341,8 +1353,15 @@ class App:
             settings = read_json(CONFIG, {})
             settings.update(teams_enabled=self.teams_enabled.get(), teams_webhook=self.teams_webhook)
             save_json(CONFIG, settings)
+            self.saved_teams = self.teams_enabled.get(), self.teams_webhook
+            return True
         except (OSError, ValueError):
+            self.saving_teams = True
+            enabled, self.teams_webhook = self.saved_teams
+            self.teams_enabled.set(enabled)
+            self.saving_teams = False
             self.status.set("Nie udało się zapisać konfiguracji Teams.")
+            return False
 
     def configure_teams(self):
         from neto_incident_monitor.widgets import RoundedButton
@@ -1375,8 +1394,10 @@ class App:
             value = accepted()
             if value:
                 self.teams_webhook = value
-                self.persist_teams()
-                dialog.destroy()
+                if self.persist_teams():
+                    dialog.destroy()
+                else:
+                    messagebox.showerror('Teams', 'Nie udało się zabezpieczyć lub zapisać konfiguracji.', parent=dialog)
 
         def test():
             value = accepted()
