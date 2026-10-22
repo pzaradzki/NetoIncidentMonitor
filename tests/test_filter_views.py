@@ -27,7 +27,9 @@ class FilterViewTests(unittest.TestCase):
                 self.assertIsNone(app.filter_table.updating_item)
                 first_url = app.filters[0]["url"]
                 second_url = app.filters[1]["url"]
-                app.filter_visible_columns = {first_url: ["number", "state"], second_url: ["number", "short_description"]}
+                from neto_incident_monitor.dynamic_columns import update_profile
+                app.column_profiles = {url: update_profile(None, [{"key": k, "label": k} for k in keys])
+                                       for url, keys in [(first_url, ["number", "state"]), (second_url, ["number", "short_description"]) ]}
                 app.filter_table.selection_set("1")
                 self.assertEqual(app.visible_columns, ["number", "short_description"])
                 app.filter_table.selection_set("0")
@@ -35,6 +37,8 @@ class FilterViewTests(unittest.TestCase):
                 app.visible_columns = list(app.legacy_visible_columns)
                 app.filters[1]["url"] = "https://adeo.service-now.com/sc_task_list.do"
                 app.filter_table.selection_set("1")
+                with patch("neto_incident_monitor.app.save_json"):
+                    app.accept_column_schema(app.selected_filter_url(), [{"key": k, "label": k} for k in ["number", "requested_for"]])
                 self.assertIn("requested_for", app.applicable_columns())
                 self.assertNotIn("caller", app.applicable_columns())
                 self.assertNotIn("parent_incident", app.applicable_columns())

@@ -90,13 +90,15 @@ Przycisk **Przeczytaj wszystkie** oznacza historię wybranego filtra jako przecz
 
 ### Kolumny i układ interfejsu
 
-Przycisk **Kolumny** otwiera konfigurację widocznych pól. Pola niedostępne w monitorowanych listach ServiceNow są automatycznie ukrywane po odczycie danych.
+Przycisk **Kolumny** jest dostępny po pierwszym pełnym odczycie filtra. Aplikacja pobiera wszystkie widoczne kolumny z listy ServiceNow, także pola niestandardowe, i początkowo wyświetla je w tej samej kolejności. Odczyt pustej listy z rozpoznanymi nagłówkami również udostępnia konfigurację.
 
 - Przeciągnięcie nagłówka zmienia kolejność kolumn.
 - Przeciągnięcie krawędzi nagłówka zmienia szerokość kolumny.
 - Kliknięcie nagłówka przełącza sortowanie pomiędzy kolejnością rosnącą, malejącą i domyślną.
 
-Kolejność i szerokości wspólnych kolumn są synchronizowane między zakładkami. Kolumna **Wykryto (historia)** występuje wyłącznie w historii i pozostaje na końcu tabeli.
+Widoczność, kolejność i szerokości kolumn są zapisywane osobno dla każdego filtra, wspólnie dla jego bieżącej listy i historii. Dodanie lub usunięcie kolumny w ServiceNow przywraca pełny zestaw i kolejność ze strony. Sama zmiana kolejności na stronie zachowuje własny układ użytkownika. Niepełny lub nieudany odczyt nie zmienia zapisanej konfiguracji.
+
+**Przywróć domyślne** wybiera wszystkie kolumny ServiceNow w ostatnio odczytanej kolejności. Kolumny lokalne znajdują się w osobnej sekcji **Kolumny dodatkowe** i domyślnie są wyłączone oraz umieszczone na końcu. Obejmują stan przeczytania, czas od utworzenia INC i datę wykrycia w historii. Po włączeniu można zmienić także ich położenie. Zmiany w konfiguratorze zatwierdza przycisk **Zapisz**.
 
 Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości panelu. Układ kolumn, szerokość panelu oraz rozmiar i stan maksymalizacji okna są zapamiętywane między uruchomieniami.
 
@@ -211,7 +213,6 @@ Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_ta
 
 W wyborze kolumn dostępne są także **Wnioskowane dla** i **Otwarte przez**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.
 
-Przycisk **Kolumny** konfiguruje widoczność pól osobno dla zaznaczonego filtra, wspólnie dla jego bieżącej listy i historii. Wybór jest zapamiętywany między uruchomieniami. Konfigurator pokazuje pola odpowiednie dla INC lub SCTASK; **Przywróć domyślne** wybiera zestaw właściwy dla rodzaju listy. Dotychczasowy globalny wybór jest zachowany jako ustawienie początkowe dla filtrów incydentów. Nowe filtry SCTASK otrzymują zestaw obejmujący numer, wnioskowaną osobę, priorytet, stan, krótki opis, grupę przypisania i przypisaną osobę.
 
 W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **SCTASK** (minimum 15 sekund). Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał SCTASK wynosi 3600 sekund (godzinę); wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty nadal odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
 

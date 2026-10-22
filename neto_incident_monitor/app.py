@@ -1,6 +1,8 @@
 """Local ServiceNow list monitor. Browser access only; no ServiceNow API."""
+from neto_incident_monitor.dynamic_columns import DynamicColumns, load_profiles
+from neto_incident_monitor.columns import ColumnDiscovery
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
-from neto_incident_monitor.columns import FIELDS, DEFAULT, DATA_FIELDS, LOCAL, age_minutes
+from neto_incident_monitor.columns import FIELDS, DEFAULT, age_minutes
 from neto_incident_monitor.widgets import IncidentMenu, PriorityDots
 import json
 import logging
@@ -152,12 +154,23 @@ def collect(page, available=None):
             configuration_item: column(['cmdb_ci'], ['objęty element konfiguracji', 'element konfiguracji', 'configuration item']),
             assignment_group: column(['assignment_group'], ['grupa przypisania', 'assignment group'])
           };
-          return [{available: ['number', ...Object.entries(fields).filter(([key, th]) => th).map(([key]) => key)]}, ...Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr))
+          const used = new Map();
+          const schema = headers.filter(th => th === header || th.innerText.trim()).map(th => {
+            const label = th.innerText.replace(/\\s+/g, ' ').trim();
+            const raw = (th.getAttribute('name') || th.getAttribute('data-name') || label).replace(/^(?:incident|sc_task)\\./, '');
+            const known = th === header ? 'number' : Object.keys(fields).find(key => fields[key] === th);
+            const base = known || 'sn:' + raw;
+            const occurrence = used.get(base) || 0;
+            used.set(base, occurrence + 1);
+            return {key: base + (occurrence ? ':' + occurrence : ''), label: label || raw, index: th.cellIndex};
+          });
+          return [{available: schema.map(c => c.key), schema: schema.map(({key, label}) => ({key, label}))}, ...Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr))
             .flatMap(tr => {
               const cell = tr.cells[header.cellIndex];
               if (!cell || cell.tagName !== 'TD') return [];
               return Array.from(cell.querySelectorAll('a')).filter(visible).map(a => ({
                 label: a.innerText, href: a.href, row: tr.innerText,
+                values: Object.fromEntries(schema.map(c => [c.key, tr.cells[c.index]?.innerText.trim() || ''])),
                 fields: Object.fromEntries(Object.entries(fields).map(([key, th]) => {
                   const td = th && tr.cells[th.cellIndex];
                   return [key, td ? td.innerText.trim() : ''];
@@ -169,11 +182,14 @@ def collect(page, available=None):
             if "available" in row:
                 if available is not None:
                     available.update(row["available"])
+                    if hasattr(available, 'discover') and row.get('schema'):
+                        available.discover(row['schema'])
                 continue
             match = INC.fullmatch(row["label"].strip())
             if match:
                 number = match.group().upper()
                 found[number] = {"number": number, "url": safe_record_url(row["href"], number, frame_url),
+                                 "_values": {key: " ".join(value.split()) for key, value in row.get('values', {}).items()},
                                  **{key: " ".join(value.split()) for key, value in row["fields"].items()},
                                  "summary": " ".join(row["fields"]["short_description"].split())
                                  or number}
@@ -303,7 +319,7 @@ def set_chromium_window_state(page, state):
                 pass
 
 
-class App:
+class App(DynamicColumns):
     def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True):
         self.root = root
         self.events = queue.Queue()
@@ -340,12 +356,13 @@ class App:
         self.legacy_visible_columns = settings.get("visible_columns", DEFAULT)
         self.filter_visible_columns = settings.get("filter_visible_columns", {})
         self.columns_filter_url = None
-        self.visible_columns = list(self.legacy_visible_columns)
+        self.column_profiles = load_profiles(settings.get("filter_column_profiles", {}))
+        self.visible_columns = []
         self.column_availability = {}
-        self.column_orders = settings.get("column_order", {})
         self.column_widths = settings.get("column_widths", {})
         from neto_incident_monitor.ui import build_ui
         build_ui(self, settings)
+        self.filter_selected()
         invalid_count = sum(bool(entry.get('url_invalid')) for entry in self.filters)
         if invalid_count:
             self.status.set(f'Wyłączono filtry z nieprawidłowym adresem: {invalid_count}. Popraw ich adresy w edycji filtra.')
@@ -580,14 +597,6 @@ class App:
         table.priority_dots = PriorityDots(table)
         return table
 
-    def column_order(self, table):
-        keys = [key for key, _, _ in FIELDS if key in table["columns"]]
-        default = [key for key in DEFAULT if key in keys] + [key for key in keys if key not in DEFAULT]
-        orders = getattr(self, "column_orders", {})
-        saved = orders.get("shared", orders.get("current", orders.get("history", [])))
-        order = list(dict.fromkeys(key for key in saved if key in default and key != "time"))
-        order += [key for key in default if key not in order and key != "time"]
-        return order + (["time"] if table.history_view else [])
 
     @staticmethod
     def column_at(table, x):
@@ -628,7 +637,7 @@ class App:
         target = self.column_at(table, x)
         visible = list(table["displaycolumns"])
         if (table.identify_region(x, y) != "heading"
-                or target is None or target == drag["column"] or target == "time" or drag["column"] == "time"):
+                or target is None or target == drag["column"]):
             self.hide_column_drop_marker(table)
             return
         widths = [table.column(key, "width") for key in visible]
@@ -688,155 +697,6 @@ class App:
         self.reorder_column(table, drag["column"], target)
         return "break"
 
-    def reorder_column(self, table, source, target):
-        if source == "time" or target == "time":
-            return
-        visible = list(table["displaycolumns"])
-        if source not in visible or target not in visible or source == target:
-            return
-        original = list(visible)
-        position = visible.index(target)
-        visible.remove(source)
-        visible.insert(position, source)
-        # Hidden fields keep their places; moving a header never loses them.
-        reordered = iter(visible)
-        order = [next(reordered) if key in original else key for key in self.column_order(table)]
-        proposed = {"shared": [key for key in order if key != "time"]}
-        try:
-            settings = read_json(CONFIG, {})
-            settings["column_order"] = proposed
-            save_json(CONFIG, settings)
-        except (OSError, ValueError) as exc:
-            messagebox.showerror("Kolejność kolumn", f"Nie udało się zapisać kolejności: {exc}", parent=self.root)
-            return
-        self.column_orders = proposed
-        self.apply_visible_columns()
-
-    def sync_column_widths(self, source):
-        widths = dict(self.column_widths)
-        widths.update({key: source.column(key, "width") for key in source["displaycolumns"]})
-        try:
-            settings = read_json(CONFIG, {})
-            settings["column_widths"] = widths
-            save_json(CONFIG, settings)
-        except (OSError, ValueError) as exc:
-            messagebox.showerror("Szerokości kolumn", f"Nie udało się zapisać szerokości: {exc}", parent=self.root)
-            return
-        self.column_widths = widths
-        for table in (self.current_table, self.table):
-            for key, width in widths.items():
-                if key in table["columns"]:
-                    table.column(key, width=width)
-
-    def available_columns(self, history=False):
-        if history:
-            incidents = [record["incident"] for record in self.history.snapshot(self.selected_filter_url()).values()]
-            if not incidents:
-                return None
-            available = set()
-            for incident in incidents:
-                available.update(incident.get("_available_columns", [key for key in DATA_FIELDS if key in incident]))
-            return available | LOCAL | ({"age_minutes"} if "created" in available else set())
-        available = self.column_availability.get(self.selected_filter_index())
-        return available | LOCAL | ({"age_minutes"} if "created" in available else set()) if available is not None else None
-
-    def apply_visible_columns(self):
-        for table, history in ((self.current_table, False), (self.table, True)):
-            available = self.available_columns(history)
-            order = self.column_order(table)
-            visible = [key for key in order if key in self.applicable_columns() and key in self.visible_columns and (key != "read" or self.unread_highlighting_enabled()) and (available is None or key in available)]
-            table.configure(displaycolumns=tuple(visible))
-            if table.sort_column and table.sort_column not in visible:
-                table.sort_column = None
-                self.apply_sort(table)
-        self.update_column_warnings()
-
-    def update_column_warnings(self):
-        available = self.available_columns()
-        for key, badge in getattr(self, "column_badges", {}).items():
-            if badge.winfo_exists():
-                if available is not None and key not in available:
-                    badge.grid()
-                else:
-                    badge.hide()
-                    badge.grid_remove()
-
-    def applicable_columns(self):
-        task = urlparse(effective_list_url(self.selected_filter_url(), self.filters)).path.endswith("/sc_task_list.do")
-        excluded = {"caller", "parent_incident"} if task else {"requested_for", "opened_by"}
-        if task:
-            excluded.add("age_minutes")
-        if not self.unread_highlighting_enabled():
-            excluded.add("read")
-        return [key for key, _, _ in FIELDS if key not in excluded]
-
-    def default_filter_columns(self):
-        if urlparse(effective_list_url(self.selected_filter_url(), self.filters)).path.endswith("/sc_task_list.do"):
-            return ["number", "requested_for", "priority", "state", "short_description", "assignment_group", "assigned_to"]
-        return DEFAULT
-
-    def configure_columns(self):
-        from neto_incident_monitor.widgets import RoundedButton, ColumnWarning
-        filter_url = self.selected_filter_url()
-        if not filter_url:
-            return
-        fields = [(key, label, width) for key, label, width in FIELDS if key in self.applicable_columns()]
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Widoczne kolumny")
-        dialog.configure(background=BG)
-        dialog.transient(self.root)
-        content = ttk.Frame(dialog, padding=20)
-        content.pack(fill="both", expand=True)
-        ttk.Label(content, text="Wybierz kolumny", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        ttk.Label(content, text="Zmiana dotyczy bieżącej listy i historii wybranego filtra.\nKolumny niewidoczne w ServiceNow są automatycznie ukrywane.",
-                  foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 12))
-        choices = {}
-        self.column_badges = {}
-        for index, (key, label, _) in enumerate(fields):
-            variable = tk.BooleanVar(value=key in self.visible_columns)
-            choices[key] = variable
-            row = ttk.Frame(content)
-            row.grid(row=2 + index // 2, column=index % 2, sticky="w", padx=(0, 18), pady=3)
-            row.columnconfigure(1, minsize=24)
-            check = ttk.Checkbutton(row, text=label, variable=variable, style="App.TCheckbutton")
-            check.grid(row=0, column=0, sticky="w")
-            badge = ColumnWarning(row, label)
-            badge.grid(row=0, column=1, padx=(4, 0))
-            self.column_badges[key] = badge
-        self.update_column_warnings()
-        def closed(event):
-            if event.widget is dialog:
-                self.column_badges = {}
-        dialog.bind("<Destroy>", closed, add="+")
-
-        def restore_defaults():
-            for key, variable in choices.items():
-                variable.set(key in self.default_filter_columns())
-
-        def save():
-            selected = [key for key, variable in choices.items() if variable.get()]
-            try:
-                settings = read_json(CONFIG, {})
-                profiles = dict(settings.get("filter_visible_columns", self.filter_visible_columns))
-                profiles[filter_url] = selected
-                settings["filter_visible_columns"] = profiles
-                save_json(CONFIG, settings)
-            except (OSError, ValueError) as exc:
-                messagebox.showerror("Kolumny", f"Nie udało się zapisać ustawień: {exc}", parent=dialog)
-                return
-            self.filter_visible_columns = profiles
-            self.visible_columns = selected
-            self.apply_visible_columns()
-            dialog.destroy()
-        actions = ttk.Frame(content)
-        actions.grid(row=2 + (len(fields) + 1) // 2, column=0, columnspan=2, sticky="ew", pady=(16, 0))
-        RoundedButton(actions, text="Przywróć domyślne", command=restore_defaults, background=BG).pack(side="left", padx=(0, 12))
-        RoundedButton(actions, text="Zapisz", command=save, primary=True, background=BG).pack(side="right")
-        RoundedButton(actions, text="Anuluj", command=dialog.destroy, background=BG).pack(side="right", padx=8)
-        dialog.update_idletasks()
-        dialog.geometry(f"+{max(0, (dialog.winfo_screenwidth()-dialog.winfo_reqwidth())//2)}+{max(0, (dialog.winfo_screenheight()-dialog.winfo_reqheight())//2)}")
-        dialog.grab_set()
-
     def toggle_sort(self, table, column):
         if table.sort_column != column:
             table.sort_column, table.sort_descending = column, False
@@ -888,11 +748,10 @@ class App:
         url = self.selected_filter_url()
         if url != self.columns_filter_url:
             self.columns_filter_url = url
-            fallback = self.default_filter_columns() if urlparse(effective_list_url(url, self.filters)).path.endswith("/sc_task_list.do") else self.legacy_visible_columns
-            self.visible_columns = list(self.filter_visible_columns.get(url, fallback))
         if hasattr(self, "phase"):
             self.update_phase_text()
         if hasattr(self, "current_table"):
+            self.prepare_dynamic_tables()
             self.refresh_current()
             self.refresh_history()
             self.apply_visible_columns()
@@ -1147,9 +1006,8 @@ class App:
         for number, record in sorted(records.items(), key=lambda pair: pair[1]["detected"], reverse=True):
             incident = record["incident"]
             label = "Nieprzeczytany" if not record["read"] else "Przeczytany"
-            item = self.table.insert("", "end", values=(
-                time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"])), label,
-                *incident_values(incident)),
+            item = self.table.insert("", "end", values=self.table_values(self.table, incident, label,
+                time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"]))),
                 tags=("unread",) if self.unread_highlighting_enabled() and not record["read"] else ("alternate",) if len(self.table.get_children()) % 2 else ())
             self.items[(self.table, item)] = incident["url"]
             self.row_numbers[(self.table, item)] = number
@@ -1177,10 +1035,9 @@ class App:
             incident = entry["incident"]
             unread = number in records and not records[number]["read"]
             label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
-            item = self.current_table.insert("", "end", values=(label,
-                *incident_values(incident)),
+            item = self.current_table.insert("", "end", values=self.table_values(self.current_table, incident, label),
                 tags=("unread",) if self.unread_highlighting_enabled() and unread else ("alternate",) if len(self.current_table.get_children()) % 2 else ())
-            self.items[(self.current_table, item)] = incident["url"]
+            self.items[(self.current_table, item)] = incident.get("url", "")
             self.row_numbers[(self.current_table, item)] = number
             if number in selected:
                 self.current_table.selection_add(item)
@@ -1575,7 +1432,7 @@ class App:
                                     elif settings.get("minimize_browser", False):
                                         minimize_chromium(page)
                                 current = page
-                                available = set()
+                                available = ColumnDiscovery()
                                 incidents, page_count = read_all(
                                     current, url, self.stop, lambda p: collect(p, available), empty_list, authentication_page, navigate,
                                     lambda index, count: self.events.put(("status",
@@ -1592,7 +1449,8 @@ class App:
                                     self.events.put(('filter_resolved', (url, direct)))
                                 for incident in incidents.values():
                                     incident["_available_columns"] = sorted(available)
-                                self.events.put(("columns", (url, available)))
+                                if available.schema is not None:
+                                    self.events.put(("columns", (url, available.schema)))
                                 options = next((entry for entry in self.filters if entry["url"] == url), {})
                                 arrivals = membership.arrivals(url, incidents)
                                 new = membership.arrivals(url, incidents, options.get("first_only", False))
@@ -1758,9 +1616,9 @@ class App:
                         continue
                     if not self.filters[index - 1].get("enabled", True):
                         continue
-                    if available:
-                        self.column_availability[index] = set(available)
-                    self.apply_visible_columns()
+                    if isinstance(available, list):
+                        self.column_availability[index] = {c["key"] for c in available}
+                        self.accept_column_schema(self.filters[index - 1]["url"], available)
                 elif kind == "snapshot":
                     filter_index, incidents = value
                     filter_index = self.event_filter_index(filter_index)

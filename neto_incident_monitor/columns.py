@@ -45,3 +45,20 @@ FIELDS = [
 DEFAULT = ["number", "state", "caller", "priority", "short_description", "location", "created"]
 DATA_FIELDS = [key for key, _, _ in FIELDS if key not in ("number", "read", "time", "age_minutes")]
 LOCAL = {"number", "read", "time"}
+
+LOCAL_FIELDS = [('read', 'Przeczytane', 145),
+                ('age_minutes', 'Czas od utworzenia (min)', 185),
+                ('time', 'Wykryto (historia)', 150)]
+
+
+class ColumnDiscovery(set):
+    """Columns accepted only after a complete, consistent list traversal."""
+    def __init__(self):
+        super().__init__()
+        self.schema = None
+
+    def discover(self, schema):
+        if self.schema is not None and {c['key'] for c in self.schema} != {c['key'] for c in schema}:
+            raise RuntimeError('Zestaw kolumn zmienił się podczas odczytu. Wynik zostanie pobrany ponownie.')
+        if self.schema is None:
+            self.schema = schema

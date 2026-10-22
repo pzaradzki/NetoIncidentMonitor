@@ -5,6 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 from neto_incident_monitor.app import App
 from neto_incident_monitor.columns import DEFAULT
+from neto_incident_monitor.dynamic_columns import update_profile
+URL="https://adeo.service-now.com/incident_list.do"
+PROFILE=update_profile(None,[{"key":k,"label":k} for k in DEFAULT])
+def fixture_settings():
+    return {"filters":[{"name":"A","url":URL}],"filter_column_profiles":{URL:PROFILE}}
 
 
 class ColumnDragTests(unittest.TestCase):
@@ -12,7 +17,7 @@ class ColumnDragTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
-                with patch('neto_incident_monitor.app.read_json', return_value={}):
+                with patch('neto_incident_monitor.app.read_json', return_value=fixture_settings()):
                     app = App(root, history_path=Path(folder)/'history.json', enable_tray=False)
                 root.update()
                 table = app.current_table
@@ -29,7 +34,7 @@ class ColumnDragTests(unittest.TestCase):
                 self.assertFalse(table.sort_descending)
                 original = tuple(table['displaycolumns'])
                 target = x_for('priority')
-                with patch('neto_incident_monitor.app.read_json', return_value={'notify':False}), patch('neto_incident_monitor.app.save_json') as saved:
+                with patch('neto_incident_monitor.app.read_json', return_value={**fixture_settings(), 'notify':False}), patch('neto_incident_monitor.app.save_json') as saved:
                     table.event_generate('<ButtonPress-1>',x=x,y=10)
                     table.event_generate('<B1-Motion>',x=target,y=10)
                     root.update_idletasks()
@@ -51,8 +56,7 @@ class ColumnDragTests(unittest.TestCase):
                 self.assertFalse(settings['notify'])
                 app.apply_visible_columns()
                 self.assertEqual(tuple(table['displaycolumns'])[:4],('state','caller','priority','number'))
-                self.assertIn('description',settings['column_order']['shared'])
-                self.assertNotIn('history',settings['column_order'])
+                self.assertIn('time',settings['filter_column_profiles'][URL]['order'])
                 # Hidden and restored columns keep the saved relative order.
                 app.visible_columns = [c for c in DEFAULT if c!='priority']
                 app.apply_visible_columns()
@@ -76,15 +80,15 @@ class ColumnDragTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
-                with patch('neto_incident_monitor.app.read_json',return_value={}):
+                with patch('neto_incident_monitor.app.read_json',return_value=fixture_settings()):
                     app=App(root,history_path=Path(folder)/'history.json',enable_tray=False)
                 root.update()
                 table=app.current_table
                 original=tuple(table['displaycolumns'])
-                with patch('neto_incident_monitor.app.read_json',return_value={}), patch('neto_incident_monitor.app.save_json',side_effect=OSError('disk full')), patch('neto_incident_monitor.app.messagebox.showerror') as error:
+                with patch('neto_incident_monitor.app.read_json',return_value=fixture_settings()), patch('neto_incident_monitor.app.save_json',side_effect=OSError('disk full')), patch('neto_incident_monitor.app.messagebox.showerror') as error:
                     app.reorder_column(table,'number','priority')
                 self.assertEqual(tuple(table['displaycolumns']),original)
-                self.assertEqual(app.column_orders,{})
+                self.assertEqual(app.column_profile()['order'],PROFILE['order'])
                 error.assert_called_once()
                 table.event_generate('<ButtonPress-1>',x=20,y=10)
                 table.event_generate('<B1-Motion>',x=450,y=10)

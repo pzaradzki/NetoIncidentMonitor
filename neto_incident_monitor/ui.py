@@ -257,6 +257,8 @@ def build_ui(app, settings):
     toolbar.pack_propagate(False)
     actions = ttk.Frame(main)
     columns_button = RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG)
+    app.columns_button = columns_button
+    columns_button.configure(state="disabled")
     columns_button.pack(side="right", padx=(8, 0))
     app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
     app.mark_all_button = RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG)
