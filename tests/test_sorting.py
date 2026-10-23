@@ -13,6 +13,7 @@ class SortingTests(unittest.TestCase):
             app = App.__new__(App)
             app.items, app.row_numbers = {}, {}
             app.history = Mock()
+            app.history.records = {}
             app.history.snapshot.return_value = {}
             app.selected_filter_url = Mock(return_value='filter')
             app.selected_filter_index = Mock(return_value=1)

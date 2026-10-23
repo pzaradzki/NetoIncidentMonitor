@@ -263,6 +263,8 @@ def build_ui(app, settings):
     from neto_incident_monitor.widgets import StatusPill
     app.phase_label = StatusPill(state)
     app.phase_label.pack(side="left")
+    app.table_load_status = tk.StringVar(value='')
+    ttk.Label(state, textvariable=app.table_load_status, style='Muted.TLabel').pack(side='left', padx=(12, 0))
     app.update_phase_text()
     app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  SCTASK/REQ/RITM: -")
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
@@ -313,6 +315,7 @@ def build_ui(app, settings):
         align_actions()
 
     app.tabs.bind("<<NotebookTabChanged>>", update_history_action, add="+")
+    app.tabs.bind("<<NotebookTabChanged>>", app.show_table_tab, add="+")
     desired_width = max(235, int(settings.get("sidebar_width", 235)))
     drag_origin = None
 

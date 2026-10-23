@@ -330,7 +330,10 @@ def set_chromium_window_state(page, state):
                 pass
 
 
-class App(DynamicColumns):
+from neto_incident_monitor.table_loading import TableLoading
+
+
+class App(DynamicColumns, TableLoading):
     def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True):
         self.root = root
         self.events = queue.Queue()
@@ -717,7 +720,10 @@ class App(DynamicColumns):
             table.sort_descending = True
         else:
             table.sort_column, table.sort_descending = None, False
-        self.apply_sort(table)
+        if self.large_tables():
+            (self.refresh_current if table is self.current_table else self.refresh_history)()
+        else:
+            self.apply_sort(table)
 
     def apply_sort(self, table):
         for column, title in table.heading_titles.items():
@@ -766,10 +772,26 @@ class App(DynamicColumns):
         if hasattr(self, "current_table"):
             self.configure_filter_button.configure(state="normal" if self.selected_filter_index() else "disabled")
             self.prepare_dynamic_tables()
+            self.apply_visible_columns()
             self.refresh_current()
             self.refresh_history()
-            self.apply_visible_columns()
             self.update_counts()
+
+    def open_filter(self, event):
+        table = self.filter_table
+        if event.x >= table.winfo_width() - 42:
+            return 'break'
+        index = int(table.canvasy(event.y) // table.ROW)
+        items = table.get_children()
+        if 0 <= index < len(items):
+            table.drag_cancel()
+            table.selection_set(items[index])
+            try:
+                url = normalize_url(self.selected_filter_url())
+            except ValueError:
+                return 'break'
+            webbrowser.open(url)
+        return 'break'
 
     def configure_filter_notifications(self, item):
         from neto_incident_monitor.filter_settings import show_filter_settings
@@ -823,6 +845,7 @@ class App(DynamicColumns):
         self.filter_table.on_toggle = self.toggle_filter
         self.filter_table.on_select = self.filter_selected
         self.filter_table.on_reorder = self.reorder_filter
+        self.filter_table.bind('<Double-1>', self.open_filter)
         selected = self.filter_table.selection()
         self.filter_table.delete(*self.filter_table.get_children())
         for index, entry in enumerate(self.filters):
@@ -1008,7 +1031,7 @@ class App(DynamicColumns):
         numbers = set(self.snapshots.get(self.selected_filter_index(), {}))
         self.current_count.set(str(len(numbers)))
         self.new_count.set(str(len(self.new_numbers)))
-        unread = sum(not record["read"] for record in self.history.snapshot(self.selected_filter_url()).values())
+        unread = self.history.unread(self.selected_filter_url())
         self.unread_count.set(str(unread))
         self.tabs.tab(1, text="Historia zgłoszeń")
         self.update_tray()
@@ -1023,21 +1046,29 @@ class App(DynamicColumns):
                 LOG.exception("Błąd aktualizacji zasobnika")
 
     def clear_table(self, table):
-        for item in table.get_children():
+        self.cancel_table_load(table)
+        children = table.get_children()
+        for item in children:
             self.items.pop((table, item), None)
             self.row_numbers.pop((table, item), None)
-            table.delete(item)
+        if children:
+            table.delete(*children)
 
     def refresh_history(self):
+        if self.large_tables():
+            self.load_table(self.table, history=True)
+            return
+        self.cancel_table_load(self.table)
+        self.table.load_dirty = False
         selected = {self.row_numbers.get((self.table, item)) for item in self.table.selection()}
         self.clear_table(self.table)
         records = self.history.snapshot(self.selected_filter_url())
-        for number, record in sorted(records.items(), key=lambda pair: pair[1]["detected"], reverse=True):
+        for position, (number, record) in enumerate(sorted(records.items(), key=lambda pair: pair[1]["detected"], reverse=True)):
             incident = record["incident"]
             label = "Nieprzeczytany" if not record["read"] else "Przeczytany"
             item = self.table.insert("", "end", values=self.table_values(self.table, incident, label,
                 time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"]))),
-                tags=("unread",) if self.unread_highlighting_enabled() and not record["read"] else ("alternate",) if len(self.table.get_children()) % 2 else ())
+                tags=("unread",) if self.unread_highlighting_enabled() and not record["read"] else ("alternate",) if position % 2 else ())
             self.items[(self.table, item)] = incident["url"]
             self.row_numbers[(self.table, item)] = number
             if number in selected:
@@ -1046,6 +1077,11 @@ class App(DynamicColumns):
         self.apply_sort(self.table)
 
     def refresh_current(self):
+        if self.large_tables():
+            self.load_table(self.current_table)
+            return
+        self.cancel_table_load(self.current_table)
+        self.current_table.load_dirty = False
         selected = {self.row_numbers.get((self.current_table, item)) for item in self.current_table.selection()}
         records = self.history.snapshot(self.selected_filter_url())
         self.clear_table(self.current_table)
@@ -1060,12 +1096,12 @@ class App(DynamicColumns):
                 name = self.filters[index - 1]["name"]
                 if name not in entry["filters"]:
                     entry["filters"].append(name)
-        for number, entry in sorted(combined.items(), key=lambda pair: int(re.sub(r"\D", "", pair[0]) or 0), reverse=True):
+        for position, (number, entry) in enumerate(sorted(combined.items(), key=lambda pair: int(re.sub(r"\D", "", pair[0]) or 0), reverse=True)):
             incident = entry["incident"]
             unread = number in records and not records[number]["read"]
             label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
             item = self.current_table.insert("", "end", values=self.table_values(self.current_table, incident, label),
-                tags=("unread",) if self.unread_highlighting_enabled() and unread else ("alternate",) if len(self.current_table.get_children()) % 2 else ())
+                tags=("unread",) if self.unread_highlighting_enabled() and unread else ("alternate",) if position % 2 else ())
             self.items[(self.current_table, item)] = incident.get("url", "")
             self.row_numbers[(self.current_table, item)] = number
             if number in selected:
@@ -1684,7 +1720,7 @@ class App(DynamicColumns):
                     # A confirmed clear can happen after the worker persisted
                     # a record but before this queued event is processed.
                     # Do not resurrect a record that the user just removed.
-                    if incident["number"] not in self.history.snapshot(self.selected_filter_url()):
+                    if not self.history.contains(incident['number'], self.selected_filter_url()):
                         continue
                     self.refresh_history()
                     self.refresh_current()
@@ -1696,12 +1732,20 @@ class App(DynamicColumns):
         if now - getattr(self, "last_age_refresh", 0) >= 1:
             self.last_age_refresh = now
             for table in (self.current_table, self.table):
-                for item in table.get_children():
+                if not self.table_visible(table):
+                    continue
+                changed = False
+                visible_items = set(table.identify_row(y) for y in range(0, table.winfo_height(), 12))
+                for item in visible_items - {''}:
                     value = age_minutes(table.set(item, "created"), table.set(item, "number"))
                     if table.set(item, "age_minutes") != value:
                         table.set(item, "age_minutes", value)
-                if table.sort_column == "age_minutes":
-                    self.apply_sort(table)
+                        changed = True
+                if changed and table.sort_column == "age_minutes" and table not in getattr(self, '_table_jobs', {}):
+                    if self.large_tables():
+                        (self.refresh_current if table is self.current_table else self.refresh_history)()
+                    else:
+                        self.apply_sort(table)
         def remaining(kind):
             deadline = self.check_deadlines.get(kind)
             return "-" if deadline is None else f"{max(0, int(deadline - now + 0.999))} s"
@@ -1772,7 +1816,7 @@ class App(DynamicColumns):
         if table is self.current_table:
             incident = self.snapshots.get(self.selected_filter_index(), {}).get(number)
         else:
-            record = self.history.snapshot(filter_url).get(number)
+            record = self.history.record(number, filter_url)
             incident = record["incident"] if record else None
         if incident is not None:
             self.notify_filter(filter_url, [{**incident, "number": number, "url": url}], manual=True)
@@ -1781,6 +1825,7 @@ class App(DynamicColumns):
         self.quit_app()
 
     def quit_app(self):
+        self.stop_table_loads()
         if self.window_save_timer is not None:
             self.root.after_cancel(self.window_save_timer)
             self.window_save_timer = None

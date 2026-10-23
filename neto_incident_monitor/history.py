@@ -58,10 +58,21 @@ class History:
 
     def snapshot(self, filter_url=None):
         with self.lock:
-            return {record["incident"]["number"]: copy.deepcopy(record)
-                    for record in self.records.values()
-                    if filter_url is None or filter_url in record["filters"]}
+            records = self.records
+        return {record["incident"]["number"]: copy.deepcopy(record)
+                for record in records.values()
+                if filter_url is None or filter_url in record["filters"]}
 
-    def unread(self):
-        with self.lock:
-            return sum(not record["read"] for record in self.records.values())
+    def unread(self, filter_url=None):
+        # Writers publish a replacement dict only after a successful commit.
+        # Reading this reference never waits for an in-progress disk write.
+        records = self.records
+        return sum(not record['read'] for record in records.values()
+                   if filter_url is None or filter_url in record['filters'])
+
+    def contains(self, number, filter_url):
+        return filter_url + '\n' + number in self.records
+
+    def record(self, number, filter_url):
+        value = self.records.get(filter_url + '\n' + number)
+        return copy.deepcopy(value) if value is not None else None

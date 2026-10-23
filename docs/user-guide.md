@@ -99,6 +99,10 @@ Podgląd aktualizuje się podczas edycji. **Wyślij test** wysyła dane przykła
 
 ### Bieżące incydenty i historia
 
+Dwukrotne kliknięcie wpisu na liście filtrów otwiera jego adres w domyślnej przeglądarce. Kliknięcie przełącznika aktywności nie otwiera przeglądarki.
+
+Duże tabele (ponad 150 rekordów historii lub bieżącej listy) są przygotowywane poza wątkiem interfejsu i wczytywane krótkimi partiami. Ukryta duża tabela czeka na otwarcie swojej zakładki. Zmiana filtra lub zakładki przerywa poprzednie ładowanie; postęp jest widoczny nad tabelą. Małe zestawy pozostają wczytywane bezpośrednio. Nie ma limitu liczby zachowanych wpisów historii.
+
 Zakładka **Bieżące zgłoszenia** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
 
 Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.

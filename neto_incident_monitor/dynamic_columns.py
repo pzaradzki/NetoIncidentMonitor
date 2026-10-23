@@ -106,6 +106,11 @@ class DynamicColumns:
             definitions = base + [(c['key'], c['label'], WIDTHS.get(c['key'], 180)) for c in schema if c['key'] not in keys]
             titles = {key: label for key, label, _ in definitions}
             titles.update({c['key']: c['label'] for c in schema})
+            widths = profile.get('widths', {}) if profile else {}
+            signature = (self.selected_filter_url(),
+                         tuple((key, titles[key], widths.get(key, width)) for key, _, width in definitions))
+            if getattr(table, 'definition_signature', None) == signature:
+                continue
             if tuple(table['columns']) != tuple(key for key, _, _ in definitions):
                 self.clear_table(table)
                 table.configure(displaycolumns=(), columns=[key for key, _, _ in definitions])
@@ -115,10 +120,10 @@ class DynamicColumns:
                 table.column_drag = None
                 self.hide_column_drop_marker(table)
             table.heading_titles = titles
-            widths = profile.get('widths', {}) if profile else {}
             for key, _, width in definitions:
                 table.heading(key, text=titles[key], anchor='w', command=lambda column=key, t=table: self.toggle_sort(t, column))
                 table.column(key, width=max(70, int(widths.get(key, width))), minwidth=70, stretch=False)
+            table.definition_signature = signature
 
     def table_values(self, table, incident, read_label, detected=''):
         values = dict(incident)
@@ -166,7 +171,10 @@ class DynamicColumns:
             table.configure(displaycolumns=visible)
             if table.sort_column and table.sort_column not in visible:
                 table.sort_column = None
-                self.apply_sort(table)
+                if self.large_tables():
+                    (self.refresh_current if table is self.current_table else self.refresh_history)()
+                else:
+                    self.apply_sort(table)
         self.columns_button.configure(state='normal' if profile else 'disabled')
 
     def update_column_warnings(self):

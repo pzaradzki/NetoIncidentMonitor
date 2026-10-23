@@ -16,7 +16,7 @@ class ContextMenuTests(TestCase):
         app.current_table = Mock()
         app.snapshots = {1: {'SCTASK1234567': {'short_description': 'Current task', 'requested_for': 'Anna'}}}
         app.history = Mock()
-        app.history.snapshot.return_value = {'INC1234567': {'incident': {'short_description': 'Historical incident'}}}
+        app.history.record.return_value = {'incident': {'short_description': 'Historical incident'}}
         app.notify_filter = Mock()
         app.test_record_notification(app.current_table, 'SCTASK1234567', 'https://adeo.service-now.com/sc_task.do')
         self.assertEqual(app.notify_filter.call_args.args[1][0]['short_description'], 'Current task')
