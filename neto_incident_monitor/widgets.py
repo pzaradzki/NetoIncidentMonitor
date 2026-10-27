@@ -23,13 +23,21 @@ def draw_gear(draw, x, y, color, size=16):
 
 class StatusPill(tk.Canvas):
     """Compact status badge with smooth rounded edges."""
-    def __init__(self, parent):
+    def __init__(self, parent, compact=False):
         from neto_incident_monitor.theme import BG
-        super().__init__(parent, height=28, bg=BG, bd=0, highlightthickness=0)
+        self.pill_height = 22 if compact else 28
+        self.pill_font = ('Segoe UI', 8 if compact else 9, 'bold')
+        self.pill_padding = 18 if compact else 24
+        super().__init__(parent, height=self.pill_height, bg=BG, bd=0, highlightthickness=0)
 
     def set_status(self, text):
         from tkinter.font import Font
         colors = {
+            "Zaktualizowany": ("#244b37", "#8ee2ac"),
+            "Błąd odczytu": ("#472c33", "#ff929e"),
+            "W trakcie aktualizacji": ("#27364a", "#9ac4f4"),
+            "Dane nieaktualne": ("#433923", "#efc778"),
+            "Oczekuje": ("#343942", "#c8cdd6"),
             "Monitoring aktywny": ("#243d33", "#85d6aa"),
             "Oczekiwanie na logowanie": ("#433923", "#efc778"),
             "Sprawdzanie list": ("#27364a", "#9ac4f4"),
@@ -38,16 +46,17 @@ class StatusPill(tk.Canvas):
             "Błąd uruchomienia": ("#472c33", "#ff929e"),
         }
         background, foreground = colors.get(text, ("#343942", "#c8cdd6"))
-        font = Font(self, font=("Segoe UI", 9, "bold"))
-        width = font.measure(text) + 24
+        font = Font(self, font=self.pill_font)
+        width = font.measure(text) + self.pill_padding
+        height = self.pill_height
         self.configure(width=width)
-        picture = Image.new("RGB", (width * 4, 28 * 4), self.cget("bg"))
-        ImageDraw.Draw(picture).rounded_rectangle((0, 0, width * 4 - 1, 28 * 4 - 1),
-                                                  radius=14 * 4, fill=background)
-        self.picture = ImageTk.PhotoImage(picture.resize((width, 28), Image.Resampling.LANCZOS), master=self)
+        picture = Image.new("RGB", (width * 4, height * 4), self.cget("bg"))
+        ImageDraw.Draw(picture).rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1),
+                                                  radius=height * 2, fill=background)
+        self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         self.delete("all")
         self.create_image(0, 0, image=self.picture, anchor="nw")
-        self.create_text(width / 2, 14, text=text, fill=foreground, font=("Segoe UI", 9, "bold"))
+        self.create_text(width / 2, height / 2, text=text, fill=foreground, font=self.pill_font)
 
 
 class PriorityDots:
@@ -166,7 +175,7 @@ class IncidentMenu(tk.Toplevel):
             return "break"
 
     def check_focus(self):
-        if self.winfo_exists() and self.focus_get() is not self:
+        if self.winfo_exists() and str(self.tk.call('focus')) != str(self):
             self.destroy()
 
     def show(self, x, y):
@@ -184,7 +193,7 @@ class Toggle(tk.Canvas):
     def __init__(self, parent, variable):
         super().__init__(parent, width=48, height=28, bg=SURFACE, bd=0,
                          highlightthickness=1, highlightbackground=SURFACE,
-                         highlightcolor=ACCENT, takefocus=True, cursor="hand2")
+                         highlightcolor="#606875", takefocus=True, cursor="hand2")
         self.variable = variable
         self.enabled = True
         self.images = {}
@@ -277,7 +286,7 @@ class RoundedButton(tk.Canvas):
         picture = Image.new("RGB", (width * 4, height * 4), self.cget("background"))
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=8 * 4,
-                               fill=color, outline='#606875' if self.focus_get() == self else color, width=4)
+                               fill=color, outline='#606875' if str(self.tk.call('focus')) == str(self) else color, width=4)
         foreground = TEXT if self.enabled else "#747b88"
         if self.icon:
             self.draw_icon(draw, (width - self.text_width - 22) / 2 if self.text else (width - 16) / 2, (height - 16) / 2, foreground)
@@ -333,6 +342,48 @@ class RoundedButton(tk.Canvas):
         return result
 
 
+class DashboardButton(RoundedButton):
+    """Sidebar dashboard navigation with a monitoring-style activity badge."""
+    def __init__(self, parent):
+        self.updating = False
+        self.selected = False
+        super().__init__(parent, text="DASHBOARD", command=lambda: None)
+        self.button_height = 60
+        self.configure(height=self.button_height)
+
+    def redraw(self, event=None):
+        self.delete("all")
+        width, height = max(self.min_width, self.winfo_width()), self.button_height
+        picture = Image.new("RGB", (width * 4, height * 4), self.cget("background"))
+        draw = ImageDraw.Draw(picture)
+        draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=32,
+                               fill=("#58303a" if self.hover else "#402c35") if self.selected else
+                                    ("#3d353e" if self.hover else "#302c34"),
+                               outline=ACCENT if self.selected else
+                                       ("#606875" if str(self.tk.call('focus')) == str(self) else "#48424d"), width=4)
+        draw.rounded_rectangle((12 * 4, 14 * 4, 44 * 4, 46 * 4), radius=28, fill="#513039")
+        for left, top, right, bottom in ((21, 23, 27, 29), (30, 23, 36, 26),
+                                         (21, 32, 27, 37), (30, 29, 36, 37)):
+            draw.rounded_rectangle((left * 4, top * 4, right * 4, bottom * 4),
+                                   radius=3, outline="#ff6b7d", width=5)
+        draw.line(((width - 20) * 4, 26 * 4, (width - 16) * 4, 30 * 4,
+                   (width - 20) * 4, 34 * 4), fill="#d6a6ae", width=6, joint="curve")
+        compact_badge = self.updating and width < 260
+        if self.updating:
+            badge_left = 56 if compact_badge else width - 111
+            badge_y = 42 if compact_badge else height / 2
+            draw.rounded_rectangle((badge_left * 4, (badge_y - 11) * 4,
+                                    (badge_left + 77) * 4, (badge_y + 11) * 4),
+                                   radius=44, fill="#244b37")
+        self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
+        self.create_image(0, 0, image=self.picture, anchor="nw")
+        self.create_text(56, 19 if compact_badge else height / 2, text=self.text, anchor="w", fill=TEXT,
+                         font=("Segoe UI", 10, "bold"))
+        if self.updating:
+            self.create_text(badge_left + 38, badge_y, text="Aktualizuje",
+                             fill="#8ee2ac", font=("Segoe UI", 8))
+
+
 class FilterList(tk.Canvas):
     """Card list exposing the small Treeview interface used by the app."""
     ROW = 48
@@ -341,10 +392,12 @@ class FilterList(tk.Canvas):
         super().__init__(parent, width=200, height=4 * self.ROW, bg=SURFACE,
                          bd=0, highlightthickness=0, takefocus=True, cursor="hand2")
         self.rows, self.selected, self.pictures = {}, None, []
+        self.show_selection = True
         self.enabled_rows = {}
         self.updating_item = None
         self.on_toggle = None
         self.on_select = None
+        self.on_activate = None
         self.on_reorder = None
         self.drag = None
         self.bind("<Configure>", self.redraw)
@@ -390,6 +443,8 @@ class FilterList(tk.Canvas):
                 self.on_toggle(items[index])
                 return "break"
             self.selection_set(items[index])
+            if self.on_activate:
+                self.on_activate()
             self.focus_set()
             self.drag = {"item": items[index], "y": event.y, "active": False, "slot": index}
 
@@ -439,6 +494,8 @@ class FilterList(tk.Canvas):
         index = items.index(self.selected) if self.selected in items else 0
         index = max(0, min(len(items) - 1, index + direction))
         self.selection_set(items[index])
+        if self.on_activate:
+            self.on_activate()
         top = self.canvasy(0)
         bottom = top + self.winfo_height()
         if index * self.ROW < top:
@@ -456,7 +513,7 @@ class FilterList(tk.Canvas):
         self.delete_canvas()
         width = max(100, self.winfo_width())
         for index, (iid, name) in enumerate(self.rows.items()):
-            chosen = iid == self.selected
+            chosen = self.show_selection and iid == self.selected
             picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
             draw = ImageDraw.Draw(picture)
             draw.rounded_rectangle((0, 2 * 4, width * 4 - 1, 42 * 4), radius=8 * 4,

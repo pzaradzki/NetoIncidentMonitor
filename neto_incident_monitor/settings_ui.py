@@ -65,7 +65,8 @@ def build_settings(app, settings):
         container.pack(fill="x")
         container.columnconfigure(0, weight=1)
         ttk.Label(container, text=title, style="White.TLabel",
-                  font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
+                  font=("Segoe UI", 10, "bold"), wraplength=440,
+                  justify='left').grid(row=0, column=0, sticky="w")
         if description:
             ttk.Label(container, text=description, style="WhiteMuted.TLabel",
                       font=("Segoe UI", 9), wraplength=440, justify="left").grid(row=1, column=0, sticky="w", pady=(3, 0))
@@ -86,9 +87,14 @@ def build_settings(app, settings):
     app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
+    controls = row(monitoring, "Automatycznie zaktualizuj dashboard przy starcie monitoringu",
+                   "Pobierz dane dashboardu po zalogowaniu do ServiceNow. Kolejne odczyty uruchamiaj przyciskiem Aktualizuj.")
+    app.dashboard_auto_refresh = tk.BooleanVar(value=settings.get('dashboard_auto_refresh', True))
+    Toggle(controls, app.dashboard_auto_refresh).pack(side='right')
+
     notifications = section("POWIADOMIENIA")
     controls = row(notifications, "Powiadomienia Windows", "Powiadomienia systemowe i sygnał dźwiękowy.")
-    app.notify = tk.BooleanVar(value=settings.get("notify", True))
+    app.notify = tk.BooleanVar(value=settings.get("notify", False))
     app.notify_check = Toggle(controls, app.notify)
     app.notify_check.pack(side="right")
     controls = row(notifications, "Microsoft Teams", "Wysyłanie powiadomień do skonfigurowanego kanału.")
@@ -118,16 +124,16 @@ def build_settings(app, settings):
 
     browser = section("PRZEGLĄDARKA I LOGOWANIE")
     controls = row(browser, "Automatyczne logowanie", "Używaj zapamiętanego konta, gdy jest to możliwe.")
-    app.auto_login = tk.BooleanVar(value=settings.get("auto_login", False))
+    app.auto_login = tk.BooleanVar(value=settings.get("auto_login", True))
     app.auto_login_check = Toggle(controls, app.auto_login)
     app.auto_login_check.pack(side="right")
     controls = row(browser, "Minimalizacja przeglądarki", "Uruchamiaj Chromium zminimalizowane. Pokazuj okno, gdy potrzebne jest ręczne logowanie.")
-    app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", settings.get("auto_login", False)))
+    app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", True))
     app.minimize_browser_check = Toggle(controls, app.minimize_browser)
     app.minimize_browser_check.pack(side="right")
 
     controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań. Pokazuj okno, gdy potrzebne jest ręczne logowanie. Zmiana działa po ponownym uruchomieniu monitoringu.")
-    app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", False))
+    app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
     Toggle(controls, app.hide_browser).pack(side="right")
 
     display = section("LISTA INCYDENTÓW")

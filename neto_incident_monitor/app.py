@@ -85,7 +85,7 @@ def validate_urls(text):
 
 def load_filters(settings, tolerate_invalid=False):
     """Migrate the previous URL-only configuration without touching seen state."""
-    entries = settings.get("filters") or [
+    entries = settings["filters"] if "filters" in settings else [
         {"name": f"Filtr {index}", "url": url}
         for index, url in enumerate(settings.get("urls", []), 1)
     ]
@@ -101,6 +101,16 @@ def load_filters(settings, tolerate_invalid=False):
             # Keep the original value editable, but never navigate to it.
             result.append({**entry, "enabled": False, "url_invalid": True})
     return result
+
+
+def initialize_default_filters(settings, path=CONFIG):
+    """Persist defaults once, only when no previous configuration exists."""
+    if path.exists() or 'filters' in settings or 'urls' in settings:
+        return settings
+    from neto_incident_monitor.default_filters import default_filters
+    initialized = {**settings, 'filters': default_filters()}
+    save_json(path, initialized)
+    return initialized
 
 
 def incident_values(incident):
@@ -337,6 +347,7 @@ class App(DynamicColumns, TableLoading):
     def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True):
         self.root = root
         self.events = queue.Queue()
+        self.dashboard_requests = queue.Queue()
         self.stop = threading.Event()
         self.browser_window = None
         self.worker = None
@@ -354,7 +365,7 @@ class App(DynamicColumns, TableLoading):
         self.instance = instance
         self.schedule = Schedule()
         self.auth_waiting = False
-        settings = read_json(CONFIG, {})
+        settings = initialize_default_filters(read_json(CONFIG, {}))
         from neto_incident_monitor.teams_notifications import Sender
         self.teams_sender = Sender(self.events)
         self.teams_webhook = settings.get("teams_webhook", "")
@@ -389,6 +400,7 @@ class App(DynamicColumns, TableLoading):
         from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
         self.google_chat_enabled.trace_add("write", lambda *_: google_chat_changed(self))
         self.auto_login.trace_add("write", self.save_auto_login)
+        self.dashboard_auto_refresh.trace_add('write', self.save_dashboard_auto_refresh)
         self.minimize_browser.trace_add("write", self.save_browser_minimize)
         self.hide_browser.trace_add("write", self.save_browser_minimize)
         self.saved_minimize = self.minimize_to_tray.get()
@@ -400,6 +412,7 @@ class App(DynamicColumns, TableLoading):
         self.update_counts()
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.bind("<Unmap>", self.on_unmap, add="+")
+        root.bind('<Control-Shift-F12>', self.add_default_filters, add='+')
         self.window_save_timer = None
         self.window_layout = dict(settings.get("window_layout", {}))
         self.saved_window_layout = dict(self.window_layout)
@@ -885,6 +898,37 @@ class App(DynamicColumns, TableLoading):
             return identity
         return next((i for i, entry in enumerate(self.filters, 1) if entry["url"] == identity), None)
 
+    def add_default_filters(self, event=None):
+        if self.quitting:
+            return 'break'
+        if self.worker and self.worker.is_alive():
+            messagebox.showinfo('Filtry domyślne', 'Zatrzymaj monitoring przed dodaniem filtrów domyślnych.', parent=self.root)
+            return 'break'
+        from neto_incident_monitor.default_filters import default_filters
+        urls = set()
+        for entry in self.filters:
+            try:
+                urls.add(normalize_url(entry['url']))
+            except ValueError:
+                pass
+        names = {entry['name'].strip().casefold() for entry in self.filters}
+        additions = [entry for entry in load_filters({'filters': default_filters()})
+                     if entry['url'] not in urls and entry['name'].strip().casefold() not in names]
+        if not additions:
+            messagebox.showinfo('Filtry domyślne', 'Wszystkie filtry domyślne są już na liście.', parent=self.root)
+            return 'break'
+        previous = self.filters
+        self.filters = previous + additions
+        try:
+            self.persist_filters()
+        except (OSError, ValueError):
+            self.filters = previous
+            messagebox.showerror('Filtry domyślne', 'Nie udało się zapisać filtrów domyślnych.', parent=self.root)
+            return 'break'
+        self.refresh_filters()
+        messagebox.showinfo('Filtry domyślne', f'Dodano brakujące filtry: {len(additions)}.', parent=self.root)
+        return 'break'
+
     def persist_filters(self):
         settings = read_json(CONFIG, {})
         settings["filters"] = self.filters
@@ -1251,6 +1295,14 @@ class App(DynamicColumns, TableLoading):
         except (OSError, ValueError):
             self.status.set("Nie udało się zapisać ustawienia automatycznego logowania.")
 
+    def save_dashboard_auto_refresh(self, *_):
+        try:
+            settings = read_json(CONFIG, {})
+            settings['dashboard_auto_refresh'] = self.dashboard_auto_refresh.get()
+            save_json(CONFIG, settings)
+        except (OSError, ValueError):
+            self.status.set('Nie udało się zapisać ustawienia aktualizacji dashboardu.')
+
     def save_browser_minimize(self, *_):
         try:
             settings = read_json(CONFIG, {})
@@ -1412,8 +1464,11 @@ class App(DynamicColumns, TableLoading):
         self.notify_check.configure(state="disabled")
         for button in self.filter_buttons:
             button.configure(state="disabled")
+        if self.dashboard_auto_refresh.get():
+            self.dashboard_view.request_refresh(automatic=True)
         self.worker = threading.Thread(target=self.monitor, args=(settings,), daemon=True)
         self.worker.start()
+        self.dashboard_view.refresh_button.configure(state='normal')
 
     def monitor(self, settings):
         try:
@@ -1470,6 +1525,7 @@ class App(DynamicColumns, TableLoading):
                     deadlines = {"inc": 0, "task": 0}
                     force = True
                     while not self.stop.is_set():
+                        self.read_dashboard_request(page)
                         due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
                         active = {list_kind(url)
                                   for url in settings["urls"] if url not in self.disabled_filter_urls}
@@ -1580,12 +1636,86 @@ class App(DynamicColumns, TableLoading):
             if not self.stop.is_set():
                 self.events.put(("interruption", "Monitoring zatrzymał się z powodu błędu przeglądarki lub aplikacji. Otwórz aplikację, aby zobaczyć szczegóły i uruchomić go ponownie."))
 
+    def read_dashboard_request(self, page):
+        if not hasattr(self, 'dashboard_requests'):
+            return
+        request = None
+        while True:
+            try:
+                request = self.dashboard_requests.get_nowait()
+            except queue.Empty:
+                break
+        if request is None:
+            return
+        request_id, year, month = request
+        from neto_incident_monitor.dashboard import read_dashboard, read_held_dashboard, read_requests_dashboard, REQUEST_TITLES
+        self.events.put(('dashboard_updating', True))
+        stage = 'dane SLA'
+        section = 'Dashboard SLA'
+        def section_status(state):
+            self.events.put(('dashboard_section_status', (request_id, section, state)))
+        try:
+            section_status('W trakcie aktualizacji')
+            values = read_dashboard(page, year, month, self.stop)
+            section_status('Zaktualizowany')
+            failures = []
+            def publish(message):
+                self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, message)))
+            publish('Dane SLA odczytane. Trwa odczyt sekcji Wstrzymane L1…')
+            for stage, section, operation, destination in (
+                    ('dane Wstrzymane L1', 'Wstrzymane L1', lambda: read_held_dashboard(page, self.stop), values),
+                    ('dane Wnioski L1', 'Wnioski L1', lambda: read_requests_dashboard(page, self.stop), values)):
+                if self.stop.is_set():
+                    break
+                try:
+                    section_status('W trakcie aktualizacji')
+                    result = operation()
+                    destination.update(result)
+                    if section == 'Wnioski L1' and any(title not in result for title in REQUEST_TITLES):
+                        section_status('Błąd odczytu')
+                    else:
+                        section_status('Zaktualizowany')
+                except (TargetClosedError, BrowserClosedError):
+                    raise
+                except Exception as exc:
+                    section_status('Błąd odczytu')
+                    LOG.warning('Dashboard: etap %s nie powiódł się (%s).', stage, type(exc).__name__)
+                    failures.append(stage)
+                publish('Trwa odświeżanie dashboardu…')
+            missing_requests = [title for title in REQUEST_TITLES if title not in values]
+            if missing_requests and 'dane Wnioski L1' not in failures:
+                failures.extend(missing_requests)
+            publish('Nie udało się odczytać: ' + ', '.join(failures) + '. Pozostałe dane są dostępne.' if failures else '')
+        except (TargetClosedError, BrowserClosedError):
+            self.dashboard_requests.put(request)
+            raise
+        except Exception as exc:
+            section_status('Błąd odczytu')
+            LOG.warning('Dashboard: etap %s nie powiódł się (%s).', stage, type(exc).__name__)
+            self.events.put(('dashboard_result', (request_id, year, month, None, True)))
+        finally:
+            self.events.put(('dashboard_updating', False))
+
     def drain(self):
         if self.instance and self.instance.poll():
             self.show_window()
         try:
             while True:
                 kind, value = self.events.get_nowait()
+                if kind == 'dashboard_section_status':
+                    self.dashboard_view.set_section_state(*value)
+                    continue
+                if kind == 'dashboard_updating':
+                    self.dashboard_button.updating = value
+                    self.dashboard_button.redraw()
+                    monitoring = self.worker and self.worker.is_alive() and not self.stop.is_set()
+                    self.dashboard_view.refresh_button.configure(state='normal' if monitoring and not value else 'disabled')
+                    if not value:
+                        self.dashboard_view.finish_pending()
+                    continue
+                if kind == 'dashboard_result':
+                    self.dashboard_view.apply_result(value)
+                    continue
                 if kind == 'filter_resolved':
                     short, direct = value
                     from neto_incident_monitor.service_now_urls import normalize_list_url
@@ -1697,6 +1827,15 @@ class App(DynamicColumns, TableLoading):
                     self.apply_visible_columns()
                     self.update_counts()
                 elif kind == "finished":
+                    self.dashboard_view.finish_pending()
+                    self.dashboard_view.refresh_button.configure(state='disabled')
+                    self.dashboard_view.request_id += 1
+                    self.dashboard_view.set_message('Monitoring zatrzymany — odczyt dashboardu jest niedostępny. Kafelki zachowują ostatni wynik.')
+                    while not self.dashboard_requests.empty():
+                        try:
+                            self.dashboard_requests.get_nowait()
+                        except queue.Empty:
+                            break
                     self.check_deadlines = {}
                     self.updating_filter_url = None
                     self.filter_table.updating_item = None

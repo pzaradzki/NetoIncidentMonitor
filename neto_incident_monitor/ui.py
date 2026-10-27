@@ -1,7 +1,7 @@
 """Presentation layer for the local incident monitor."""
 import tkinter as tk
 from tkinter import ttk
-from neto_incident_monitor.widgets import Toggle, RoundedButton, FilterList, TabTooltip
+from neto_incident_monitor.widgets import Toggle, RoundedButton, DashboardButton, FilterList, TabTooltip
 from PIL import Image, ImageDraw, ImageTk
 
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
@@ -177,7 +177,7 @@ def build_ui(app, settings):
     canvas.configure(yscrollcommand=scroll.set)
     sidebar = ttk.Frame(canvas, style="White.TFrame", padding=16)
     sidebar_window = canvas.create_window((0, 0), window=sidebar, anchor="nw", width=235)
-    sidebar.rowconfigure(1, weight=1)
+    sidebar.rowconfigure(2, weight=1)
     sidebar.columnconfigure(0, weight=1)
 
     def resize_sidebar(_=None):
@@ -192,14 +192,16 @@ def build_ui(app, settings):
 
     sidebar.bind("<Configure>", resize_sidebar)
     canvas.bind("<Configure>", resize_sidebar)
+    app.dashboard_button = DashboardButton(sidebar)
+    app.dashboard_button.grid(row=0, column=0, sticky="ew", pady=(0, 20))
     list_header = ttk.Frame(sidebar, style="White.TFrame")
-    list_header.grid(row=0, column=0, sticky="ew", pady=(2, 12))
+    list_header.grid(row=1, column=0, sticky="ew", pady=(2, 12))
     ttk.Label(list_header, text="Monitorowane filtry", style="SidebarTitle.TLabel").pack(side="left")
     app.filter_count = tk.StringVar(value="0")
     tk.Label(list_header, textvariable=app.filter_count, bg="#392930", fg=ACCENT,
              font=("Segoe UI", 9, "bold"), padx=7, pady=2).pack(side="right")
     lists = ttk.Frame(sidebar, style="White.TFrame")
-    lists.grid(row=1, column=0, sticky="nsew")
+    lists.grid(row=2, column=0, sticky="nsew")
     lists.rowconfigure(1, weight=1)
     lists.columnconfigure(0, weight=1)
     app.filter_table = FilterList(lists)
@@ -217,7 +219,7 @@ def build_ui(app, settings):
 
     app.filter_table.configure(yscrollcommand=update_filter_scroll)
     filter_actions = ttk.Frame(sidebar, style="White.TFrame")
-    filter_actions.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+    filter_actions.grid(row=3, column=0, sticky="ew", pady=(10, 0))
     filter_actions.columnconfigure(0, weight=1)
     filter_actions.columnconfigure(1, weight=1)
     app.filter_buttons = []
@@ -243,8 +245,33 @@ def build_ui(app, settings):
     from neto_incident_monitor.settings_ui import build_settings
     build_settings(app, settings)
 
-    main = ttk.Frame(body)
-    main.grid(row=0, column=2, sticky="nsew")
+    content_host = ttk.Frame(body)
+    content_host.grid(row=0, column=2, sticky="nsew")
+    content_host.rowconfigure(0, weight=1)
+    content_host.columnconfigure(0, weight=1)
+    main = ttk.Frame(content_host)
+    main.grid(row=0, column=0, sticky="nsew")
+    from neto_incident_monitor.dashboard_ui import build_dashboard
+    app.dashboard_view = build_dashboard(content_host, app)
+    app.dashboard_view.grid(row=0, column=0, sticky="nsew")
+    def show_incidents():
+        app.dashboard_button.selected = False
+        app.dashboard_button.redraw()
+        app.filter_table.show_selection = True
+        app.filter_table.redraw()
+        main.tkraise()
+
+    def show_dashboard():
+        app.dashboard_button.selected = True
+        app.dashboard_button.redraw()
+        app.filter_table.show_selection = False
+        app.filter_table.redraw()
+        app.dashboard_view.tkraise()
+
+    app.show_incident_view = show_incidents
+    app.filter_table.on_activate = show_incidents
+    app.dashboard_button.command = show_dashboard
+    show_dashboard()
     def align_header_title(event=None):
         offset = max(0, main.winfo_rootx() - header.winfo_rootx() - 24 - 155 - 24 - 6)
         title.pack_configure(padx=(offset, 0))

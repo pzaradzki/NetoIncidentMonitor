@@ -20,7 +20,8 @@ def show_filter_settings(app, index):
     panel = ttk.Frame(window, style="White.TFrame", padding=24)
     panel.pack(fill="both", expand=True)
     ttk.Label(panel, text=entry["name"], style="White.TLabel",
-              font=("Segoe UI", 14, "bold"), wraplength=430).pack(anchor="w", pady=(0, 18))
+              font=("Segoe UI", 14, "bold"), wraplength=430).pack(anchor="w", pady=(0, 12))
+    tk.Frame(panel, background="#3a3f48", height=1).pack(fill='x', pady=(0, 8))
     values = {}
     controls = {}
     webhooks = {}
