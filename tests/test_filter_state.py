@@ -11,6 +11,45 @@ from neto_incident_monitor.history import History
 
 
 class FilterStateTests(unittest.TestCase):
+    def setUp(self):
+        window = patch('neto_incident_monitor.browser_window.BrowserWindow')
+        window.start()
+        self.addCleanup(window.stop)
+
+    def test_session_expiry_after_successful_filter_read_reauthenticates(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.pagination import AuthenticationRequired
+        with tempfile.TemporaryDirectory() as folder:
+            app = App.__new__(App)
+            app.stop = threading.Event()
+            app.events = queue.Queue()
+            app.schedule = Mock()
+            app.schedule.woken_by_request = False
+            url = 'https://adeo.service-now.com/incident_list.do'
+            app.filters = [{'name': 'A', 'url': url}]
+            app.disabled_filter_urls = frozenset()
+            app.history = History(Path(folder) / 'history.json')
+            page = Mock()
+            page.is_closed.return_value = False
+            context = Mock(pages=[page])
+            playwright = MagicMock()
+            playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
+            settings = {'urls': [url], 'filters': app.filters, 'interval': 60, 'task_interval': 60}
+            with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
+                    patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
+                    patch('neto_incident_monitor.app.navigate'), \
+                    patch.object(app, 'restore_login', return_value=True) as login, \
+                    patch('neto_incident_monitor.app.read_all', side_effect=[({}, 1), AuthenticationRequired(), ({}, 1)]) as read, \
+                    patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, False, True]):
+                app.monitor(settings)
+            self.assertEqual(read.call_count, 3)
+            self.assertEqual(login.call_count, 2)  # Startup and session recovery.
+            app.schedule.request.assert_called()
+            phases = [value for kind, value in app.events.queue if kind == 'phase']
+            self.assertIn('Oczekiwanie na logowanie', phases)
+            self.assertNotIn('Błąd uruchomienia', phases)
+            self.assertEqual(sum(kind == 'snapshot' for kind, _ in app.events.queue), 2)
+
     def test_separate_incident_and_task_intervals(self):
         from neto_incident_monitor.app import App
         with tempfile.TemporaryDirectory() as folder:

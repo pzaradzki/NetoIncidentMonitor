@@ -127,12 +127,12 @@ def build_settings(app, settings):
     app.auto_login = tk.BooleanVar(value=settings.get("auto_login", True))
     app.auto_login_check = Toggle(controls, app.auto_login)
     app.auto_login_check.pack(side="right")
-    controls = row(browser, "Minimalizacja przeglądarki", "Uruchamiaj Chromium zminimalizowane. Pokazuj okno, gdy potrzebne jest ręczne logowanie.")
+    controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj Chromium podczas sprawdzania filtrów. Automatyczne logowanie i dashboard działają w tle; ręczne logowanie przywołuje przeglądarkę.")
     app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", True))
     app.minimize_browser_check = Toggle(controls, app.minimize_browser)
     app.minimize_browser_check.pack(side="right")
 
-    controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań. Pokazuj okno, gdy potrzebne jest ręczne logowanie. Zmiana działa po ponownym uruchomieniu monitoringu.")
+    controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań podczas sprawdzania filtrów. Automatyczne logowanie i dashboard pozostają widoczne w tle; ręczne logowanie przechodzi na pierwszy plan.")
     app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
     Toggle(controls, app.hide_browser).pack(side="right")
 

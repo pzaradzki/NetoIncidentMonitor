@@ -132,8 +132,13 @@ def build_ui(app, settings):
     root.brand_logo = ImageTk.PhotoImage(logo, master=root)
     ttk.Label(header, image=root.brand_logo).pack(side="left", anchor="n", pady=(10, 0), padx=(0, 24))
     title = ttk.Frame(header)
-    title.pack(side="left")
+    title.pack(side="left", fill='x', expand=True, padx=(0, 20))
     ttk.Label(title, text="Incident Monitor", style="Title.TLabel").pack(anchor="w")
+    from neto_incident_monitor.dashboard_progress import DashboardProgressBar
+    progress_host = tk.Frame(title, bg=BG, height=18)
+    progress_host.pack(fill='x')
+    progress_host.pack_propagate(False)
+    app.dashboard_progress = DashboardProgressBar(progress_host)
     app.controls = ttk.Frame(header)
     app.controls.pack(side="right")
     app.start_button = RoundedButton(app.controls, text="Uruchom monitoring", icon="play", command=app.start,

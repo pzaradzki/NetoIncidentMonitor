@@ -4,8 +4,10 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import runpy
 import sys
+import threading
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
+from neto_incident_monitor.safe_logging import SafeExceptionFormatter, thread_exception
 
 
 class LogStream:
@@ -15,7 +17,9 @@ class LogStream:
 
     def write(self, message):
         if message.strip():
-            logging.getLogger("console").log(self.level, message.rstrip())
+            # Unhandled library output may contain request URLs or form values.
+            logging.getLogger("console").log(self.level,
+                "Przechwycono wyjście konsoli; treść pominięta (liczba znaków: %d).", len(message))
         return len(message)
 
     def flush(self):
@@ -28,15 +32,17 @@ class LogStream:
 
 def main():
     previous_stdout, previous_stderr = sys.stdout, sys.stderr
+    previous_thread_hook = threading.excepthook
     handler = None
     try:
         data = DATA
         data.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(data / "monitor.log", maxBytes=2_000_000,
                                       backupCount=3, encoding="utf-8")
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        handler.setFormatter(SafeExceptionFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         logging.getLogger().addHandler(handler)
         logging.getLogger().setLevel(logging.INFO)
+        threading.excepthook = thread_exception
         sys.stdout = LogStream(logging.INFO)
         sys.stderr = LogStream(logging.ERROR)
         logging.info("Uruchomienie aplikacji bez konsoli")
@@ -59,6 +65,7 @@ def main():
     finally:
         logging.info("Zakończenie aplikacji")
         sys.stdout, sys.stderr = previous_stdout, previous_stderr
+        threading.excepthook = previous_thread_hook
         if handler is not None:
             logging.getLogger().removeHandler(handler)
             handler.close()

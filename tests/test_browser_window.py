@@ -1,7 +1,9 @@
 import ctypes
+import os
 import sys
 import tempfile
 import unittest
+import tkinter as tk
 from ctypes import wintypes
 
 from playwright.sync_api import sync_playwright
@@ -10,6 +12,88 @@ from neto_incident_monitor.browser_window import BrowserWindow
 
 @unittest.skipUnless(sys.platform == 'win32', 'Native Windows window test')
 class BrowserWindowTests(unittest.TestCase):
+    def test_foreground_input_attachment_is_always_detached(self):
+        from unittest.mock import Mock, patch, call
+        from neto_incident_monitor.browser_window import _restore_foreground
+        api, kernel = Mock(), Mock()
+        kernel.GetCurrentThreadId.return_value = 1
+        api.GetWindowThreadProcessId.return_value = 2
+        api.AttachThreadInput.return_value = True
+        api.SetForegroundWindow.side_effect = RuntimeError('fixture')
+        with patch('neto_incident_monitor.browser_window.ctypes.WinDLL', return_value=kernel):
+            with self.assertRaises(RuntimeError):
+                _restore_foreground(api, 10)
+        self.assertEqual(api.AttachThreadInput.call_args_list, [call(1, 2, True), call(1, 2, False)])
+
+    def test_passive_show_keeps_foreground_and_supports_browser_actions(self):
+        api = ctypes.WinDLL('user32')
+        api.GetForegroundWindow.restype = wintypes.HWND
+        api.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        def owner(hwnd):
+            pid = wintypes.DWORD()
+            api.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            return pid.value
+        root = tk.Tk()
+        root.geometry('320x140+30+30')
+        root.update()
+        self.addCleanup(root.destroy)
+        with tempfile.TemporaryDirectory() as profile, sync_playwright() as playwright:
+            context = playwright.chromium.launch_persistent_context(profile, headless=False,
+                                                                     args=['--start-minimized'])
+            try:
+                window = BrowserWindow(context.browser)
+                page = context.pages[0]
+                for previous_state in ('minimized', 'hidden'):
+                    window.minimize() if previous_state == 'minimized' else window.hide()
+                    page.wait_for_timeout(200)
+                    self.assertFalse(window.is_visible(), previous_state + ' before restore')
+                    root.deiconify()
+                    root.lift()
+                    root.focus_force()
+                    root.update()
+                    foreground = api.GetForegroundWindow()
+                    if owner(foreground) != os.getpid():
+                        self.skipTest('Windows did not grant foreground to the test app; passive focus cannot be measured reliably')
+                    window.show(activate=False)
+                    page.wait_for_timeout(200)
+                    self.assertTrue(window.is_visible(), previous_state)
+                    current = api.GetForegroundWindow()
+                    self.assertEqual(current, foreground, (previous_state, owner(foreground), owner(current), window.pid))
+                    page.set_content('<input><button onclick="window.clicks=1">Test</button>')
+                    page.locator('input').fill('fixture')
+                    page.get_by_role('button').click()
+                    self.assertEqual(page.evaluate('window.clicks'), 1)
+                    self.assertEqual(api.GetForegroundWindow(), foreground, 'automated input')
+            finally:
+                context.close()
+
+    def test_activity_restores_real_window_and_hides_only_for_filters(self):
+        from unittest.mock import Mock
+        from neto_incident_monitor.browser_policy import BrowserOptions, BrowserRuntime
+        from neto_incident_monitor.app import set_chromium_window_state
+        with tempfile.TemporaryDirectory() as profile, sync_playwright() as playwright:
+            context = playwright.chromium.launch_persistent_context(profile, headless=False)
+            try:
+                page = context.pages[0]
+                window = BrowserWindow(context.browser)
+                options = BrowserOptions({'hide_browser': True, 'minimize_browser': True})
+                runtime = BrowserRuntime(page, options, lambda: window,
+                                         set_chromium_window_state, Mock(), Mock())
+                for activity, visible in (('login', True), ('dashboard', True),
+                                          ('filters', False), ('dashboard', True),
+                                          ('login', True), ('filters', False)):
+                    runtime.set_activity(activity)
+                    page.wait_for_timeout(200)
+                    self.assertEqual(window.is_visible(), visible, activity)
+                    runtime.tick()
+                    self.assertEqual(window.is_visible(), visible, activity)
+                options.update(hide_browser=False, minimize_browser=False)
+                runtime.tick()
+                page.wait_for_timeout(200)
+                self.assertTrue(window.is_visible())
+            finally:
+                context.close()
+
     def test_hide_restore_keeps_browser_operational(self):
         with tempfile.TemporaryDirectory() as profile, sync_playwright() as playwright:
             context = playwright.chromium.launch_persistent_context(profile, headless=False,
@@ -53,8 +137,8 @@ class BrowserWindowTests(unittest.TestCase):
                 self.assertTrue(automatic.submitted)
                 self.assertEqual(page.evaluate('window.clicks'), 1)
                 window.show()
-                self.assertTrue(window.visible)
                 page.wait_for_timeout(300)
+                self.assertTrue(window.is_visible())
                 self.assertEqual(visibility(), [True])
                 window.hide()
                 page.wait_for_timeout(300)

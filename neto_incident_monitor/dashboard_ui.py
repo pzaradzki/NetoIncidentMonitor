@@ -94,6 +94,8 @@ def build_dashboard(parent, app, cache_path=None):
     set_message('Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.')
     def period_changed(event=None):
         panel.request_id += 1
+        if hasattr(app, 'dashboard_progress'):
+            app.dashboard_progress.hide()
         for section in panel.section_pills:
             set_section_state(panel.request_id, section, 'Dane nieaktualne')
         set_message('Zmieniono okres — kliknij Aktualizuj. Kafelki pokazują poprzedni odczyt.')
@@ -112,6 +114,8 @@ def build_dashboard(parent, app, cache_path=None):
             set_message('Najpierw uruchom monitoring i zaloguj się w ServiceNow.')
             return
         panel.request_id += 1
+        if hasattr(app, 'dashboard_progress'):
+            app.dashboard_progress.start(panel.request_id)
         for section in panel.section_pills:
             set_section_state(panel.request_id, section, 'Oczekuje')
         app.dashboard_requests.put((panel.request_id, int(panel.year.get()), months.index(panel.month.get()) + 1))

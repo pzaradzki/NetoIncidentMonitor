@@ -6,24 +6,35 @@ from unittest.mock import MagicMock, patch
 from neto_incident_monitor.dashboard import TITLES, month_range, parse_score, read_dashboard, score_pattern, ensure_all_categories
 from neto_incident_monitor.dashboard import calculate_wjruw
 from neto_incident_monitor.dashboard import read_held_dashboard, HELD_TITLES
+from neto_incident_monitor.dashboard import DASHBOARD_URL
+from neto_incident_monitor.pagination import Cancelled
 
 
 class DashboardTests(unittest.TestCase):
     def test_requests_reads_four_tiles_in_source_order(self):
         from neto_incident_monitor.dashboard import read_requests_dashboard, REQUEST_TITLES
-        page = MagicMock()
+        page = MagicMock(url=DASHBOARD_URL)
         page.get_by_text.return_value.count.return_value = 0
+        page.get_by_text.return_value.filter.return_value.count.return_value = 0
         expected = dict(zip(REQUEST_TITLES, (202, 118, 99, 17)))
+        page.locator.return_value.filter.return_value.filter.return_value.count.return_value = 0
         def role(role, name=None, **kwargs):
             locator = MagicMock()
+            locator.filter.return_value = locator
+            locator.count.return_value = 1
             if hasattr(name, 'pattern'):
                 for title, value in expected.items():
                     if name.match(title + ','):
                         locator.inner_text.return_value = str(value)
             return locator
         page.get_by_role.side_effect = role
-        with patch('neto_incident_monitor.dashboard.time.monotonic', side_effect=[0, 0, 0, 2, 2]):
+        # A complete snapshot arriving after the former 20-second limit is valid.
+        with patch('neto_incident_monitor.dashboard.time.monotonic', side_effect=[0, 0, 0, 25, 25]), \
+                patch('neto_incident_monitor.dashboard.navigate_page') as navigate, \
+                patch('neto_incident_monitor.dashboard.ensure_all_categories') as ensure:
             self.assertEqual(read_requests_dashboard(page, threading.Event()), expected)
+        self.assertEqual(ensure.call_args.args[2], ('Agent L1',))
+        navigate.assert_not_called()
         page.go_back.assert_not_called()
 
     def test_refresh_reads_only_values_and_preserves_sla_on_held_error(self):
@@ -54,8 +65,9 @@ class DashboardTests(unittest.TestCase):
                 self.assertEqual(results[-1][3][HELD_TITLES[0]], 19)
 
     def test_held_reads_both_tiles_with_all_agents(self):
-        page = MagicMock()
+        page = MagicMock(url=DASHBOARD_URL)
         page.get_by_text.return_value.count.return_value = 0
+        page.get_by_text.return_value.filter.return_value.count.return_value = 0
         def role(role, name=None, **kwargs):
             locator = MagicMock()
             if hasattr(name, 'pattern'):
@@ -63,8 +75,10 @@ class DashboardTests(unittest.TestCase):
             return locator
         page.get_by_role.side_effect = role
         with patch('neto_incident_monitor.dashboard.ensure_all_categories') as ensure, patch(
-                'neto_incident_monitor.dashboard.time.monotonic', side_effect=[0, 0, 0, 2, 2]):
+                'neto_incident_monitor.dashboard.time.monotonic', side_effect=[0, 0, 0, 2, 2]), \
+                patch('neto_incident_monitor.dashboard.navigate_page') as navigate:
             values = read_held_dashboard(page, threading.Event())
+        navigate.assert_not_called()
         self.assertEqual(values, dict(zip(HELD_TITLES, (19, 43))))
         self.assertEqual(ensure.call_args.args[2], ('Agent L1',))
 
@@ -83,16 +97,19 @@ class DashboardTests(unittest.TestCase):
         page.locator.return_value.filter.side_effect = containers
         # The middle category is already selected and must not be applied again.
         for index, container in enumerate(containers):
+            container.filter.return_value = container
             checkbox = container.get_by_role.return_value
             checkbox.evaluate.side_effect = [index == 1, False] if index != 1 else [True]
         with patch('neto_incident_monitor.dashboard.expect'):
             ensure_all_categories(page, threading.Event())
         containers[0].get_by_role.return_value.check.assert_called_once()
-        containers[0].get_by_role.return_value.click.assert_called_once()
+        self.assertEqual(sum(not call.kwargs.get('trial', False)
+                             for call in containers[0].get_by_role.return_value.click.call_args_list), 1)
         containers[1].get_by_role.return_value.check.assert_not_called()
         containers[1].get_by_role.return_value.click.assert_not_called()
         containers[2].get_by_role.return_value.check.assert_called_once()
-        containers[2].get_by_role.return_value.click.assert_called_once()
+        self.assertEqual(sum(not call.kwargs.get('trial', False)
+                             for call in containers[2].get_by_role.return_value.click.call_args_list), 1)
 
     def test_servicenow_widget_title_whitespace(self):
         pattern = score_pattern('Przekroczone P1')
@@ -125,6 +142,7 @@ class DashboardTests(unittest.TestCase):
             return locator
         page.get_by_role.side_effect = role
         page.get_by_text.return_value.count.return_value = 0
+        page.get_by_text.return_value.filter.return_value.count.return_value = 0
         with patch('neto_incident_monitor.dashboard.time.monotonic', side_effect=[0, 0, 0, 2, 2]):
             result = read_dashboard(page, 2026, 9, threading.Event())
         self.assertEqual(result['Zgłoszenia P1'], 1)
@@ -135,5 +153,5 @@ class DashboardTests(unittest.TestCase):
         page = MagicMock()
         stop = threading.Event()
         stop.set()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(Cancelled):
             read_dashboard(page, 2026, 9, stop)

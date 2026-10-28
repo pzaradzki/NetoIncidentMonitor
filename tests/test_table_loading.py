@@ -55,17 +55,23 @@ class TableLoadingTests(unittest.TestCase):
         self.populate()
         app = self.app
         pulses = []
+        switched_during_loading = []
         def pulse():
-            pulses.append(len(app.current_table.get_children()))
+            count = len(app.current_table.get_children())
+            pulses.append(count)
+            if 0 < count < 3000 and not switched_during_loading:
+                # Observe and cancel from inside Tk's event loop. root.update()
+                # can process several batches before returning on a busy machine.
+                switched_during_loading.append(count)
+                app.filter_table.selection_set('1')
             self.root.after(2, pulse)
         self.root.after(0, pulse)
         started = time.perf_counter()
         app.filter_selected()
         self.assertLess(time.perf_counter() - started, .3)
-        self.wait(lambda: len(app.current_table.get_children()) > 0)
-        self.assertLess(len(app.current_table.get_children()), 3000)
+        self.wait(lambda: bool(switched_during_loading))
+        self.assertLess(switched_during_loading[0], 3000)
         self.assertEqual(app.table.get_children(), ())
-        app.filter_table.selection_set('1')
         self.wait(lambda: not app._table_jobs)
         self.assertEqual([app.current_table.set(i, 'number') for i in app.current_table.get_children()], ['REQ0012345'])
         self.assertGreater(len(pulses), 1)

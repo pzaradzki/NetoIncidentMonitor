@@ -5,6 +5,60 @@ from neto_incident_monitor.automatic_login import AutomaticLogin
 
 
 class AutomaticLoginTests(unittest.TestCase):
+    def test_submit_readiness_does_not_spend_attempts_and_rechecks_user_control(self):
+        from neto_incident_monitor.authentication import install_input_guard, clear_manual_handoff
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = browser.new_context()
+                install_input_guard(context)
+                page = context.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='<body></body>', content_type='text/html'))
+                original_click = Locator.click
+                for mode in ('ready', 'manual', 'disabled', 'replaced'):
+                    with self.subTest(mode=mode):
+                        page.goto('https://idpb2e.adeo.com/login')
+                        clear_manual_handoff(page)
+                        page.evaluate('html => document.body.innerHTML = html', '''<input type="password" value="dummy">
+                            <button onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>
+                            <div id="overlay" style="position:fixed;inset:0;z-index:10"></div>''')
+                        enabled = [True]
+                        diagnostics = Mock()
+                        automatic = AutomaticLogin(diagnostics, enabled=lambda: enabled[0])
+                        automatic.account_clicked = True
+                        for _ in range(3):
+                            automatic.step(page)
+                        self.assertEqual(automatic.submit_attempts, 0)
+                        self.assertFalse(automatic.blocked)
+                        self.assertFalse(automatic.submitted)
+                        self.assertFalse(page.evaluate('!!window.clicks'))
+                        self.assertTrue(any(call.args[0] == 'submit_waiting_ready'
+                                            for call in diagnostics.record.call_args_list))
+                        page.locator('#overlay').evaluate('el => el.remove()')
+                        def click(locator, **kwargs):
+                            result = original_click(locator, **kwargs)
+                            if kwargs.get('trial'):
+                                if mode == 'manual':
+                                    page.locator('input[type=password]').press('x')
+                                elif mode == 'disabled':
+                                    enabled[0] = False
+                                elif mode == 'replaced':
+                                    page.locator('input[type=password]').evaluate('el => el.replaceWith(el.cloneNode(true))')
+                            return result
+                        with patch.object(Locator, 'click', new=click):
+                            automatic.step(page)
+                        if mode == 'ready':
+                            self.assertTrue(automatic.submitted)
+                            self.assertEqual(automatic.submit_attempts, 1)
+                            automatic.step(page)
+                            self.assertEqual(page.evaluate('window.clicks'), 1)
+                        else:
+                            self.assertFalse(automatic.submitted)
+                            self.assertEqual(automatic.submit_attempts, 0)
+                            self.assertFalse(page.evaluate('!!window.clicks'))
+            finally:
+                browser.close()
+
     def test_submit_retry_requires_proof_that_no_activation_was_delivered(self):
         form = '''<input readonly value="account"><input type="password" value="dummy">
             <button onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>'''
@@ -15,7 +69,7 @@ class AutomaticLoginTests(unittest.TestCase):
                 page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
                 page.goto('https://idpb2e.adeo.com/login')
                 original_click = Locator.click
-                for mode in ('undelivered', 'delivered', 'new_document', 'bounded', 'late_activation', 'late_navigation'):
+                for mode in ('undelivered', 'delivered', 'new_document', 'bounded', 'late_activation', 'late_navigation', 'late_during_trial'):
                     with self.subTest(mode=mode):
                         page.set_content(form)
                         page.evaluate('window.clicks = 0')
@@ -23,6 +77,11 @@ class AutomaticLoginTests(unittest.TestCase):
                         automatic.account_clicked = True
                         attempts = []
                         def click(locator, **kwargs):
+                            if kwargs.get('trial'):
+                                result = original_click(locator, **kwargs)
+                                if mode == 'late_during_trial' and len(attempts) == 1:
+                                    locator.evaluate('el => el.click()')
+                                return result
                             attempts.append(kwargs['timeout'])
                             if mode == 'delivered':
                                 original_click(locator, **kwargs)
@@ -53,10 +112,10 @@ class AutomaticLoginTests(unittest.TestCase):
                                     page.evaluate('delete window.__netoLoginDelivery')
                                 clock.return_value = 2
                                 automatic.step(page)
-                                if mode in ('late_activation', 'late_navigation'):
+                                if mode in ('late_activation', 'late_navigation', 'late_during_trial'):
                                     self.assertTrue(automatic.submitted)
                                     self.assertEqual(len(attempts), 1)
-                                    self.assertEqual(page.evaluate('window.clicks'), int(mode == 'late_activation'))
+                                    self.assertEqual(page.evaluate('window.clicks'), int(mode in ('late_activation', 'late_during_trial')))
                                 elif mode == 'bounded':
                                     clock.return_value = 4
                                     automatic.step(page)
@@ -74,32 +133,34 @@ class AutomaticLoginTests(unittest.TestCase):
             finally:
                 browser.close()
 
-    def test_locked_remembered_account_without_autofill_marker(self):
+    def test_manual_edit_is_never_submitted_including_selected_account(self):
+        from neto_incident_monitor.authentication import install_input_guard
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
-                page = browser.new_page()
-                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
-                page.goto('https://idpb2e.adeo.com/resumeSAML20/idp/SSO.ping')
-                form = '''<form><input readonly value="test-account"><input type="password" value="dummy">
-                    <button type="button" onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button></form>'''
-                page.set_content(form)
+                context = browser.new_context()
+                install_input_guard(context)
+                page = context.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='<body></body>', content_type='text/html; charset=utf-8'))
+                form = '<form><input readonly value="test-account"><input type="password"><button type="button" onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button></form>'
+                for selected, before_first_step in ((True, False), (False, False), (True, True)):
+                    page.goto('https://idpb2e.adeo.com/login')
+                    page.evaluate('html => document.body.innerHTML = html', form)
+                    automatic = AutomaticLogin()
+                    automatic.account_clicked = selected
+                    if not before_first_step:
+                        automatic.step(page)
+                    page.locator('input[type=password]').press('x')
+                    automatic.step(page)
+                    self.assertTrue(automatic.blocked)
+                    self.assertFalse(page.evaluate('!!window.clicks'))
+                    # A manual click must still work after automation gives up.
+                    page.get_by_role('button').click()
+                    self.assertEqual(page.evaluate('window.clicks'), 1)
+                page.goto('https://idpb2e.adeo.com/login')
+                page.evaluate('html => document.body.innerHTML = html', form.replace('type="password"', 'type="password" value="dummy"'))
                 automatic = AutomaticLogin()
-                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=0):
-                    automatic.step(page)
-                self.assertFalse(automatic.submitted)
-                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=6):
-                    automatic.step(page)
-                    automatic.step(page)
-                self.assertEqual(page.evaluate('window.clicks'), 1)
-                page.set_content(form)
-                automatic = AutomaticLogin()
-                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=0):
-                    automatic.step(page)
-                page.locator('input[type=password]').press('End')
-                page.locator('input[type=password]').press('x')
-                with patch('neto_incident_monitor.automatic_login.monotonic', return_value=6):
-                    automatic.step(page)
+                automatic.step(page)
                 self.assertTrue(automatic.blocked)
                 self.assertFalse(automatic.submitted)
             finally:
@@ -137,7 +198,8 @@ class AutomaticLoginTests(unittest.TestCase):
         body, passwords, anchor, buttons = Mock(), Mock(), Mock(), Mock()
         body.inner_text.return_value = 'WITAMY'
         passwords.count.return_value = 1
-        passwords.first.evaluate.side_effect = [False, True, True]
+        readiness = iter([False, True, True])
+        passwords.first.evaluate.side_effect = lambda script, **kwargs: 'fixture-form' if '__netoFormToken' in script else next(readiness)
         anchor.count.return_value = 0
         buttons.count.return_value = 1
         buttons.first.is_visible.return_value = True
@@ -151,7 +213,9 @@ class AutomaticLoginTests(unittest.TestCase):
         automatic.step(page)
         automatic.step(page)
         self.assertTrue(automatic.submitted)
-        buttons.first.click.assert_called_once()
+        self.assertEqual(buttons.first.click.call_count, 2)
+        self.assertTrue(buttons.first.click.call_args_list[0].kwargs['trial'])
+        self.assertTrue(buttons.first.click.call_args_list[1].kwargs['no_wait_after'])
 
     def test_failed_account_click_does_not_mark_selection_complete(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
@@ -162,7 +226,8 @@ class AutomaticLoginTests(unittest.TestCase):
         accounts.first.locator.return_value = name
         name.count.return_value = 1
         name.is_visible.return_value = True
-        name.click.side_effect = [RuntimeError('page transitioning'), None]
+        accounts.first.evaluate.return_value = {'x': 10, 'y': 10}
+        accounts.first.click.side_effect = [None, RuntimeError('page transitioning'), None, None]
         page.locator.side_effect = lambda selector: body if selector=='body' else passwords if 'password' in selector else accounts
         automatic = AutomaticLogin()
         with patch('neto_incident_monitor.automatic_login.monotonic', side_effect=[0, 5]):
@@ -170,7 +235,8 @@ class AutomaticLoginTests(unittest.TestCase):
             self.assertFalse(automatic.account_clicked)
             automatic.step(page)
             self.assertTrue(automatic.account_clicked)
-        self.assertEqual(name.click.call_count, 2)
+        self.assertEqual(accounts.first.click.call_count, 4)
+        name.click.assert_not_called()
 
     def test_welcome_screen_retries_are_delayed_and_bounded(self):
         with sync_playwright() as playwright:
@@ -189,6 +255,44 @@ class AutomaticLoginTests(unittest.TestCase):
                 self.assertEqual(page.evaluate('window.selected'), 3)
                 self.assertTrue(automatic.blocked)
                 self.assertFalse(automatic.submitted)
+            finally:
+                browser.close()
+
+    def test_account_card_waits_for_overlay_and_handles_noninteractive_name(self):
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_page()
+                page.route('**/*', lambda route: route.fulfill(body='OK', content_type='text/html'))
+                page.goto('https://idpb2e.adeo.com/login')
+                page.set_content('''<body>WITAMY
+                    <ul id="existingAccountsSelectionList">
+                    <li class="identifier-first__account-item" style="width:350px;position:relative"
+                        onclick="window.selected=(window.selected||0)+1">
+                        <div class="identifier-first__account-name" style="pointer-events:none;width:200px">TEST</div>
+                        <button class="identifier-first__remove-account" style="position:absolute;right:0;top:0"
+                            onclick="window.removed=true;event.stopPropagation()">Remove</button>
+                    </li></ul>
+                    <div id="overlay" style="position:fixed;inset:0;z-index:10"></div>
+                    </body>''')
+                diagnostics = Mock()
+                automatic = AutomaticLogin(diagnostics)
+                # Longer than the former one-second timeout, with no actual
+                # selection attempts lost while the page is covered.
+                for _ in range(3):
+                    automatic.step(page)
+                self.assertEqual(automatic.account_attempts, 0)
+                self.assertFalse(automatic.blocked)
+                self.assertFalse(page.evaluate('!!window.selected'))
+                self.assertTrue(any(call.args[0] == 'account_waiting_ready'
+                                    for call in diagnostics.record.call_args_list))
+                page.locator('#overlay').evaluate('el => el.remove()')
+                automatic.step(page)
+                self.assertTrue(automatic.account_clicked)
+                self.assertEqual(automatic.account_attempts, 1)
+                self.assertEqual(page.evaluate('window.selected'), 1)
+                self.assertFalse(page.evaluate('!!window.removed'))
+                self.assertFalse(page.evaluate('window.__netoInputGuard.manual'))
             finally:
                 browser.close()
 

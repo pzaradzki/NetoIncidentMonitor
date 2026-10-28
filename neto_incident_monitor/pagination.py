@@ -88,9 +88,12 @@ def row_input(page):
 
 
 def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None):
+    from neto_incident_monitor.browser_actions import checkpoint
+    checkpoint(stop)
     navigate(page, first_page(url))
     if is_short_url(url):
         for _ in range(60):
+            checkpoint(stop)
             if stop.is_set():
                 raise Cancelled()
             if authentication_page(page, url):
@@ -114,6 +117,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
         stable = None
         repeats = 0
         for _ in range(60):
+            checkpoint(stop)
             if stop.is_set():
                 raise Cancelled()
             page.wait_for_timeout(250)
@@ -131,10 +135,10 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
                         if not reset_requested:
                             restored_signature = tuple(sorted(collect(page)))
                             if first is not None and not first_disabled:
-                                first.click(timeout=10000)
+                                first.click(timeout=1000, no_wait_after=True)
                             elif cursor is not None:
-                                cursor.fill("1")
-                                cursor.press("Enter")
+                                cursor.fill("1", timeout=1000)
+                                cursor.press("Enter", timeout=1000, no_wait_after=True)
                             reset_requested = True
                             if progress:
                                 progress(0, 0)
@@ -194,4 +198,4 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
                     raise RuntimeError("Nie rozpoznano przycisku następnej strony. Nie zapisano częściowego wyniku.")
             return result, page_index
         previous = signature
-        button.click(timeout=10000)
+        button.click(timeout=1000, no_wait_after=True)
