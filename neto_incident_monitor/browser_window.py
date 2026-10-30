@@ -25,6 +25,8 @@ def _restore_foreground(api, hwnd):
 
 class BrowserWindow:
     def __init__(self, browser, visibility_changed=None):
+        from neto_incident_monitor.browser_icon import BrowserIcon
+        self._icon = BrowserIcon()
         self.visible = True
         self._passive_ready = False
         self.visibility_changed = visibility_changed or (lambda: None)
@@ -59,6 +61,10 @@ class BrowserWindow:
             name = ctypes.create_unicode_buffer(256)
             user32.GetClassNameW(hwnd, name, len(name))
             if pid.value == self.pid and name.value == "Chrome_WidgetWin_1":
+                # The GUI's emergency reveal must remain asynchronous even
+                # when the Chromium message loop is unresponsive.
+                if not asynchronous:
+                    self._icon.apply(hwnd)
                 if show is not None:
                     command = 7 if show == 'minimized' else (9 if activate else 4) if show else 0
                     if asynchronous:

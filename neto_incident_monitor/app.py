@@ -1772,9 +1772,12 @@ class App(DynamicColumns, TableLoading):
             membership = FilterState(STATE, normalize_url)
             with sync_playwright() as playwright:
                 run_diagnostics.record('browser_launch_attempt')
+                from neto_incident_monitor.browser_icon import browser_launch_options
                 context = playwright.chromium.launch_persistent_context(
                     str(DATA / "browser-profile"), headless=False, no_viewport=True,
-                    args=['--start-minimized'])
+                    # Let Chromium own the fixed caption. WM_SETTEXT races
+                    # against tab-title updates and causes taskbar flicker.
+                    **browser_launch_options())
                 run_diagnostics.record('browser_launched')
                 # Wake an idle monitoring cycle immediately when Chromium exits.
                 context.on("close", lambda *_: self.schedule.request())

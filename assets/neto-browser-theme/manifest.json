@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Neto Browser — Graphite",
+  "version": "1.0.0",
+  "description": "Grafitowy motyw Neto Browser z subtelnym czerwonym akcentem.",
+  "theme": {
+    "colors": {
+      "frame": [27, 29, 34],
+      "frame_inactive": [37, 40, 47],
+      "toolbar": [37, 40, 47],
+      "tab_text": [240, 241, 243],
+      "tab_background_text": [174, 179, 190],
+      "tab_background_text_inactive": [174, 179, 190],
+      "bookmark_text": [240, 241, 243],
+      "toolbar_button_icon": [218, 222, 230],
+      "omnibox_background": [27, 29, 34],
+      "omnibox_text": [240, 241, 243],
+      "ntp_background": [27, 29, 34],
+      "ntp_text": [240, 241, 243],
+      "ntp_link": [223, 61, 75],
+      "tab_line": [223, 61, 75],
+      "tab_background_separator": [64, 68, 78]
+    },
+    "tints": {
+      "buttons": [-1, 0, 0.85]
+    }
+  }
+}

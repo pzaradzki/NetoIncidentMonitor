@@ -13,7 +13,7 @@ Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych
 - Osobny widok incydentów zagrożonych SLA, sprawdzany co minutę od zakończenia poprzedniej próby, również pomiędzy odczytami filtrów.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Zmiany najnowszego wydania opisuje [v1.7.16](docs/releases/v1.7.16.md).
+Zmiany najnowszego wydania opisuje [v1.7.17](docs/releases/v1.7.17.md).
 
 ## Uruchomienie
 

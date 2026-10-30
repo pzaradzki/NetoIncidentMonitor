@@ -10,3 +10,4 @@ dist/
 .env.*
 smoke-result.json
 .pytest_cache/
+assets/neto-browser-theme/Cached Theme.pak
