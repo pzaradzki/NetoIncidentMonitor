@@ -23,15 +23,25 @@ def draw_gear(draw, x, y, color, size=16):
 
 class StatusPill(tk.Canvas):
     """Compact status badge with smooth rounded edges."""
-    def __init__(self, parent, compact=False):
+    def __init__(self, parent, compact=False, fit=False):
         from neto_incident_monitor.theme import BG
         self.pill_height = 22 if compact else 28
         self.pill_font = ('Segoe UI', 8 if compact else 9, 'bold')
         self.pill_padding = 18 if compact else 24
         super().__init__(parent, height=self.pill_height, bg=BG, bd=0, highlightthickness=0)
+        self.fit = fit
+        self.status_text = ''
+        self.tone = None
+        if fit:
+            parent.bind('<Configure>', lambda event: self.set_status(self.status_text, self.tone), add='+')
+            self.status_tooltip = StatusTooltip(self)
 
-    def set_status(self, text):
+    def set_status(self, text, tone=None):
         from tkinter.font import Font
+        self.status_text, self.tone = text, tone
+        if self.fit and self.status_tooltip.text != text:
+            self.status_tooltip.hide()
+            self.status_tooltip.text = text
         colors = {
             "Zaktualizowany": ("#244b37", "#8ee2ac"),
             "Błąd odczytu": ("#472c33", "#ff929e"),
@@ -45,9 +55,19 @@ class StatusPill(tk.Canvas):
             "Błąd odczytu": ("#472c33", "#ff929e"),
             "Błąd uruchomienia": ("#472c33", "#ff929e"),
         }
-        background, foreground = colors.get(text, ("#343942", "#c8cdd6"))
+        tones = {'working': ('#27364a', '#9ac4f4'), 'waiting': ('#433923', '#efc778'),
+                 'success': ('#244b37', '#8ee2ac'), 'error': ('#472c33', '#ff929e')}
+        background, foreground = tones.get(tone, colors.get(text, ("#343942", "#c8cdd6")))
         font = Font(self, font=self.pill_font)
         width = font.measure(text) + self.pill_padding
+        if self.fit:
+            width = min(width, max(1, self.master.winfo_width()))
+            available = max(0, width - self.pill_padding)
+            if font.measure(text) > available:
+                while text and font.measure(text + '…') > available:
+                    text = text[:-1]
+                text = text + '…' if text else ''
+        self.display_text = text
         height = self.pill_height
         self.configure(width=width)
         picture = Image.new("RGB", (width * 4, height * 4), self.cget("bg"))
@@ -340,6 +360,80 @@ class RoundedButton(tk.Canvas):
             self.configure(cursor="hand2" if self.enabled else "arrow")
             self.redraw()
         return result
+
+
+class ThreatenedIncidentsButton(RoundedButton):
+    """Sidebar warning with a cancellable, smooth pulse on the Tk thread."""
+    def __init__(self, parent):
+        self.alert = False
+        self.healthy = False
+        self.selected = False
+        self.pulse_timer = None
+        self.pulse_started = 0
+        super().__init__(parent, text='Incydenty zagrożone', command=lambda: None, icon='warning')
+        self.button_height = 46
+        self.configure(height=self.button_height)
+        self.bind('<Destroy>', self._stop_pulse, add='+')
+
+    def _stop_pulse(self, event=None):
+        if event is not None and event.widget is not self:
+            return
+        if self.pulse_timer is not None:
+            self.after_cancel(self.pulse_timer)
+            self.pulse_timer = None
+
+    def set_alert(self, active, confirmed=True):
+        from time import monotonic
+        active = bool(active)
+        healthy = not active and bool(confirmed)
+        if self.alert == active and self.healthy == healthy:
+            return
+        self._stop_pulse()
+        self.alert = active
+        self.healthy = healthy
+        self.pulse_started = monotonic()
+        self._pulse() if active else self.redraw()
+
+    def _pulse(self):
+        self.pulse_timer = None
+        if self.alert:
+            self.redraw()
+            self.pulse_timer = self.after(50, self._pulse)
+
+    def redraw(self, event=None):
+        from math import cos, pi
+        from time import monotonic
+        width, height = max(self.min_width, self.winfo_width()), self.button_height
+        color = '#484f5c' if self.hover else '#373c46'
+        if self.healthy:
+            color = '#2c493b' if self.hover else '#253a32'
+        if self.alert:
+            blend = (1 - cos((monotonic() - self.pulse_started) * 2 * pi / 1.8)) / 2
+            dark, bright = (67, 42, 50), (227, 57, 76)
+            color = tuple(round(a + (b - a) * blend) for a, b in zip(dark, bright))
+        self.delete('all')
+        label = self.create_text(width / 2, height / 2, text=self.text,
+                                 fill='#b0d8bf' if self.healthy else TEXT, font=('Segoe UI', 10, 'bold'))
+        bounds = self.bbox(label)
+        self.move(label, width / 2 - (bounds[0] + bounds[2]) / 2, 0)
+        bounds = self.bbox(label)
+        # Use the actual text item bounds: equal gaps, centered as one group.
+        icon_positions = (bounds[0] - 26, bounds[2] + 10)
+        picture = Image.new('RGB', (width * 4, height * 4), self.cget('background'))
+        draw = ImageDraw.Draw(picture)
+        draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=32,
+                               fill=color, outline=ACCENT if self.selected else '#95505c' if self.alert else
+                               '#476b57' if self.healthy else color, width=8 if self.selected else 4)
+        if self.alert:
+            y = (height - 16) / 2
+            for x in icon_positions:
+                draw.polygon([(x * 4, (y + 15) * 4), ((x + 8) * 4, y * 4),
+                              ((x + 16) * 4, (y + 15) * 4)], fill='#ffe0a3')
+                draw.line(((x + 8) * 4, (y + 5) * 4, (x + 8) * 4, (y + 9) * 4), fill='#61232e', width=6)
+                draw.ellipse(((x + 7.2) * 4, (y + 11) * 4, (x + 8.8) * 4, (y + 12.6) * 4), fill='#61232e')
+        self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
+        background = self.create_image(0, 0, image=self.picture, anchor='nw')
+        self.tag_lower(background, label)
 
 
 class DashboardButton(RoundedButton):
@@ -644,6 +738,19 @@ class TabTooltip:
         if self.tip is not None:
             tip, self.tip = self.tip, None
             tip.destroy()
+
+
+class StatusTooltip(TabTooltip):
+    """Full activity remains readable when the header pill is shortened."""
+    def __init__(self, widget):
+        super().__init__(widget, None, '')
+
+    def motion(self, event):
+        if self.widget.status_text == self.widget.display_text:
+            self.hide()
+        elif self.timer is None and self.tip is None:
+            self.position = (event.x_root + 12, event.y_root + 24)
+            self.timer = self.root.after(450, self.show)
 
 
 class FilterControlTooltip(TabTooltip):

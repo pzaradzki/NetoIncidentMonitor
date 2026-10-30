@@ -189,7 +189,7 @@ def _request_tile(page, title):
     Headers and the grid card also isolate loading from unrelated charts.
     """
     heading = page.get_by_role('heading', name=re.compile(
-        r'^\s*' + r'\s+'.join(re.escape(part) for part in title.split()).replace('>', r'>\s*') + r'\s*$'))
+        r'^\s*' + r'\s+'.join(re.escape(part).replace('/', r'\/') for part in title.split()).replace('>', r'>\s*') + r'\s*$'))
     widgets = page.locator('.grid-stack-item-content').filter(has=heading).filter(visible=True)
     widget_count = widgets.count()
     source = widgets if widget_count == 1 else page
@@ -298,7 +298,7 @@ def parse_score(text):
 
 def score_pattern(title):
     # ServiceNow can leave whitespace at the end of the configured widget title.
-    pattern = r'\s+'.join(re.escape(part) for part in title.split()).replace('>', r'>\s*')
+    pattern = r'\s+'.join(re.escape(part).replace('/', r'\/') for part in title.split()).replace('>', r'>\s*')
     return re.compile(r'^\s*' + pattern + r'\s*,')
 
 

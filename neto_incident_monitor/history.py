@@ -27,19 +27,27 @@ class History:
         self.records = records
 
     def add(self, incident, filter_name, filter_url, reappeared=False):
+        return incident['number'] in self.add_many([incident], filter_name, filter_url, reappeared)
+
+    def add_many(self, incidents, filter_name, filter_url, reappeared=False):
+        incidents = list(incidents)
+        if not incidents:
+            return set()
         with self.lock:
             records = copy.deepcopy(self.records)
-            number = incident["number"]
-            key = filter_url + "\n" + number
-            fresh = key not in records
-            if fresh:
-                records[key] = {"incident": incident, "detected": time.time(),
-                                   "read": False, "filters": {}}
-            records[key]["incident"] = dict(incident)
-            records[key]["filters"][filter_url] = filter_name
-            if reappeared:
-                records[key]["read"] = False
-                records[key]["detected"] = time.time()
+            fresh = set()
+            for incident in incidents:
+                number = incident['number']
+                key = filter_url + '\n' + number
+                if key not in records:
+                    fresh.add(number)
+                    records[key] = {'incident': incident, 'detected': time.time(),
+                                    'read': False, 'filters': {}}
+                records[key]['incident'] = copy.deepcopy(incident)
+                records[key]['filters'][filter_url] = filter_name
+                if reappeared:
+                    records[key]['read'] = False
+                    records[key]['detected'] = time.time()
             self._commit(records)
             return fresh
 
@@ -57,8 +65,9 @@ class History:
                           if filter_url is not None and filter_url not in record["filters"]})
 
     def snapshot(self, filter_url=None):
-        with self.lock:
-            records = self.records
+        # Writers publish a replacement dict after the complete disk commit.
+        # The UI can safely read the previous snapshot without waiting for I/O.
+        records = self.records
         return {record["incident"]["number"]: copy.deepcopy(record)
                 for record in records.values()
                 if filter_url is None or filter_url in record["filters"]}

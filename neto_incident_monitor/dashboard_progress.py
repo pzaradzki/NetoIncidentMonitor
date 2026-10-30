@@ -58,12 +58,15 @@ class DashboardProgress:
 
 
 class DashboardProgressBar(tk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, **pack_options):
         super().__init__(parent, bg=BG)
+        self.pack_options = {'fill': 'x', **pack_options}
         self.request_id = None
         self.percent = 0
         self.description = ''
         self.hide_timer = None
+        self.view_active = True
+        self.display_pending = False
         self.color = '#69dc9e'
         self.label = tk.Label(self, bg=BG, fg=MUTED, font=('Segoe UI', 9), width=5, anchor='e')
         self.label.pack(side='right', padx=(8, 0))
@@ -81,6 +84,13 @@ class DashboardProgressBar(tk.Frame):
         self.request_id, self.percent = request_id, 0
         self.apply(request_id, 0, 'Oczekiwanie na odczyt dashboardu', 'running')
 
+    def set_view_active(self, active):
+        self.view_active = bool(active)
+        if self.view_active and self.display_pending:
+            self.pack(**self.pack_options)
+        else:
+            self.pack_forget()
+
     def apply(self, request_id, percent, description, state):
         if request_id != self.request_id:
             return
@@ -89,18 +99,21 @@ class DashboardProgressBar(tk.Frame):
         self.description = description
         self.color = '#f6bd60' if state == 'warning' else '#69dc9e'
         self.label.configure(text=f'{self.percent} %', fg=self.color if state == 'warning' else MUTED)
-        self.pack(fill='x')
+        self.display_pending = True
+        self.set_view_active(self.view_active)
         self.redraw()
         if state == 'complete' and self.percent == 100:
             def dismiss():
                 if self.request_id == request_id and self.percent == 100:
                     self.hide_timer = None
+                    self.display_pending = False
                     self.pack_forget()
             self.hide_timer = self.after(3000, dismiss)
 
     def hide(self):
         self.cancel_hide()
         self.request_id = None
+        self.display_pending = False
         self.pack_forget()
 
     def redraw(self):

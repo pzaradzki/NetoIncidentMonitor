@@ -35,12 +35,19 @@ class FilterStateTests(unittest.TestCase):
             playwright = MagicMock()
             playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
             settings = {'urls': [url], 'filters': app.filters, 'interval': 60, 'task_interval': 60}
+            clock = [100]
+            waits = []
+            def wait(*args):
+                clock[0] += 60
+                waits.append(True)
+                return len(waits) == 3
             with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
                     patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
                     patch('neto_incident_monitor.app.navigate'), \
                     patch.object(app, 'restore_login', return_value=True) as login, \
                     patch('neto_incident_monitor.app.read_all', side_effect=[({}, 1), AuthenticationRequired(), ({}, 1)]) as read, \
-                    patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, False, True]):
+                    patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
+                    patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=wait):
                 app.monitor(settings)
             self.assertEqual(read.call_count, 3)
             self.assertEqual(login.call_count, 2)  # Startup and session recovery.
@@ -124,7 +131,8 @@ class FilterStateTests(unittest.TestCase):
                         events.append(value[0])
                 return events
 
-            self.assertEqual(cycle({"INC1": dict(incident)}, {}), [settings["urls"][0]])
+            self.assertEqual(cycle(RuntimeError('first read failed'), {}), [])
+            self.assertEqual(cycle({"INC1": dict(incident)}, {}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [settings["urls"][1]])
             self.assertEqual(cycle(RuntimeError("read failed"), {"INC1": dict(incident)}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [])
@@ -133,6 +141,29 @@ class FilterStateTests(unittest.TestCase):
             app.filters[0]["first_only"] = True
             cycle({}, {})
             self.assertEqual(cycle({"INC1": dict(incident)}, {}), [])
+
+    def test_notification_baseline_survives_restart_and_is_independent_per_filter(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'seen.json'
+            state = FilterState(path)
+            initial = {f'INC{i}' for i in range(500)}
+            self.assertEqual(state.arrivals('A', initial), initial)  # History is populated.
+            self.assertEqual(state.notification_arrivals('A', initial), set())
+            self.assertEqual(state.notification_arrivals('A', initial, True), set())
+            with patch.object(Path, 'write_text', side_effect=OSError('fixture')):
+                with self.assertRaises(OSError):
+                    state.commit('A', initial)
+            self.assertEqual(state.notification_arrivals('A', initial), set())
+            state.commit('A', initial)
+            state = FilterState(path)
+            self.assertEqual(state.notification_arrivals('A', initial | {'INC_NEW'}), {'INC_NEW'})
+            self.assertEqual(state.notification_arrivals('B', initial | {'INC_NEW'}), set())
+            state.commit('B', set())
+            state = FilterState(path)
+            self.assertEqual(state.notification_arrivals('B', {'INC_NEW'}), {'INC_NEW'})
+            state.commit('A', set())
+            self.assertEqual(state.notification_arrivals('A', {'INC1'}), {'INC1'})
+            self.assertEqual(state.notification_arrivals('A', {'INC1'}, True), set())
 
     def test_independent_arrivals_restart_return_and_first_only(self):
         with tempfile.TemporaryDirectory() as folder:

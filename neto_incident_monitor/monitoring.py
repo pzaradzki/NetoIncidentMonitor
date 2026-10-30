@@ -3,6 +3,39 @@ import threading
 import time
 
 
+class RefreshControl:
+    """One reserved refresh at a time, shared by Tk and the browser worker."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.task = None
+
+    @property
+    def busy(self):
+        with self.lock:
+            return self.task is not None
+
+    def current(self):
+        with self.lock:
+            return self.task
+
+    def reserve(self, scope, url=None):
+        with self.lock:
+            if self.task is not None:
+                return False
+            self.task = (scope, url)
+            return True
+
+    def scheduled(self):
+        with self.lock:
+            if self.task is None:
+                self.task = ('scheduled', None)
+            return self.task
+
+    def finish(self):
+        with self.lock:
+            self.task = None
+
+
 class Schedule:
     def __init__(self):
         self.condition = threading.Condition()

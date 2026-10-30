@@ -1,4 +1,4 @@
-"""Thread-safe preferences; native browser actions stay in the worker."""
+"""Thread-safe preferences; Playwright actions stay in the worker."""
 from queue import Queue, Empty
 from threading import Lock
 
@@ -52,6 +52,13 @@ class BrowserRuntime:
         self.window.show(activate=activate)
         if activate:
             self.page.bring_to_front()
+
+    def request_show(self):
+        self.commands.put('show')
+        # This only posts a Win32 message to an already identified browser PID.
+        # The worker later applies the persistent override and tab focus.
+        if self.window is not None:
+            self.window.reveal()
 
     def tick(self, force=False):
         from neto_incident_monitor.authentication import manual_handoff

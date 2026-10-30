@@ -31,6 +31,7 @@ class BrowserVisibilityTests(unittest.TestCase):
         stop.is_set.side_effect = [False, True]
         window = Mock()
         window.is_visible.return_value = True
+        activity = Mock()
         with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
                 patch('neto_incident_monitor.app.time.monotonic', return_value=30), \
                 patch('neto_incident_monitor.app.set_chromium_window_state'), \
@@ -38,18 +39,19 @@ class BrowserVisibilityTests(unittest.TestCase):
             automatic.return_value.step.side_effect = RuntimeError('document changed')
             automatic.return_value.blocked = True
             self.assertFalse(wait_for_login(page, 'https://adeo.service-now.com/incident_list.do',
-                                            stop, auto_login=True, browser_window=window))
+                                            stop, auto_login=True, browser_window=window, on_activity=activity))
         window.show.assert_called_once()
         window.show.assert_called_with(activate=True)
         page.bring_to_front.assert_called_once()
+        activity.assert_called_with('Wymagane ręczne logowanie', 'waiting')
 
-    def test_manual_login_restores_window_after_redirect_grace_period(self):
+    def test_manual_login_focuses_immediately_when_automatic_login_is_disabled(self):
         page = Mock()
         page.is_closed.return_value = False
         stop = Mock()
         stop.is_set.side_effect = [False, True]
         with patch("neto_incident_monitor.app.authentication_page", return_value=True), \
-                patch("neto_incident_monitor.app.time.monotonic", side_effect=[0, 6]), \
+                patch("neto_incident_monitor.app.time.monotonic", side_effect=[0, 0]), \
                 patch("neto_incident_monitor.app.set_chromium_window_state", return_value=True) as state:
             self.assertFalse(wait_for_login(page, "https://adeo.service-now.com/incident_list.do", stop, False, True))
             state.assert_called_once_with(page, "normal")

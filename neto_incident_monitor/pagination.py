@@ -77,7 +77,7 @@ def row_input(page):
     for frame in page.frames:
         if not trusted_url(frame.url) or urlparse(frame.url).path not in LIST_PATHS:
             continue
-        inputs = frame.locator('input.list2_page, input[data-type="list_nav_input"], input[name="sysparm_first_row"]')
+        inputs = frame.locator('input.list2_page, input.list_row_number_input, input[data-type="list_nav_input"], input[name="sysparm_first_row"]')
         for index in range(inputs.count()):
             control = inputs.nth(index)
             if control.is_visible():
@@ -87,8 +87,27 @@ def row_input(page):
     return None, None
 
 
-def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None):
+def activate_pager(button, stop):
+    """Use a bounded input action, skipping animation/stability checks."""
     from neto_incident_monitor.browser_actions import checkpoint
+    checkpoint(stop)
+    disabled = button.evaluate("""el => !el.isConnected || !!(el.disabled
+        || el.getAttribute('aria-disabled') === 'true'
+        || el.closest('[disabled], [aria-disabled=true], .disabled'))""")
+    if disabled:
+        raise RuntimeError('Przycisk paginacji nie jest gotowy. Nie zapisano częściowego wyniku.')
+    # Do not evaluate el.click(): synchronous page handlers can block that
+    # evaluation indefinitely. Never retry an input whose delivery is uncertain.
+    button.click(force=True, timeout=5000, no_wait_after=True)
+    checkpoint(stop)
+
+
+def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None, on_stage=None):
+    from neto_incident_monitor.browser_actions import checkpoint
+    def stage(name, index):
+        if on_stage:
+            on_stage(name, index)
+    stage('navigate', 1)
     checkpoint(stop)
     navigate(page, first_page(url))
     if is_short_url(url):
@@ -113,6 +132,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
     restored_signature = None
     large_approved = False
     for page_index in page_numbers(1):
+        stage('read_rows', page_index)
         rows = None
         stable = None
         repeats = 0
@@ -124,6 +144,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
             if authentication_page(page, url):
                 raise AuthenticationRequired()
             try:
+                stage('read_rows', page_index)
                 candidate = collect(page)
                 empty = empty_list(page, url) if not candidate else False
                 if page_index == 1:
@@ -134,8 +155,9 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
                     if ((first is not None and not first_disabled) or (row is not None and row > 1)) and not (empty and (row is None or row <= 1)):
                         if not reset_requested:
                             restored_signature = tuple(sorted(collect(page)))
+                            stage('first_page', page_index)
                             if first is not None and not first_disabled:
-                                first.click(timeout=1000, no_wait_after=True)
+                                activate_pager(first, stop)
                             elif cursor is not None:
                                 cursor.fill("1", timeout=1000)
                                 cursor.press("Enter", timeout=1000, no_wait_after=True)
@@ -179,6 +201,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
         signatures.add(signature)
         result.update(rows)
         if approve_large is not None and not large_approved:
+            stage('list_total', page_index)
             count = list_total(page, url)
             count = max(count or 0, len(result))
             if count > 1000:
@@ -187,6 +210,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
                 large_approved = True
         if progress:
             progress(page_index, len(result))
+        stage('next_button', page_index)
         button, disabled = next_button(page)
         if disabled:
             return result, page_index
@@ -194,8 +218,9 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
             # A missing pager is safe only when the list has no pagination at all.
             for frame in page.frames:
                 if trusted_url(frame.url) and urlparse(frame.url).path in LIST_PATHS and frame.locator(
-                    '[data-type^="list_nav"], input.list2_page, .list2_paging').count():
+                    '[data-type^="list_nav"], input.list2_page, input.list_row_number_input, .list2_paging').count():
                     raise RuntimeError("Nie rozpoznano przycisku następnej strony. Nie zapisano częściowego wyniku.")
             return result, page_index
         previous = signature
-        button.click(timeout=1000, no_wait_after=True)
+        stage('next_page', page_index)
+        activate_pager(button, stop)

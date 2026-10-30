@@ -109,7 +109,9 @@ def build_dashboard(parent, app, cache_path=None):
         combo.pack()
         combo.bind('<<ComboboxSelected>>', period_changed)
 
-    def request(automatic=False):
+    def request(automatic=False, coordinated=False):
+        if not automatic and not coordinated:
+            return app.request_refresh('dashboard')
         if not automatic and (not app.worker or not app.worker.is_alive()):
             set_message('Najpierw uruchom monitoring i zaloguj się w ServiceNow.')
             return
@@ -121,8 +123,6 @@ def build_dashboard(parent, app, cache_path=None):
         app.dashboard_requests.put((panel.request_id, int(panel.year.get()), months.index(panel.month.get()) + 1))
         set_message('Oczekiwanie na zalogowanie i odczyt dashboardu…' if automatic else
                           'Oczekiwanie na odczyt w przeglądarce… Poprzednie dane mogą być nieaktualne.')
-        if not automatic:
-            app.schedule.request()
 
     panel.request_refresh = request
 
@@ -139,7 +139,7 @@ def build_dashboard(parent, app, cache_path=None):
         if not opened:
             set_message('Nie udało się otworzyć dashboardu w przeglądarce.')
 
-    RoundedButton(period, text='Otwórz Dashboard', command=open_dashboard,
+    RoundedButton(period, text='Otwórz w SNOW', command=open_dashboard,
                   background=BG).pack(side='left', anchor='s', padx=(8, 0))
     metrics = tk.Frame(content, bg=BG)
     metrics.grid(row=1, column=0, sticky="ew")
@@ -233,38 +233,15 @@ def build_dashboard(parent, app, cache_path=None):
         panel.year.set(str(cached['year']))
         result((panel.request_id, cached['year'], cached['month'], cached['values'], None),
                restored_at=cached['read_at'])
-    notice = tk.Frame(content, bg='#27364a')
-    notice.grid(row=6, column=0, sticky='ew', pady=(20, 0))
-    notice.columnconfigure(2, weight=1)
-    notice_accent = tk.Frame(notice, bg='#9ac4f4', width=3)
-    notice_accent.grid(row=0, column=0, sticky='ns')
-    notice_icon = tk.Label(notice, text='ⓘ', bg='#27364a', fg='#9ac4f4',
-                           font=('Segoe UI', 14), padx=12)
-    notice_icon.grid(row=0, column=1, sticky='n', pady=7)
-    notice_text = tk.Label(notice, textvariable=panel.message, wraplength=650,
-                           bg='#27364a', fg=TEXT, font=('Segoe UI', 9),
-                           justify='left', anchor='w', padx=0, pady=10)
-    notice_text.grid(row=0, column=2, sticky='ew', padx=(0, 16))
-    def update_notice(*_):
-        message = panel.message.get().lower()
-        if 'nie udało' in message or 'błąd' in message:
-            background, accent, icon = '#39292f', '#ff929e', '!'
-        elif ('nieaktualne' in message or 'zmieniono okres' in message
-              or (panel.restored_snapshot and message.startswith('dane za okres'))):
-            background, accent, icon = '#373123', '#efc778', '!'
-        elif any(word in message for word in ('oczekiwanie', 'trwa', 'uruchom monitoring', 'wybierz okres')):
-            background, accent, icon = '#273343', '#9ac4f4', 'ⓘ'
-        elif 'dane za' in message:
-            background, accent, icon = '#253a30', '#8ee2ac', '✓'
-        else:
-            background, accent, icon = '#273343', '#9ac4f4', 'ⓘ'
-        notice.configure(bg=background)
-        notice_accent.configure(bg=accent)
-        notice_icon.configure(bg=background, fg=accent, text=icon)
-        notice_text.configure(bg=background)
-    panel.message.trace_add('write', update_notice)
-    notice.bind('<Configure>', lambda event: notice_text.configure(wraplength=max(100, event.width - 76)))
-    update_notice()
+    notice_text = tk.Label(content, textvariable=panel.message, wraplength=700,
+                           bg=BG, fg=MUTED, font=('Segoe UI', 10),
+                           justify='left', anchor='w')
+    notice_text.grid(row=6, column=0, sticky='ew', pady=(12, 0))
+    panel.notice = notice_text
+    notice_text.bind('<Configure>', lambda event:
+                     notice_text.configure(wraplength=max(100, event.width - 6)))
+    panel.progress_host = tk.Frame(content, bg=BG)
+    panel.progress_host.grid(row=7, column=0, sticky='ew', pady=(6, 0))
     def scroll_wheel(event):
         if content.winfo_reqheight() > canvas.winfo_height():
             canvas.yview_scroll(-int(event.delta / 120), 'units')

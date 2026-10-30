@@ -53,6 +53,7 @@ NUMERIC_FIELDS = set(FIELDS) | {'auto_login', 'minimize', 'hidden', 'minimize_br
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
     'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available', 'widget_count', 'activated_count'}
 TEXT_FIELDS = {
+    'risk_tile': {'P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'},
     'tile': {'Otwarte wnioski L1', 'Wnioski L1 >7 dni', 'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1'},
     'tile_state': {'ready', 'missing', 'ambiguous', 'invalid', 'unavailable', 'loading'},
     'score_source': {'widget_value', 'button', 'none'},
@@ -60,7 +61,7 @@ TEXT_FIELDS = {
     'readiness_reason': {'covered', 'unstable', 'disabled', 'hidden', 'detached', 'outside_viewport', 'unavailable'},
     'origin': {'adeo_identity', 'servicenow', 'other'},
     'source': {'dashboard', 'monitor'},
-    'section': {'sla', 'held', 'requests'},
+    'section': {'sla', 'held', 'requests', 'threatened'},
     'category': {'status', 'location', 'assigned', 'agent', 'other'},
     'operation': {'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'commit_period', 'category_select', 'category_apply', 'prepare_widgets', 'read_scores'},
     'network_error': {'aborted', 'timeout', 'dns', 'connection', 'certificate', 'other'},
@@ -79,7 +80,7 @@ TEXT_FIELDS = {
         'nie udało się wykonać kliknięcia logowania po trzech próbach',
         'wybór konta nie przeszedł do formularza po trzech próbach'},
 }
-EVENTS = set('''start blocked automatic_skipped awaiting_submission_result
+EVENTS = set('''start blocked automatic_skipped awaiting_submission_result dashboard_widgets_retry
 waiting_password_fill waiting_remembered_form submit_unavailable submit_retry_cancelled
 submit_attempt submit_error submit_retry_scheduled submit_clicked account_selection_ambiguous
 account_click_attempt account_click_error account_waiting_ready submit_waiting_ready account_clicked browser_closed automatic_login_step_error

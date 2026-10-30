@@ -4,6 +4,7 @@
 
 - Chromium korzysta z osobnego lokalnego profilu aplikacji. Nie kopiuje poświadczeń z innych przeglądarek.
 - Automatyzacja działa wyłącznie na stronach HTTPS obsługiwanych serwerów ADEO IdP.
+- Przy wyłączonym automatycznym logowaniu ręczny formularz jest przywoływany bez dodatkowego opóźnienia. Przy włączonym automatycznym logowaniu aplikacja daje 5 sekund na autouzupełnienie od gotowości widocznego, edytowalnego i niezasłoniętego pola hasła, także po wyborze zapamiętanego konta. Potem przywołuje przeglądarkę, ale nie blokuje automatyzacji. Późniejsze autouzupełnienie może zostać użyte, dopóki użytkownik nie przejmie formularza. Wpisanie, wklejenie lub ręczne zatwierdzenie nadal oddaje kontrolę użytkownikowi. Gdy gotowego pola nie rozpoznano, pozostaje awaryjny limit przywołania po 20 sekundach.
 - Skrypt obserwujący ręczną edycję formularza jest instalowany przed nawigacją, także dla nowych dokumentów i ramek. Nie pobiera treści wpisywanych wartości.
 - Wpisywanie lub wklejanie danych oddaje kontrolę użytkownikowi do końca bieżącej próby logowania. Ochrona działa również po wyborze zapamiętanego konta i podczas oczekiwania na automatyczne kliknięcie.
 - Ręczne kliknięcie linku/przycisku logowania jest również wykrywane. Informacja o oddaniu kontroli pozostaje w pamięci aplikacji po nawigacji, więc nie znika razem z dokumentem. Dwie aktywacje podczas jednej automatycznej próby nie powodują podwójnego wysłania.

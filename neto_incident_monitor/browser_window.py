@@ -35,7 +35,7 @@ class BrowserWindow:
         finally:
             session.detach()
 
-    def _apply(self, show, activate=True):
+    def _apply(self, show, activate=True, asynchronous=False):
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
@@ -61,7 +61,9 @@ class BrowserWindow:
             if pid.value == self.pid and name.value == "Chrome_WidgetWin_1":
                 if show is not None:
                     command = 7 if show == 'minimized' else (9 if activate else 4) if show else 0
-                    if show and not activate:
+                    if asynchronous:
+                        user32.ShowWindowAsync(hwnd, command)
+                    elif show and not activate:
                         user32.ShowWindow(hwnd, command)
                         if show != 'minimized':
                             # Keep automatic browser work below existing app
@@ -91,6 +93,11 @@ class BrowserWindow:
     def hide(self):
         self._apply(False)
         self.visible = False
+        self.visibility_changed()
+
+    def reveal(self):
+        """Post a native show request without waiting for Playwright or Chrome."""
+        self._apply(True, activate=True, asynchronous=True)
         self.visibility_changed()
 
     def show(self, activate=True):

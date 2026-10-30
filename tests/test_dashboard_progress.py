@@ -14,6 +14,29 @@ from neto_incident_monitor.pagination import Cancelled
 
 
 class DashboardProgressTests(unittest.TestCase):
+    def test_hidden_view_keeps_progress_but_does_not_resurrect_expired_completion(self):
+        root = tk.Tk()
+        try:
+            bar = DashboardProgressBar(root)
+            bar.start(1)
+            bar.set_view_active(False)
+            bar.apply(1, 67, 'Wnioski L1', 'running')
+            self.assertEqual(bar.percent, 67)
+            self.assertEqual(bar.winfo_manager(), '')
+            bar.set_view_active(True)
+            self.assertEqual(bar.winfo_manager(), 'pack')
+            bar.set_view_active(False)
+            with patch.object(bar, 'after', return_value='test-timer') as after:
+                bar.apply(1, 100, 'Gotowe', 'complete')
+                self.assertEqual(bar.winfo_manager(), '')
+                after.call_args.args[1]()
+            bar.set_view_active(True)
+            self.assertEqual(bar.winfo_manager(), '')
+            bar.start(2)
+            self.assertEqual(bar.winfo_manager(), 'pack')
+        finally:
+            root.destroy()
+
     def test_main_window_bar_receives_only_current_request_events(self):
         root = tk.Tk()
         try:
@@ -28,9 +51,20 @@ class DashboardProgressTests(unittest.TestCase):
                 app.events.put(('dashboard_progress', (request_id, 67, 'Wstrzymane L1', 'running')))
                 app.drain()
                 self.assertEqual(app.dashboard_progress.percent, 67)
+                app.show_threatened_view()
+                self.assertEqual(app.dashboard_progress.winfo_manager(), '')
+                app.events.put(('dashboard_progress', (request_id, 80, 'Wnioski L1', 'running')))
+                app.drain()
+                self.assertEqual(app.dashboard_progress.winfo_manager(), '')
+                app.show_incident_view()
+                self.assertEqual(app.dashboard_progress.winfo_manager(), '')
+                app.show_dashboard_view()
+                self.assertEqual(app.dashboard_progress.percent, 80)
+                self.assertEqual(app.dashboard_progress.winfo_manager(), 'pack')
                 app.events.put(('dashboard_progress', (request_id, 100, 'Gotowe', 'complete')))
                 app.drain()
                 self.assertIsNotNone(app.dashboard_progress.hide_timer)
+                app.refresh_coordinator().finish()
                 app.dashboard_view.request_refresh()
                 self.assertEqual(app.dashboard_progress.percent, 0)
                 app.events.put(('dashboard_progress', (request_id, 100, 'Stary odczyt', 'complete')))

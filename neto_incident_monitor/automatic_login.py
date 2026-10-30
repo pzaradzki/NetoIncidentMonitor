@@ -49,6 +49,7 @@ class AutomaticLogin:
         self.submitted_at = None
         self.reason = None
         self.prefill_since = None
+        self.autofill_wait_expired = False
         self.submit_attempts = 0
         self.last_submit_attempt = None
         self.pending_delivery_token = None
@@ -80,6 +81,7 @@ class AutomaticLogin:
         return True
 
     def step(self, page):
+        self.autofill_wait_expired = False
         if not self.enabled():
             return
         address = urlparse(page.url)
@@ -114,6 +116,8 @@ class AutomaticLogin:
                 self.block("brak zakończenia logowania przez 30 sekund po zatwierdzeniu")
             return
         passwords = page.locator('input[type="password"]:visible')
+        if passwords.count() != 1:
+            self.prefill_since = None
         if passwords.count() > 1:
             self.block('formularz zawiera wiele pól hasła')
             return
@@ -126,13 +130,25 @@ class AutomaticLogin:
                     return
                 self.form_token = token
             ready = passwords.first.evaluate("el => !!el.value && !el.disabled", timeout=1000)
-            if not self.account_clicked:
-                if not ready:
-                    # Chromium can apply saved credentials after the first
-                    # inspection of the login page.
-                    self.report("waiting_password_fill")
+            if not ready:
+                # Start the grace period on the usable field, not during SSO
+                # navigation; selecting a saved account follows the same path.
+                try:
+                    if not passwords.first.is_editable(timeout=500):
+                        self.prefill_since = None
+                        return
+                    passwords.first.click(trial=True, timeout=500)
+                except PlaywrightTimeoutError:
                     self.prefill_since = None
                     return
+                now = monotonic()
+                if self.prefill_since is None:
+                    self.prefill_since = now
+                self.autofill_wait_expired = now - self.prefill_since >= 5
+                self.report('waiting_password_fill')
+                return
+            self.prefill_since = None
+            if not self.account_clicked:
                 autofilled = passwords.first.evaluate("el => el.matches(':-webkit-autofill')", timeout=1000)
                 if not autofilled:
                     self.block("pole hasła nie zostało rozpoznane jako autouzupełnione")
