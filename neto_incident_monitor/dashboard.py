@@ -42,62 +42,90 @@ def same_dashboard(page):
 
 
 def open_dashboard_tab(page, name, stop):
-    """Reuse the loaded workspace; reload only when reuse is unavailable."""
-    checkpoint(stop)
-    if isinstance(page.url, str) and urlparse(page.url).scheme == 'https':
-        check_session(page)
-    target = DASHBOARD_URL.replace('ba36dad72b6a8b504b98f4c2c891bf73', TAB_IDS[name])
-    reused = same_dashboard(page)
-    diagnostics = _diagnostics.get()
-    if diagnostics:
-        diagnostics.record('dashboard_navigation', reused=reused)
-    if not reused:
-        operation('navigate')
-        navigate_page(page, target, stop)
-    check_session(page)
-    for attempt in range(2 if reused else 1):
-        operation('open_tab')
-        tab = page.get_by_role('tab', name=name, exact=True)
-        try:
-            selected = read_control(tab, stop, lambda: tab.get_attribute('aria-selected', timeout=500),
-                                    check=lambda: check_session(page))
-            if selected != 'true':
-                click_control(tab, page, stop)
-                if selected == 'false':
-                    read_control(tab, stop, lambda: expect(tab).to_have_attribute('aria-selected', 'true', timeout=500),
-                                 assertion=True, check=lambda: check_session(page))
-            completed_step('open_tab')
-            return
-        except TimeoutError:
-            check_session(page)
-            if attempt or not reused:
-                raise
-            if diagnostics:
-                diagnostics.record('dashboard_navigation', reused=False)
-            operation('navigate')
-            navigate_page(page, target, stop)
+    """Compatibility entry point; navigation and recovery have one owner."""
+    aliases = {'Wstrzymane L1': 'held', 'Wnioski L1': 'requests',
+               'Dashboard SLA': 'sla', 'Dasboard SLA': 'sla',
+               'L1 – Incydenty zagrożone SLA': 'threatened'}
+    return open_section(page, aliases[name], stop)
+
+
+_measurement = ContextVar('dashboard_measurement', default=None)
+
+
+def measured_record(diagnostics, event, **facts):
+    # Test doubles and unavailable diagnostic sinks cannot affect the reader.
+    try:
+        diagnostics.record(event, **facts)
+    except Exception:
+        pass
 
 
 @contextmanager
-def diagnostic_steps(diagnostics):
+def diagnostic_steps(diagnostics, page=None):
     token = _diagnostics.set(diagnostics)
+    state = {'started': time.monotonic(), 'operation': None, 'category': None}
+    timing_token = _measurement.set(state)
+    outcome = 'returned'
+    detach = None
     try:
+        if page is not None:
+            try:
+                detach = diagnostics.attach(page)
+            except Exception:
+                pass
         yield
+    except Cancelled:
+        outcome = 'cancelled'
+        raise
+    except AuthenticationRequired:
+        outcome = 'authentication'
+        raise
+    except Exception:
+        outcome = 'error'
+        raise
     finally:
-        _diagnostics.reset(token)
+        try:
+            if state['operation']:
+                measured_record(diagnostics, 'dashboard_stage_end', operation=state['operation'],
+                    category=state['category'], outcome=outcome,
+                    duration_ms=round((time.monotonic() - state['started']) * 1000))
+            if detach:
+                try:
+                    detach()
+                except Exception:
+                    pass
+        finally:
+            _measurement.reset(timing_token)
+            _diagnostics.reset(token)
 
 
 def operation(code, category=None):
     diagnostics = _diagnostics.get()
     if diagnostics:
+        state = _measurement.get()
+        if state is not None and (code, category) != (state['operation'], state['category']):
+            now = time.monotonic()
+            if state['operation']:
+                measured_record(diagnostics, 'dashboard_stage_end', operation=state['operation'],
+                    category=state['category'], outcome='returned',
+                    duration_ms=round((now - state['started']) * 1000))
+            state.update(started=now, operation=code, category=category)
         diagnostics.operation = code
         diagnostics.category = category
-        diagnostics.record('dashboard_operation', operation=code, category=category)
+        measured_record(diagnostics, 'dashboard_operation', operation=code, category=category)
+
+
+def observation(reason, ready, expected):
+    diagnostics = _diagnostics.get()
+    if diagnostics:
+        measured_record(diagnostics, 'dashboard_observation', wait_reason=reason,
+                        ready_count=ready, expected_count=expected)
 
 
 def click_control(control, page, stop, timeout=30000):
+    from neto_incident_monitor.read_budget import remaining_ms
     ready_control(control, stop, timeout=timeout, check=lambda: check_session(page))
-    control.click(timeout=5000, no_wait_after=True)
+    control.click(timeout=remaining_ms(5000), no_wait_after=True)
 
 
 def check_session(page):
@@ -121,38 +149,10 @@ def authenticated_read(operation):
 
 @authenticated_read
 def read_requests_dashboard(page, stop):
-    diagnostics = _diagnostics.get()
-    for attempt in range(2):
-        checkpoint(stop)
-        if diagnostics:
-            diagnostics.record('dashboard_scores_attempt', attempt=attempt + 1)
-        try:
-            open_dashboard_tab(page, 'Wnioski L1', stop)
-            ensure_all_categories(page, stop, ('Agent L1',))
-            activate_dashboard_widgets(page, stop)
-            values = _read_request_scores(page, stop)
-        except (TimeoutError, ValueError) as error:
-            if diagnostics:
-                from neto_incident_monitor.login_diagnostics import error_facts
-                diagnostics.record('dashboard_scores_error', attempt=attempt + 1, **error_facts(error))
-            if attempt:
-                raise
-            values = {}
-        if len(values) == len(REQUEST_TITLES):
-            completed_step('scores')
-            return values
-        if attempt:
-            if values:
-                return values  # Caller explicitly reports a partial section.
-            raise ValueError('Nie udało się odczytać kafelków Wnioski L1.')
-        if diagnostics:
-            diagnostics.record('dashboard_scores_retry', attempt=attempt + 1)
-        operation('navigate')
-        target = DASHBOARD_URL.replace('ba36dad72b6a8b504b98f4c2c891bf73', TAB_IDS['Wnioski L1'])
-        navigate_page(page, target, stop)
+    return read_section_cards(page, 'requests', REQUEST_TITLES, stop)
 
 
-def activate_dashboard_widgets(page, stop):
+def activate_dashboard_widgets(page, stop, required=None, ready=None):
     """Activate lazy cards even when their title/score has not been created yet.
 
     First entry through dashboard tabs can leave offscreen component-renderers
@@ -166,14 +166,27 @@ def activate_dashboard_widgets(page, stop):
         checkpoint(stop)
         check_session(page)
         card = cards.nth(index)
-        box = card.bounding_box(timeout=500)
+        try:
+            box = card.bounding_box(timeout=500)
+        except TimeoutError:
+            # The workspace can replace its card collection while mounting.
+            # A later bounded observation will collect the replacement cards.
+            continue
         if box:
             positions.append((box['y'], box['x'], index))
     activated = 0
     for _, _, index in sorted(positions):
         checkpoint(stop)
         check_session(page)
-        cards.nth(index).scroll_into_view_if_needed(timeout=1500)
+        if ready and ready():
+            break
+        if required and all(read_tile(page, title)['state'] == 'ready' for title in required):
+            break
+        from neto_incident_monitor.read_budget import remaining_ms
+        try:
+            cards.nth(index).scroll_into_view_if_needed(timeout=remaining_ms(1500))
+        except TimeoutError:
+            continue
         # Yield for IntersectionObserver/paint before moving to another card.
         page.wait_for_timeout(100)
         activated += 1
@@ -182,7 +195,7 @@ def activate_dashboard_widgets(page, stop):
         diagnostics.record('dashboard_widgets_activated', widget_count=len(positions), activated_count=activated)
 
 
-def _request_tile(page, title):
+def read_tile(page, title):
     """Read the rendered score inside its titled widget, not its drilldown link.
 
     ServiceNow renders scores independently of interactive button metadata.
@@ -192,17 +205,23 @@ def _request_tile(page, title):
         r'^\s*' + r'\s+'.join(re.escape(part).replace('/', r'\/') for part in title.split()).replace('>', r'>\s*') + r'\s*$'))
     widgets = page.locator('.grid-stack-item-content').filter(has=heading).filter(visible=True)
     widget_count = widgets.count()
-    source = widgets if widget_count == 1 else page
+    source = widgets
     button = source.get_by_role('button', name=score_pattern(title)).filter(visible=True)
     facts = {'state': 'missing', 'loading': False, 'score_source': 'none',
              'button_available': button.count() == 1, 'value': None}
+    if widget_count == 0:
+        return facts
     if widget_count > 1:
         facts['state'] = 'ambiguous'
         return facts
     loading = source.get_by_text('Trwa ładowanie danych wizualizacji', exact=True).filter(visible=True).count()
     if widget_count == 1:
         loading = loading or source.locator('[aria-busy="true"], [role="progressbar"]').filter(visible=True).count()
-        loading = loading or source.get_attribute('aria-busy', timeout=300) == 'true'
+        busy = source.evaluate_all('(elements)=>elements.map(e=>e.getAttribute("aria-busy")==="true")')
+        if len(busy) != 1:
+            facts['state'] = 'ambiguous' if len(busy) > 1 else 'unavailable'
+            return facts
+        loading = loading or busy[0]
     facts['loading'] = bool(loading)
     if loading:
         facts['state'] = 'loading'
@@ -229,55 +248,15 @@ def _request_tile(page, title):
     return facts
 
 
-def _read_request_scores(page, stop):
-    operation('read_scores')
-    deadline = time.monotonic() + REQUEST_READ_TIMEOUT
-    previous, stable_since = None, None
-    values = {}
-    diagnostics = _diagnostics.get()
-    last_states = {}
-    while time.monotonic() < deadline:
-        checkpoint(stop)
-        check_session(page)
-        if stop.is_set():
-            raise Cancelled()
-        current = {}
-        states = {}
-        for title in REQUEST_TITLES:
-            checkpoint(stop)
-            state = _request_tile(page, title)
-            states[title] = state
-            if state['state'] == 'ready':
-                current[title] = state['value']
-        loading = any(state['loading'] for state in states.values())
-        if diagnostics:
-            for title, state in states.items():
-                facts = (state['state'], state['loading'], state['score_source'], state['button_available'])
-                if last_states.get(title) != facts:
-                    diagnostics.record('dashboard_tile_state', tile=title, tile_state=state['state'],
-                                       loading=state['loading'], score_source=state['score_source'],
-                                       button_available=state['button_available'])
-                    last_states[title] = facts
-        if not loading and current:
-            if current != previous:
-                previous, stable_since = current, time.monotonic()
-                values = {}
-            elif time.monotonic() - stable_since >= 1:
-                values = current
-                if len(values) == len(REQUEST_TITLES):
-                    return values
-        else:
-            previous = stable_since = None
-            values = {}
-        page.wait_for_timeout(200)
-    return values
+# One observer implementation; retain the old internal name for existing callers.
+_request_tile = read_tile
 
 
 def calculate_wjruw(values):
     """Weighted SLA score from the same complete snapshot as the tiles."""
     weights = {1: 50, 2: 10, 3: 5, 4: 2, 5: 1}
     required = [f'{kind} P{p}' for kind in ('Zgłoszenia', 'Przekroczone') for p in weights]
-    if any(not isinstance(values.get(key), int) or values[key] < 0 for key in required):
+    if any(type(values.get(key)) is not int or values[key] < 0 for key in required):
         return None
     total = sum(values[f'Zgłoszenia P{p}'] * weight for p, weight in weights.items())
     exceeded = sum(values[f'Przekroczone P{p}'] * weight for p, weight in weights.items())
@@ -302,6 +281,33 @@ def score_pattern(title):
     return re.compile(r'^\s*' + pattern + r'\s*,')
 
 
+def check_category(checkbox, page, stop):
+    """Confirm a delivered check; never click twice to recover a delayed state."""
+    from playwright.sync_api import Error
+    from neto_incident_monitor.read_budget import remaining_ms, BudgetExpired
+    try:
+        checkbox.check(timeout=remaining_ms(1000), no_wait_after=True)
+    except Error as error:
+        if type(error) is not Error or str(error).splitlines()[0].strip() != 'Locator.check: Clicking the checkbox did not change its state':
+            raise
+        def confirmed():
+            if not checkbox.evaluate('(e) => e.checked && !e.indeterminate', timeout=remaining_ms(100)):
+                raise AssertionError('Category selection not confirmed')
+        try:
+            read_control(checkbox, stop, confirmed, timeout=500,
+                         check=lambda: check_session(page), assertion=True)
+        except BudgetExpired:
+            raise
+        except TimeoutError:
+            diagnostics = _diagnostics.get()
+            if diagnostics:
+                diagnostics.record('category_check_failed')
+            raise error from None
+        diagnostics = _diagnostics.get()
+        if diagnostics:
+            diagnostics.record('category_check_recovered')
+
+
 def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokalizacja', 'Przypisany do')):
     """Apply each category separately, scoped by its heading rather than order."""
     for category in categories:
@@ -316,114 +322,256 @@ def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokaliz
         category_code = {'Status zgłoszenia': 'status', 'Lokalizacja': 'location',
                          'Przypisany do': 'assigned', 'Agent L1': 'agent'}.get(category, 'other')
         operation('category_select', category_code)
-        wait_control(checkbox, stop, state='attached', check=lambda: check_session(page))
+        def category_tick():
+            check_session(page)
+            if checkbox.count() == 0:
+                # Category widgets can be offscreen/lazy just like score cards.
+                activate_dashboard_widgets(page, stop, ready=lambda: checkbox.count() == 1)
+                operation('category_select', category_code)
+        wait_control(checkbox, stop, state='attached', check=category_tick)
         selected = read_control(checkbox, stop,
             lambda: checkbox.evaluate('(element) => element.checked && !element.indeterminate', timeout=500),
             check=lambda: check_session(page))
         if not selected:
             ready_control(checkbox, stop, check=lambda: check_session(page))
-            checkbox.check(timeout=5000, no_wait_after=True)
-            read_control(checkbox, stop, lambda: expect(checkbox).to_be_checked(timeout=500),
-                         assertion=True, check=lambda: check_session(page))
-            operation('category_apply', category_code)
-            click_control(container.get_by_role('button', name='Zastosuj', exact=True), page, stop)
-            read_control(checkbox, stop, lambda: expect(checkbox).to_be_checked(timeout=500),
-                         assertion=True, check=lambda: check_session(page))
-            if read_control(checkbox, stop, lambda: checkbox.evaluate('(element) => element.indeterminate', timeout=500),
-                            check=lambda: check_session(page)):
-                raise ValueError(f'Nie udało się zaznaczyć wszystkich pozycji: {category}.')
+            check_category(checkbox, page, stop)
+        operation('category_apply', category_code)
+        click_control(container.get_by_role('button', name='Zastosuj', exact=True), page, stop)
+        read_control(checkbox, stop, lambda: expect(checkbox).to_be_checked(timeout=300),
+                     assertion=True, check=lambda: check_session(page))
+        if checkbox.evaluate('(element) => !!element.indeterminate', timeout=300):
+            from neto_incident_monitor.dashboard_context import DashboardReadError
+            raise DashboardReadError('wrong_filter')
         completed_step(category_code)
 
 
 @authenticated_read
 def read_held_dashboard(page, stop):
-    if stop.is_set():
-        raise Cancelled()
-    open_dashboard_tab(page, 'Wstrzymane L1', stop)
-    ensure_all_categories(page, stop, ('Agent L1',))
-    activate_dashboard_widgets(page, stop)
-    operation('read_scores')
-    deadline = time.monotonic() + 60
-    previous = None
-    stable_since = None
-    while time.monotonic() < deadline:
-        checkpoint(stop)
-        check_session(page)
-        if stop.is_set():
-            raise Cancelled()
-        try:
-            if page.get_by_text('Trwa ładowanie danych wizualizacji', exact=True).filter(visible=True).count():
-                raise ValueError('Trwa ładowanie.')
-            values = {title: parse_score(page.get_by_role('button', name=score_pattern(title)).inner_text(timeout=500)) for title in HELD_TITLES}
-            if values == previous and time.monotonic() - stable_since >= 1:
-                completed_step('scores')
-                return values
-            if values != previous:
-                previous, stable_since = values, time.monotonic()
-        except (ValueError, TimeoutError):
-            previous = stable_since = None
-        page.wait_for_timeout(200)
-    raise ValueError('Nie udało się odczytać kafelków Wstrzymane L1.')
+    return read_section_cards(page, 'held', HELD_TITLES, stop)
 
 
 @authenticated_read
 def read_dashboard(page, year, month, stop):
-    if stop.is_set():
-        raise Cancelled()
-    start, end = month_range(year, month)
-    operation('navigate')
-    navigate_page(page, DASHBOARD_URL, stop)
+    return read_section_cards(page, 'sla', TITLES, stop, year=year, month=month)
+
+
+def verify_context(page, section, year=None, month=None):
+    from neto_incident_monitor.dashboard_context import verify_target, DashboardReadError
     check_session(page)
-    completed_step('navigate')
-    period = page.get_by_role('button', name=re.compile(r'^Filtr Okres otwarcia z typem daterange'))
-    operation('open_period')
-    click_control(period, page, stop, timeout=60000)
-    completed_step('open_period')
-    first = page.get_by_role('textbox', name='Data rozpoczęcia', exact=True)
-    last = page.get_by_role('textbox', name='Data zakończenia', exact=True)
-    operation('fill_start')
-    ready_control(first, stop, editable=True, check=lambda: check_session(page))
-    first.fill(start, timeout=5000)
-    completed_step('fill_start')
-    operation('fill_end')
-    ready_control(last, stop, editable=True, check=lambda: check_session(page))
-    last.fill(end, timeout=5000)
-    last.press('Tab', timeout=5000, no_wait_after=True)
-    completed_step('fill_end')
-    page.wait_for_timeout(150)
-    # The popover lives in a separate shadow root, outside the dialog host.
-    apply = page.get_by_role('button', name='Zastosuj', exact=True).filter(visible=True).last
-    operation('commit_period')
-    selected_period = page.get_by_role('button', name=f'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: {start} - {end}', exact=True)
-    enabled = read_control(apply, stop, lambda: apply.is_enabled(timeout=500), check=lambda: check_session(page))
-    if not enabled and selected_period.count() == 1:
-        click_control(page.get_by_role('button', name='Anuluj', exact=True).filter(visible=True).last, page, stop)
-    else:
-        click_control(apply, page, stop)
-    wait_control(selected_period, stop, timeout=15000, check=lambda: check_session(page))
-    completed_step('commit_period')
-    ensure_all_categories(page, stop)
-    activate_dashboard_widgets(page, stop)
-    operation('read_scores')
-    deadline = time.monotonic() + 60
+    verify_target(page, section)
+    if section == 'sla':
+        start, end = month_range(year, month)
+        period = page.get_by_role('button', name=f'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: {start} - {end}', exact=True)
+        if period.count() != 1:
+            raise DashboardReadError('wrong_period')
+    categories = ('Status zgłoszenia', 'Lokalizacja', 'Przypisany do') if section == 'sla' else ('Agent L1',) if section in ('held', 'requests') else ()
+    for category in categories:
+        container = category_container(page, category)
+        checkbox = container.get_by_role('checkbox', name=re.compile(r'^(?:Wybierz|Zaznacz) wszystko$'))
+        checks = checkbox.evaluate_all('(elements)=>elements.map(e=>!!e.checked && !e.indeterminate)')
+        if container.count() != 1 or checks != [True]:
+            raise DashboardReadError('wrong_filter')
+    if _diagnostics.get():
+        measured_record(_diagnostics.get(), 'dashboard_context', context_confirmed=True,
+                        year=year, month=month, category_count=len(categories))
+
+
+def category_container(page, category):
+    heading = re.compile(r'^(?:Agent|Agenci) L1$') if category == 'Agent L1' else category
+    return page.locator('sn-component-filter').filter(has=page.get_by_text(heading, exact=True)).filter(visible=True)
+
+
+def open_section(page, section, stop, fresh=False):
+    from neto_incident_monitor.dashboard_context import TAB_IDS as ids, selected_tab, verify_target
+    from neto_incident_monitor.read_budget import RECOVERY
+    fresh = fresh or RECOVERY.get()
+    checkpoint(stop)
+    if isinstance(page.url, str) and page.url.startswith('https:'):
+        check_session(page)
+    wait_document(page, stop)
+    if fresh or not same_dashboard(page):
+        operation('navigate')
+        target = DASHBOARD_URL.replace('ba36dad72b6a8b504b98f4c2c891bf73', ids[section])
+        navigate_page(page, target, stop)
+    operation('open_tab')
+    tab = selected_tab(page, section)
+    if tab.count() > 1:
+        from neto_incident_monitor.dashboard_context import DashboardReadError
+        raise DashboardReadError('wrong_tab', retryable=False)
+    wait_control(tab, stop, check=lambda: check_session(page))
+    selected = read_control(tab, stop, lambda: tab.get_attribute('aria-selected', timeout=300),
+                            check=lambda: check_session(page))
+    if selected != 'true':
+        click_control(tab, page, stop)
+    read_control(tab, stop, lambda: expect(tab).to_have_attribute('aria-selected', 'true', timeout=300),
+                 assertion=True, check=lambda: check_session(page))
+    verify_target(page, section)
+    completed_step('open_tab')
+
+
+def wait_document(page, stop):
+    """Observe document readiness separately from authenticated-session state."""
+    operation('document_ready')
+    until = time.monotonic() + 5
     previous = None
-    stable_since = None
+    while time.monotonic() < until:
+        checkpoint(stop)
+        if page.url != 'about:blank':
+            check_session(page)
+        current = (page.url, page.evaluate('() => document.readyState'))
+        if current == previous and current[1] in ('interactive', 'complete'):
+            return
+        previous = current
+        page.wait_for_timeout(100)
+    raise TimeoutError('Document readiness deadline exceeded')
+
+
+def set_period(page, year, month, stop):
+    from neto_incident_monitor.dashboard_context import date_panel, DashboardReadError
+    start, end = month_range(year, month)
+    operation('open_period')
+    click_control(page.get_by_role('button', name=re.compile(r'^Filtr Okres otwarcia z typem daterange')), page, stop)
+    completed_step('open_period')
+    wait_control(page.get_by_role('textbox', name='Data rozpoczęcia', exact=True), stop,
+                 timeout=15000, check=lambda: check_session(page))
+    panel = date_panel(page)
+    for name, value, step in (('Data rozpoczęcia', start, 'fill_start'), ('Data zakończenia', end, 'fill_end')):
+        operation(step)
+        field = panel.get_by_role('textbox', name=name, exact=True)
+        ready_control(field, stop, editable=True, check=lambda: check_session(page))
+        field.fill(value, timeout=1000)
+        field.press('Tab', timeout=1000, no_wait_after=True)
+        if field.input_value(timeout=300) != value:
+            raise DashboardReadError('wrong_period')
+        completed_step(step)
+    operation('commit_period')
+    apply = panel.get_by_role('button', name='Zastosuj', exact=True).filter(visible=True)
+    if apply.count() != 1:
+        raise DashboardReadError('ambiguous_period', retryable=False)
+    if apply.is_enabled(timeout=300):
+        click_control(apply, page, stop)
+    else:
+        click_control(panel.get_by_role('button', name='Anuluj', exact=True), page, stop)
+    selected = page.get_by_role('button', name=f'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: {start} - {end}', exact=True)
+    wait_control(selected, stop, timeout=15000, check=lambda: check_session(page))
+    completed_step('commit_period')
+
+
+def refresh_cards(page, section, titles, stop):
+    from neto_incident_monitor.dashboard_context import begin_refresh_watch, end_refresh_watch
+    refresh = page.get_by_role('button', name='Odśwież bieżącą kartę', exact=True).filter(visible=True)
+    if refresh.count() != 1:
+        # A verified fresh document is safer than assuming a cached tab refetched.
+        if _diagnostics.get():
+            measured_record(_diagnostics.get(), 'dashboard_refresh', refresh_mode='document_fallback')
+        open_section(page, section, stop, fresh=True)
+        return False
+    try:
+        begin_refresh_watch(page, titles)
+        operation('refresh_cards')
+        click_control(refresh, page, stop)
+        until = time.monotonic() + 3
+        while time.monotonic() < until:
+            checkpoint(stop)
+            check_session(page)
+            if page.evaluate('() => !!window.__netoDashboardRefresh?.seen'):
+                if _diagnostics.get():
+                    measured_record(_diagnostics.get(), 'dashboard_refresh', refresh_mode='observed')
+                return True
+            page.wait_for_timeout(100)
+    finally:
+        end_refresh_watch(page)
+    # Never click twice after uncertain delivery. Establish a new document.
+    if _diagnostics.get():
+        measured_record(_diagnostics.get(), 'dashboard_refresh', refresh_mode='document_fallback')
+    open_section(page, section, stop, fresh=True)
+    return False
+
+
+def read_section_cards(page, section, titles, stop, year=None, month=None):
+    from neto_incident_monitor.read_budget import CURRENT, RECOVERY, Budget, budget_scope
+    if CURRENT.get() is None:
+        with budget_scope(Budget(60)):
+            return read_section_cards(page, section, titles, stop, year, month)
+    checkpoint(stop)
+    open_section(page, section, stop, fresh=section in ('sla', 'threatened') or RECOVERY.get())
+    def prepare():
+        if section == 'sla':
+            completed_step('navigate')
+            set_period(page, year, month, stop)
+            ensure_all_categories(page, stop)
+        elif section in ('held', 'requests'):
+            ensure_all_categories(page, stop, ('Agent L1',))
+    prepare()
+    if section != 'threatened':
+        # Refresh after committing settings; an unchanged number is valid only
+        # after a new UI update cycle or a fresh document with settings restored.
+        if not refresh_cards(page, section, titles, stop):
+            prepare()
+    guard = lambda: verify_context(page, section, year, month)
+    guard()
+    return read_scores(page, titles, stop, guard=guard)
+
+
+def read_scores(page, titles, stop, guard=None, timeout=None):
+    from neto_incident_monitor.dashboard_context import DashboardReadError
+    operation('read_scores')
+    deadline = time.monotonic() + (timeout if timeout is not None else REQUEST_READ_TIMEOUT)
+    previous, stable_since = None, None
+    next_activation = 0
     while time.monotonic() < deadline:
         checkpoint(stop)
         check_session(page)
-        if stop.is_set():
-            raise Cancelled()
-        try:
-            if page.get_by_text('Trwa ładowanie danych wizualizacji', exact=True).filter(visible=True).count():
-                raise ValueError('Trwa ładowanie.')
-            values = {title: parse_score(page.get_by_role('button', name=score_pattern(title)).inner_text(timeout=500)) for title in TITLES}
-            if values == previous:
-                if time.monotonic() - stable_since >= 1:
+        if guard:
+            guard()
+        current, states = {}, {}
+        for index, title in enumerate(titles):
+            checkpoint(stop)
+            state = read_tile(page, title)
+            if state['state'] == 'missing' and re.match(r'^(?:P[1-5]|Podjęcie)\s+[–—-]', title):
+                category = title.split()[0]
+                candidate = page.get_by_role('heading', name=re.compile(
+                    r'^\s*' + re.escape(category) + r'\s*[-–—:]\s*<')).filter(visible=True)
+                from neto_incident_monitor.dashboard_context import normalize_title
+                if candidate.count() == 1 and normalize_title(candidate.inner_text(timeout=300)) != normalize_title(title):
+                    raise DashboardReadError('definition_changed', retryable=False)
+            states[title] = state
+            diagnostics = _diagnostics.get()
+            if diagnostics:
+                measured_record(diagnostics, 'dashboard_tile_state', tile_index=index,
+                    risk_tile=title.split()[0] if re.match(r'^(?:P[1-5]|Podjęcie) ', title) else None,
+                    tile_state=state['state'], loading=state['loading'], score_source=state['score_source'])
+            if state['state'] == 'ambiguous':
+                raise DashboardReadError('ambiguous_widget', retryable=False)
+            if state['state'] == 'ready':
+                current[title] = state['value']
+        reason = 'loading' if any(s['loading'] for s in states.values()) else 'missing' if len(current) != len(titles) else 'ready' if current == previous else 'unstable'
+        observation(reason, len(current), len(titles))
+        if len(current) == len(titles):
+            if current == previous and time.monotonic() - stable_since >= 1:
+                if guard:
+                    guard()
+                # A second complete observation prevents a mixed read across DOM replacement.
+                if all(read_tile(page, title)['value'] == current[title] and
+                       read_tile(page, title)['state'] == 'ready' for title in titles):
+                    if guard:
+                        guard()
                     completed_step('scores')
-                    return values
-            else:
-                previous, stable_since = values, time.monotonic()
-        except (ValueError, TimeoutError):
+                    return current
+            if current != previous:
+                previous, stable_since = current, time.monotonic()
+        else:
             previous = stable_since = None
+            if time.monotonic() >= next_activation and page.locator('.grid-stack-item-content').filter(visible=True).count():
+                try:
+                    activate_dashboard_widgets(page, stop, required=titles)
+                except TimeoutError as error:
+                    checkpoint(stop)
+                    check_session(page)
+                    if _diagnostics.get():
+                        from neto_incident_monitor.login_diagnostics import error_facts
+                        measured_record(_diagnostics.get(), 'dashboard_widgets_retry', **error_facts(error))
+                operation('read_scores')
+                next_activation = time.monotonic() + 1
         page.wait_for_timeout(200)
-    raise ValueError('Nie udało się odczytać wszystkich kafelków dashboardu. Sprawdź sesję ServiceNow i spróbuj ponownie.')
+    raise DashboardReadError('incomplete_widgets')

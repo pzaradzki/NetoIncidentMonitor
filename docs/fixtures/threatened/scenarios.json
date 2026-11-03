@@ -1,0 +1,1933 @@
+{
+  "scope": "synthetic_normalized_design_data_not_DOM",
+  "catalog": {
+    "a": {
+      "sla": "sla-a",
+      "incident": "INC0000001",
+      "deadline": 20,
+      "remaining": "1 godz. 20 min",
+      "percentage": "83,3%",
+      "category": "P2"
+    },
+    "a_changed": {
+      "sla": "sla-a",
+      "incident": "INC0000001",
+      "deadline": 20,
+      "remaining": "1 godz.",
+      "percentage": "90%",
+      "category": "P2"
+    },
+    "a_response": {
+      "sla": "sla-response",
+      "incident": "INC0000001",
+      "deadline": 10,
+      "remaining": "3 min",
+      "percentage": "40%",
+      "category": "Podjecie"
+    },
+    "a_tie": {
+      "sla": "sla-0",
+      "incident": "INC0000001",
+      "deadline": 20,
+      "remaining": "30 min",
+      "percentage": "95%",
+      "category": "P2"
+    },
+    "a_unknown": {
+      "sla": "sla-unknown",
+      "incident": "INC0000001",
+      "deadline": null,
+      "remaining": "-",
+      "percentage": "-",
+      "category": "Podjecie"
+    },
+    "a_overdue": {
+      "sla": "sla-overdue",
+      "incident": "INC0000001",
+      "deadline": -5,
+      "remaining": "-10 min",
+      "percentage": "120%",
+      "category": "P2"
+    },
+    "b": {
+      "sla": "sla-b",
+      "incident": "INC0000002",
+      "deadline": 30,
+      "remaining": "2 godz.",
+      "percentage": "70%",
+      "category": "P3"
+    },
+    "bulk-000": {
+      "sla": "bulk-000",
+      "incident": "INC0000100",
+      "deadline": 0,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-001": {
+      "sla": "bulk-001",
+      "incident": "INC0000101",
+      "deadline": 1,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-002": {
+      "sla": "bulk-002",
+      "incident": "INC0000102",
+      "deadline": 2,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-003": {
+      "sla": "bulk-003",
+      "incident": "INC0000103",
+      "deadline": 3,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-004": {
+      "sla": "bulk-004",
+      "incident": "INC0000104",
+      "deadline": 4,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-005": {
+      "sla": "bulk-005",
+      "incident": "INC0000105",
+      "deadline": 5,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-006": {
+      "sla": "bulk-006",
+      "incident": "INC0000106",
+      "deadline": 6,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-007": {
+      "sla": "bulk-007",
+      "incident": "INC0000107",
+      "deadline": 7,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-008": {
+      "sla": "bulk-008",
+      "incident": "INC0000108",
+      "deadline": 8,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-009": {
+      "sla": "bulk-009",
+      "incident": "INC0000109",
+      "deadline": 9,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-010": {
+      "sla": "bulk-010",
+      "incident": "INC0000110",
+      "deadline": 10,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-011": {
+      "sla": "bulk-011",
+      "incident": "INC0000111",
+      "deadline": 11,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-012": {
+      "sla": "bulk-012",
+      "incident": "INC0000112",
+      "deadline": 12,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-013": {
+      "sla": "bulk-013",
+      "incident": "INC0000113",
+      "deadline": 13,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-014": {
+      "sla": "bulk-014",
+      "incident": "INC0000114",
+      "deadline": 14,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-015": {
+      "sla": "bulk-015",
+      "incident": "INC0000115",
+      "deadline": 15,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-016": {
+      "sla": "bulk-016",
+      "incident": "INC0000116",
+      "deadline": 16,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-017": {
+      "sla": "bulk-017",
+      "incident": "INC0000117",
+      "deadline": 17,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-018": {
+      "sla": "bulk-018",
+      "incident": "INC0000118",
+      "deadline": 18,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-019": {
+      "sla": "bulk-019",
+      "incident": "INC0000119",
+      "deadline": 19,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-020": {
+      "sla": "bulk-020",
+      "incident": "INC0000120",
+      "deadline": 20,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-021": {
+      "sla": "bulk-021",
+      "incident": "INC0000121",
+      "deadline": 21,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-022": {
+      "sla": "bulk-022",
+      "incident": "INC0000122",
+      "deadline": 22,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-023": {
+      "sla": "bulk-023",
+      "incident": "INC0000123",
+      "deadline": 23,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-024": {
+      "sla": "bulk-024",
+      "incident": "INC0000124",
+      "deadline": 24,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    },
+    "bulk-025": {
+      "sla": "bulk-025",
+      "incident": "INC0000125",
+      "deadline": 25,
+      "remaining": "synthetic",
+      "percentage": "0%",
+      "category": "P3"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "first_detection",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "unchanged_no_repeat",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 2,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "values_change_no_repeat",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a_changed"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "confirmed_empty_keeps_history",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 0,
+          "pages": [],
+          "empty_confirmed": true,
+          "expect": {
+            "result": "accepted",
+            "current": [],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reappearance_same_history_row",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 0,
+          "pages": [],
+          "empty_confirmed": true,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_error",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "error",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_partial",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "partial",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_cancelled",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "cancelled",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_authentication",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "authentication",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_loading",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "loading",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "reject_timeout",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "outcome": "timeout",
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "restart_no_repeat",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "operation": "restart",
+          "expect": {
+            "result": "restored",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "restart_after_disappearance",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 0,
+          "pages": [],
+          "empty_confirmed": true,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "operation": "restart",
+          "expect": {
+            "result": "restored",
+            "current": [],
+            "arrivals": []
+          }
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 3,
+                "appearances": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "failed_commit_no_state_or_alert",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "commit_failed",
+            "current": [],
+            "arrivals": [],
+            "history": {}
+          },
+          "commit": "fail"
+        },
+        {
+          "at": 2,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "history": {
+              "INC0000001": {
+                "first": 2,
+                "last": 2,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "failed_removal_commit",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 0,
+          "pages": [],
+          "empty_confirmed": true,
+          "expect": {
+            "result": "commit_failed",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          },
+          "commit": "fail"
+        },
+        {
+          "at": 3,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "several_sla_one_incident",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a_response"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "views": {
+              "INC0000001": {
+                "representative": "sla-response",
+                "remaining": "3 min",
+                "percentage": "40%",
+                "categories": [
+                  "P2",
+                  "Podjecie"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "tie_a",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a_tie"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "views": {
+              "INC0000001": {
+                "representative": "sla-0",
+                "remaining": "30 min",
+                "percentage": "95%",
+                "categories": [
+                  "P2"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "tie_a_tie",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a_tie",
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "views": {
+              "INC0000001": {
+                "representative": "sla-0",
+                "remaining": "30 min",
+                "percentage": "95%",
+                "categories": [
+                  "P2"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "missing_deadline_no_guessed_pair",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a_unknown"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "views": {
+              "INC0000001": {
+                "representative": null,
+                "remaining": null,
+                "percentage": null,
+                "categories": [
+                  "P2",
+                  "Podjecie"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "overdue_representative",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a_overdue"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ],
+            "views": {
+              "INC0000001": {
+                "representative": "sla-overdue",
+                "remaining": "-10 min",
+                "percentage": "120%",
+                "categories": [
+                  "P2"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "category_added_no_repeat",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a_response"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "simulation_does_not_persist",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "simulation_only",
+            "current": [],
+            "arrivals": [],
+            "history": {}
+          },
+          "synthetic_simulation": true
+        },
+        {
+          "at": 2,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [
+              "INC0000001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "missing_empty_confirmation",
+      "steps": [
+        {
+          "at": 1,
+          "total": 0,
+          "pages": [],
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "duplicate_sla_not_hidden_by_inc_dedupe",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a",
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "missing_final_page",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 2,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "range_gap",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 2,
+              "rows": [
+                "a"
+              ]
+            },
+            {
+              "first": 3,
+              "last": 3,
+              "total": 2,
+              "rows": [
+                "b"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "changed_total",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 2,
+              "rows": [
+                "a"
+              ]
+            },
+            {
+              "first": 2,
+              "last": 2,
+              "total": 3,
+              "rows": [
+                "b"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "range_row_count_mismatch",
+      "steps": [
+        {
+          "at": 1,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 2,
+              "total": 2,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "rejected",
+            "current": [],
+            "arrivals": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "abstract_pages_1",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "bulk-000"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000100"
+            ],
+            "arrivals": [
+              "INC0000100"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "abstract_pages_25",
+      "steps": [
+        {
+          "at": 1,
+          "total": 25,
+          "pages": [
+            {
+              "first": 1,
+              "last": 25,
+              "total": 25,
+              "rows": [
+                "bulk-000",
+                "bulk-001",
+                "bulk-002",
+                "bulk-003",
+                "bulk-004",
+                "bulk-005",
+                "bulk-006",
+                "bulk-007",
+                "bulk-008",
+                "bulk-009",
+                "bulk-010",
+                "bulk-011",
+                "bulk-012",
+                "bulk-013",
+                "bulk-014",
+                "bulk-015",
+                "bulk-016",
+                "bulk-017",
+                "bulk-018",
+                "bulk-019",
+                "bulk-020",
+                "bulk-021",
+                "bulk-022",
+                "bulk-023",
+                "bulk-024"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000100",
+              "INC0000101",
+              "INC0000102",
+              "INC0000103",
+              "INC0000104",
+              "INC0000105",
+              "INC0000106",
+              "INC0000107",
+              "INC0000108",
+              "INC0000109",
+              "INC0000110",
+              "INC0000111",
+              "INC0000112",
+              "INC0000113",
+              "INC0000114",
+              "INC0000115",
+              "INC0000116",
+              "INC0000117",
+              "INC0000118",
+              "INC0000119",
+              "INC0000120",
+              "INC0000121",
+              "INC0000122",
+              "INC0000123",
+              "INC0000124"
+            ],
+            "arrivals": [
+              "INC0000100",
+              "INC0000101",
+              "INC0000102",
+              "INC0000103",
+              "INC0000104",
+              "INC0000105",
+              "INC0000106",
+              "INC0000107",
+              "INC0000108",
+              "INC0000109",
+              "INC0000110",
+              "INC0000111",
+              "INC0000112",
+              "INC0000113",
+              "INC0000114",
+              "INC0000115",
+              "INC0000116",
+              "INC0000117",
+              "INC0000118",
+              "INC0000119",
+              "INC0000120",
+              "INC0000121",
+              "INC0000122",
+              "INC0000123",
+              "INC0000124"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "abstract_pages_26",
+      "steps": [
+        {
+          "at": 1,
+          "total": 26,
+          "pages": [
+            {
+              "first": 1,
+              "last": 25,
+              "total": 26,
+              "rows": [
+                "bulk-000",
+                "bulk-001",
+                "bulk-002",
+                "bulk-003",
+                "bulk-004",
+                "bulk-005",
+                "bulk-006",
+                "bulk-007",
+                "bulk-008",
+                "bulk-009",
+                "bulk-010",
+                "bulk-011",
+                "bulk-012",
+                "bulk-013",
+                "bulk-014",
+                "bulk-015",
+                "bulk-016",
+                "bulk-017",
+                "bulk-018",
+                "bulk-019",
+                "bulk-020",
+                "bulk-021",
+                "bulk-022",
+                "bulk-023",
+                "bulk-024"
+              ]
+            },
+            {
+              "first": 26,
+              "last": 26,
+              "total": 26,
+              "rows": [
+                "bulk-025"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "accepted",
+            "current": [
+              "INC0000100",
+              "INC0000101",
+              "INC0000102",
+              "INC0000103",
+              "INC0000104",
+              "INC0000105",
+              "INC0000106",
+              "INC0000107",
+              "INC0000108",
+              "INC0000109",
+              "INC0000110",
+              "INC0000111",
+              "INC0000112",
+              "INC0000113",
+              "INC0000114",
+              "INC0000115",
+              "INC0000116",
+              "INC0000117",
+              "INC0000118",
+              "INC0000119",
+              "INC0000120",
+              "INC0000121",
+              "INC0000122",
+              "INC0000123",
+              "INC0000124",
+              "INC0000125"
+            ],
+            "arrivals": [
+              "INC0000100",
+              "INC0000101",
+              "INC0000102",
+              "INC0000103",
+              "INC0000104",
+              "INC0000105",
+              "INC0000106",
+              "INC0000107",
+              "INC0000108",
+              "INC0000109",
+              "INC0000110",
+              "INC0000111",
+              "INC0000112",
+              "INC0000113",
+              "INC0000114",
+              "INC0000115",
+              "INC0000116",
+              "INC0000117",
+              "INC0000118",
+              "INC0000119",
+              "INC0000120",
+              "INC0000121",
+              "INC0000122",
+              "INC0000123",
+              "INC0000124",
+              "INC0000125"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "partial_pages_preserve_old_membership",
+      "steps": [
+        {
+          "at": 1,
+          "total": 1,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 1,
+              "rows": [
+                "a"
+              ]
+            }
+          ],
+          "empty_confirmed": false,
+          "expect": {
+            "result": "accepted"
+          }
+        },
+        {
+          "at": 2,
+          "total": 2,
+          "pages": [
+            {
+              "first": 1,
+              "last": 1,
+              "total": 2,
+              "rows": [
+                "b"
+              ]
+            }
+          ],
+          "expect": {
+            "result": "rejected",
+            "current": [
+              "INC0000001"
+            ],
+            "arrivals": [],
+            "history": {
+              "INC0000001": {
+                "first": 1,
+                "last": 1,
+                "appearances": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

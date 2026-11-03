@@ -1,7 +1,6 @@
 """Read complete classic ServiceNow lists; never return a partial traversal."""
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import re
-from itertools import count as page_numbers
 from neto_incident_monitor.service_now_urls import normalize_list_url, trusted_url, is_short_url, resolved_list_url, LIST_PATHS
 
 
@@ -102,125 +101,304 @@ def activate_pager(button, stop):
     checkpoint(stop)
 
 
-def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None, approve_large=None, on_stage=None):
+PAGE_WAIT_SECONDS = 15
+MAX_READ_SECONDS = 1800
+MAX_ATTEMPTS = 2
+
+
+def _metadata_reason(state, rows, expected_first, total, size):
+    if state.busy:
+        return 'loading'
+    if not state.ranged:
+        if state.has_pager or state.next_disabled is not None:
+            return 'missing_pager' if state.next_disabled is None else 'metadata_missing'
+        return 'metadata_missing'
+    if any(v is None for v in (state.first, state.last, state.total, state.size)):
+        return 'metadata_missing'
+    if state.size < 1 or state.first < 1 or state.total < 0 or state.last > state.total:
+        return 'invalid_metadata'
+    if total is not None and (state.total != total or state.size != size):
+        return 'list_changed'
+    if state.first != expected_first:
+        return 'range_mismatch'
+    if state.cursor is not None and state.cursor != state.first:
+        return 'pager_disagreement'
+    expected_count = max(0, state.last - state.first + 1)
+    if state.total == 0:
+        return None if state.first == 1 and state.last == 0 and not rows and state.count == 0 else 'row_count_mismatch'
+    if expected_count < 1 or expected_count > state.size:
+        return 'invalid_metadata'
+    if state.last != min(state.first + state.size - 1, state.total):
+        return 'range_mismatch'
+    if state.count != expected_count or len(rows) != expected_count:
+        return 'row_count_mismatch'
+    if state.has_pager and state.next_disabled is None:
+        return 'missing_pager'
+    if state.last < state.total and state.next_disabled is not False:
+        return 'premature_end'
+    if state.last == state.total and state.next_disabled is False:
+        return 'pager_disagreement'
+    return None
+
+
+def _read_attempt(page, url, stop, collect, authentication_page, navigate,
+                  stage, emit, approve, progress, budget):
+    from time import monotonic
+    from playwright.sync_api import TimeoutError
     from neto_incident_monitor.browser_actions import checkpoint
-    def stage(name, index):
-        if on_stage:
-            on_stage(name, index)
+    from neto_incident_monitor.list_context import ListTarget, ListStateError, list_conditions
+
+    def check(authenticate=True):
+        checkpoint(stop)
+        if page.is_closed() is True:
+            from playwright._impl._errors import TargetClosedError
+            raise TargetClosedError()
+        if authenticate and authentication_page(page, url):
+            raise AuthenticationRequired()
+        if monotonic() >= budget.end:
+            raise ListStateError('read_timeout')
+
     stage('navigate', 1)
-    checkpoint(stop)
+    check(authenticate=page.url != 'about:blank')
     navigate(page, first_page(url))
     if is_short_url(url):
-        for _ in range(60):
-            checkpoint(stop)
-            if stop.is_set():
-                raise Cancelled()
-            if authentication_page(page, url):
-                raise AuthenticationRequired()
+        stage('resolve_url', 1)
+        until = min(budget.end, monotonic() + PAGE_WAIT_SECONDS)
+        while monotonic() < until:
+            check()
             direct = resolved_list_url(page, url)
             if direct:
                 url = direct
                 navigate(page, first_page(url))
                 break
-            page.wait_for_timeout(250)
+            page.wait_for_timeout(100)
         else:
-            raise ValueError('Nie udało się rozpoznać listy ze skrótu. Użyj bezpośredniego adresu filtra.')
-    result = {}
-    previous = None
-    signatures = set()
-    reset_requested = False
-    restored_signature = None
-    large_approved = False
-    for page_index in page_numbers(1):
-        stage('read_rows', page_index)
-        rows = None
-        stable = None
-        repeats = 0
-        for _ in range(60):
-            checkpoint(stop)
-            if stop.is_set():
-                raise Cancelled()
-            page.wait_for_timeout(250)
-            if authentication_page(page, url):
-                raise AuthenticationRequired()
+            raise ListStateError('resolve_timeout')
+
+    from urllib.parse import parse_qs
+    requested_parameters = parse_qs(urlparse(url).query, keep_blank_values=True)
+    requested_queries = requested_parameters.get("sysparm_query", [])
+    requested_views = requested_parameters.get("sysparm_view", [])
+
+    def wait_page(index, first, total=None, size=None, identity=None, allow_restored=False):
+        stage('read_rows', index)
+        until = min(budget.end, monotonic() + PAGE_WAIT_SECONDS)
+        stable, repeats, reason = None, 0, 'page_unavailable'
+        last_observation = None
+        while monotonic() < until:
+            check()
             try:
-                stage('read_rows', page_index)
-                candidate = collect(page)
-                empty = empty_list(page, url) if not candidate else False
-                if page_index == 1:
-                    # ServiceNow can restore the last row from its session,
-                    # even when the URL explicitly requests first_row=1.
-                    first, first_disabled = navigation_button(page, "first")
-                    cursor, row = row_input(page)
-                    if ((first is not None and not first_disabled) or (row is not None and row > 1)) and not (empty and (row is None or row <= 1)):
-                        if not reset_requested:
-                            restored_signature = tuple(sorted(collect(page)))
-                            stage('first_page', page_index)
-                            if first is not None and not first_disabled:
-                                activate_pager(first, stop)
-                            elif cursor is not None:
-                                cursor.fill("1", timeout=1000)
-                                cursor.press("Enter", timeout=1000, no_wait_after=True)
-                            reset_requested = True
-                            if progress:
-                                progress(0, 0)
-                        # Do not accept the restored last page while the
-                        # first-page navigation is still loading.
-                        repeats = 0
-                        stable = None
-                        continue
-            except Exception as exc:
-                if any(fragment in str(exc) for fragment in ("Execution context was destroyed", "Frame was detached")):
+                target = ListTarget.find(page, url)
+                if target is None:
+                    stable, repeats = None, 0
+                    page.wait_for_timeout(250)
                     continue
-                raise
-            signature = tuple(sorted(candidate))
-            if reset_requested and page_index == 1 and signature == restored_signature and not empty:
-                continue
-            if not candidate and not empty:
-                continue
-            if previous is not None and signature == previous:
-                continue
-            repeats = repeats + 1 if stable == signature else 1
-            stable = signature
-            if repeats >= 3:
-                rows = candidate
-                break
-        if rows is None:
-            if page_index == 1 and reset_requested:
-                raise RuntimeError("Nie udało się wrócić do pierwszej strony. Nie zapisano częściowego wyniku.")
-            raise RuntimeError("Nie udało się odczytać kolejnej strony listy. Nie zapisano częściowego wyniku.")
-        if not rows:
-            if page_index == 1:
-                if progress:
-                    progress(1, 0)
-                return {}, 1
-            raise RuntimeError("Lista zmieniła się podczas paginacji: kolejna strona jest pusta. Spróbuję ponownie w następnym cyklu.")
-        signature = tuple(sorted(rows))
-        if signature in signatures:
-            raise RuntimeError("Paginacja powróciła do wcześniej odczytanej strony. Odczyt przerwany.")
-        signatures.add(signature)
-        result.update(rows)
-        if approve_large is not None and not large_approved:
-            stage('list_total', page_index)
-            count = list_total(page, url)
-            count = max(count or 0, len(result))
-            if count > 1000:
-                if not approve_large(count):
-                    raise LargeListRejected()
-                large_approved = True
+                before = target.state()
+                if requested_views and requested_views != [""]:
+                    observed_views = parse_qs(urlparse(target.frame.url).query, keep_blank_values=True).get("sysparm_view", [])
+                    if len(requested_views) != 1 or observed_views != requested_views:
+                        raise ListStateError("view_mismatch")
+                if requested_queries:
+                    observed_query = before.identity[2]
+                    if (len(requested_queries) != 1 or observed_query is None or
+                            observed_query != list_conditions(requested_queries[0])):
+                        raise ListStateError("query_mismatch" if identity is None else "list_changed")
+                if allow_restored and not before.busy and (
+                        (before.first is not None and before.first > 1) or
+                        (before.cursor is not None and before.cursor > 1) or before.first_disabled is False):
+                    return target, before, None
+                rows = collect(target.view)
+                after = target.state()
+                if before != after:
+                    reason, stable, repeats = 'document_changed', None, 0
+                else:
+                    reason = _metadata_reason(after, rows, first, total, size)
+                    if identity is not None and after.identity != identity:
+                        reason = 'list_changed'
+                    if not rows and after.total != 0:
+                        reason = reason or 'page_unavailable'
+                    observation = (reason, after.first, after.last, after.total, after.size, after.count,
+                                   after.next_disabled, after.busy)
+                    if observation != last_observation:
+                        emit('pagination_state', page_index=index, pagination_reason=reason or 'ready',
+                             first_row=after.first, last_row=after.last, total_rows=after.total,
+                             page_size=after.size, row_count=after.count, loading=after.busy)
+                        last_observation = observation
+                    if reason == 'list_changed':
+                        raise ListStateError(reason)
+                    if reason:
+                        stable, repeats = None, 0
+                    else:
+                        signature = (after, rows)
+                        repeats = repeats + 1 if signature == stable else 1
+                        stable = signature
+                        if repeats >= 3:
+                            return target, after, rows
+            except ListStateError as error:
+                if error.reason in ('list_changed', 'record_type_mismatch', 'schema_changed', 'query_mismatch', 'view_mismatch'):
+                    raise
+                reason, stable, repeats = error.reason, None, 0
+                observation = (reason,)
+                if observation != last_observation:
+                    emit('pagination_state', page_index=index, pagination_reason=reason)
+                    last_observation = observation
+            except Exception as error:
+                if isinstance(error, (Cancelled, AuthenticationRequired)):
+                    raise
+                from neto_incident_monitor.login_diagnostics import error_facts
+                category = error_facts(error)['error_category']
+                if isinstance(error, TimeoutError) or category in ('document_changed', 'element_unavailable'):
+                    reason, stable, repeats = 'document_changed', None, 0
+                else:
+                    raise
+            page.wait_for_timeout(250)
+        check()
+        raise ListStateError(reason or 'page_timeout')
+
+    target, state, rows = wait_page(1, 1, allow_restored=True)
+    if rows is None:
+        stage('first_page', 1)
+        emit('pagination_action', pager_direction='first', page_index=1)
+        button, is_disabled = target.button('first')
+        if button is not None and not is_disabled:
+            activate_pager(button, stop)
+        else:
+            cursor, _ = target.cursor()
+            if cursor is None:
+                raise ListStateError('missing_pager')
+            cursor.fill('1', timeout=1000)
+            cursor.press('Enter', timeout=1000, no_wait_after=True)
         if progress:
-            progress(page_index, len(result))
-        stage('next_button', page_index)
-        button, disabled = next_button(page)
-        if disabled:
-            return result, page_index
-        if button is None:
-            # A missing pager is safe only when the list has no pagination at all.
-            for frame in page.frames:
-                if trusted_url(frame.url) and urlparse(frame.url).path in LIST_PATHS and frame.locator(
-                    '[data-type^="list_nav"], input.list2_page, input.list_row_number_input, .list2_paging').count():
-                    raise RuntimeError("Nie rozpoznano przycisku następnej strony. Nie zapisano częściowego wyniku.")
-            return result, page_index
-        previous = signature
-        stage('next_page', page_index)
+            progress(0, 0)
+        target, state, rows = wait_page(1, 1)
+    emit('pagination_bound', pagination_mode='ranged' if state.ranged else 'unpaginated',
+         page_size=state.size, total_rows=state.total)
+    identity, total, size = state.identity, state.total, state.size
+    result, index = {}, 1
+    while True:
+        check()
+        if set(result).intersection(rows):
+            raise ListStateError('overlapping_rows')
+        result.update(rows)
+        approve(total if total is not None else len(result))
+        emit('pagination_page', page_index=index, first_row=state.first, last_row=state.last,
+             total_rows=total, page_size=size, row_count=len(rows), records_read=len(result))
+        if progress:
+            progress(index, len(result))
+        finished = not state.ranged or state.last == total or total == 0
+        if finished:
+            stage('verify_complete', index)
+            # Re-observe after callbacks (including the large-list prompt).
+            check()
+            if target.state() != state or collect(target.view) != rows:
+                raise ListStateError('document_changed')
+            if total is not None and len(result) != total:
+                raise ListStateError('total_mismatch')
+            return result, index
+        stage('next_page', index)
+        button, is_disabled = target.button('next')
+        if button is None or is_disabled:
+            raise ListStateError('premature_end')
+        emit('pagination_action', pager_direction='next', page_index=index)
         activate_pager(button, stop)
+        expected_first = state.last + 1
+        index += 1
+        target, state, rows = wait_page(index, expected_first, total, size, identity)
+
+
+def read_all(page, url, stop, collect, empty_list, authentication_page, navigate, progress=None,
+             approve_large=None, on_stage=None, diagnostics=None, filter_index=None):
+    """Return only a validated traversal; discard and restart one inconsistent read."""
+    from time import monotonic
+    from neto_incident_monitor.browser_actions import checkpoint
+    from neto_incident_monitor.list_context import ListStateError
+    from neto_incident_monitor.login_diagnostics import LoginDiagnostics, error_facts
+    diagnostics = diagnostics or LoginDiagnostics(source='pagination', filter_index=filter_index)
+    started = monotonic()
+    from neto_incident_monitor.read_budget import Budget, CURRENT, budget_scope
+    budget = CURRENT.get() or Budget(MAX_READ_SECONDS)
+    current_stage, current_page = 'navigate', 1
+    stage_started = started
+    approved = False
+    diagnostic_warning = False
+
+    def emit(event, **facts):
+        nonlocal diagnostic_warning
+        try:
+            diagnostics.record(event, pagination_stage=current_stage, **facts)
+        except Exception:
+            if not diagnostic_warning:
+                diagnostic_warning = True
+                try:
+                    import logging
+                    logging.getLogger('servicenow').warning('Nie udało się zapisać diagnostyki paginacji.')
+                except Exception:
+                    pass  # A diagnostic sink must not change the traversal outcome.
+
+    def stage(name, index):
+        nonlocal current_stage, current_page, stage_started
+        if (name, index) != (current_stage, current_page):
+            now = monotonic()
+            emit('pagination_stage_complete', page_index=current_page,
+                 duration_ms=round((now - stage_started) * 1000))
+            stage_started = now
+        current_stage, current_page = name, index
+        if on_stage:
+            on_stage(name, index)
+
+    def approve(total):
+        nonlocal approved
+        if approve_large is not None and total > 1000 and not approved:
+            stage('list_total', current_page)
+            waiting_since = monotonic()
+            try:
+                accepted = approve_large(total)
+            finally:
+                waited = monotonic() - waiting_since
+                budget.end += waited
+                emit("pagination_approval_wait", duration_ms=round(waited * 1000))
+            if not accepted:
+                raise LargeListRejected()
+            approved = True
+
+    emit('pagination_start')
+    try:
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            checkpoint(stop)
+            emit('pagination_attempt', attempt=attempt)
+            try:
+                with budget_scope(budget):
+                    result = _read_attempt(page, url, stop, collect, authentication_page,
+                        navigate, stage, emit, approve, progress, budget)
+                emit('pagination_complete', attempt=attempt, records_read=len(result[0]),
+                     page_count=result[1], duration_ms=round((monotonic() - started) * 1000))
+                return result
+            except Exception as error:
+                category = error_facts(error)['error_category']
+                retry = isinstance(error, ListStateError) or category in (
+                    'timeout', 'document_changed', 'element_unavailable', 'network_connection')
+                if isinstance(error, (Cancelled, AuthenticationRequired, LargeListRejected)) or not retry:
+                    raise
+                if attempt == MAX_ATTEMPTS or monotonic() >= budget.end:
+                    raise
+                emit('pagination_retry', attempt=attempt, page_index=current_page,
+                     pagination_reason=error.reason if isinstance(error, ListStateError) else category,
+                     **error_facts(error))
+                stage('retry', current_page)
+                if progress:
+                    progress(0, 0)
+                # Restart the whole read from row 1; never repeat an uncertain
+                # Next click or combine rows from different attempts.
+        raise ListStateError('read_timeout')
+    except Cancelled:
+        emit('pagination_cancelled', duration_ms=round((monotonic() - started) * 1000))
+        raise
+    except AuthenticationRequired:
+        emit('pagination_waiting_login')
+        raise
+    except Exception as error:
+        emit('pagination_error', page_index=current_page,
+             pagination_reason=error.reason if isinstance(error, ListStateError) else
+                 'large_list_rejected' if isinstance(error, LargeListRejected) else 'unexpected',
+             duration_ms=round((monotonic() - started) * 1000), **error_facts(error))
+        raise

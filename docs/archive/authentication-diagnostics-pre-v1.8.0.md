@@ -1,5 +1,7 @@
 # Logowanie i diagnostyka
 
+> Archiwum: zachowano wcześniejsze ustalenia i propozycje. Ten opis nie jest kontraktem wersji 1.8.0 i nie upoważnia do wznowienia prac. Bieżące dokumenty: [indeks dokumentacji](../README.md).
+
 ## Zasady działania
 
 - Chromium korzysta z osobnego lokalnego profilu aplikacji. Nie kopiuje poświadczeń z innych przeglądarek.

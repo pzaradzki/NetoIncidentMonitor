@@ -4,13 +4,29 @@ import json
 from pathlib import Path
 
 
+def validate_membership(filters):
+    if not isinstance(filters, dict):
+        raise ValueError("Nieprawidłowy format stanu filtrów.")
+    for state in filters.values():
+        if not isinstance(state, dict) or any(
+            not isinstance(state.get(field), list)
+            or any(not isinstance(number, str) for number in state[field])
+            for field in ("present", "ever")
+        ):
+            raise ValueError("Nieprawidłowy format stanu filtrów.")
+    return filters
+
+
 class FilterState:
     def __init__(self, path, normalize=lambda url: url):
         self.path = Path(path)
         raw = json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
-        self.filters = raw.get("filters", {}) if raw.get("version") == 2 else {
+        if not isinstance(raw, dict) or ("version" in raw and raw["version"] != 2):
+            raise ValueError("Nieprawidłowa wersja stanu filtrów.")
+        self.filters = raw.get("filters") if raw.get("version") == 2 else {
             url: {"present": numbers, "ever": numbers, "legacy": True}
             for url, numbers in raw.items()}
+        validate_membership(self.filters)
         normalized = {}
         for url, state in self.filters.items():
             try:

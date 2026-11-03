@@ -26,7 +26,7 @@ class GoogleChatTests(unittest.TestCase):
         records = [{'number': 'INC123', 'location': 'Store', 'short_description': 'Printer'},
                    {'number': 'SCTASK456', 'short_description': 'Laptop', 'requested_for': 'Anna'}]
         _, message = incident_text(records)
-        link = 'https://adeo.service-now.com/incident.do?sys_id=123&view=default'
+        link = 'https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef&view=default'
         task_link = link.replace('/incident.do', '/sc_task.do')
         result = chat.payloads('Filter', message, {'INC123': link, 'SCTASK456': task_link})[0]['text']
         self.assertIn(f'<{link}|INC123> - Store - Printer', result)
@@ -87,6 +87,12 @@ class GoogleChatTests(unittest.TestCase):
         with patch.object(chat, 'send', side_effect=RuntimeError(URL)), patch.object(chat.time, 'sleep'):
             sender.deliver((URL, 'title', 'message', False, None))
         self.assertNotIn('test-secret', sender.events.get_nowait()[1][2])
+        with patch.object(chat, 'payloads', return_value=[{'text': 'one'}, {'text': 'two'}]), \
+             patch.object(chat, 'send', side_effect=[None, RuntimeError(URL)]), patch.object(chat.time, 'sleep'):
+            sender.deliver((URL, 'title', 'message', False, None))
+        detail = sender.events.get_nowait()[1][2]
+        self.assertIn('części wiadomości: 1', detail)
+        self.assertNotIn('test-secret', detail)
 
     def test_background_queue_is_bounded(self):
         sender = chat.Sender.__new__(chat.Sender)

@@ -32,7 +32,7 @@ class TemplateTests(unittest.TestCase):
             validate('Brak listy', settings['item'], [])
 
     def test_links_in_arbitrary_positions_and_untrusted_markup(self):
-        url = 'https://adeo.service-now.com/incident.do?sys_id=123'
+        url = 'https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef'
         text = 'Zgłoszenie: INC123 — <users/all> **opis**'
         teams = payload('', text, {'INC123': url})
         self.assertTrue(teams['text'].startswith('Zgłoszenie: <a href='))

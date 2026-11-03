@@ -65,10 +65,10 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(normalize_list_url(wrapped), BASE + '/' + target)
 
     def test_record_links_are_restricted_in_both_channels(self):
-        record = BASE + '/incident.do?sys_id=abc'
+        record = BASE + '/incident.do?sys_id=0123456789abcdef0123456789abcdef'
         for bad in [record.replace('adeo.service-now.com', 'evil.test'),
                     record.replace('https://', 'https://user:pass@'),
-                    record.replace('.com/', '.com:8443/'), record + '#fragment',
+                    record.replace('.com/', '.com:8443/'), record + '#fragment', record + '&sys_id=second',
                     record.replace('/incident.do', '/sc_task.do'),
                     record.replace('/incident.do', '/admin'), record + '%0a', 'javascript:alert(1)']:
             with self.subTest(url=bad):
@@ -76,6 +76,8 @@ class SecurityTests(unittest.TestCase):
                 self.assertNotIn('href=', payload('Filter', 'INC123 - Opis', {'INC123': bad})['text'])
                 self.assertNotIn('|INC123>', payloads('Filter', 'INC123 - Opis', {'INC123': bad})[0]['text'])
         self.assertEqual(safe_record_url(record, 'INC123', BASE + '/incident_list.do'), record)
+        self.assertEqual(safe_record_url(record + '&sysparm_action=unexpected', 'INC123'), record)
+        self.assertEqual(safe_record_url(BASE + '/incident.do?sys_id=invalid', 'INC123'), '')
 
     def test_untrusted_frames_are_not_collected_and_bad_links_become_plain(self):
         foreign = Mock(url='https://evil.test/incident_list.do')
@@ -90,9 +92,9 @@ class SecurityTests(unittest.TestCase):
 
     def test_external_text_cannot_create_markdown_links_or_mentions(self):
         text = 'INC123 - [kliknij](https://evil.test) *pilne* _test_ ~x~ `x` \x00\u202e'
-        card = payload('[Tytuł](https://evil.test)', text, {'INC123': BASE + '/incident.do'})
+        card = payload('[Tytuł](https://evil.test)', text, {'INC123': BASE + '/incident.do?sys_id=0123456789abcdef0123456789abcdef'})
         body = card['attachments'][0]['content']['body']
-        self.assertIn('[INC123](https://adeo.service-now.com/incident.do)', body[1]['text'])
+        self.assertIn('[INC123](https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef)', body[1]['text'])
         self.assertIn(r'\[kliknij\]', body[1]['text'])
         self.assertNotIn('https://evil.test', body[1]['text'])
         self.assertNotIn('\x00', body[1]['text'])

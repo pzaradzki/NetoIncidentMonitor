@@ -1,13 +1,5 @@
-"""Read only the six SLA-risk counters, without traversing incident lists."""
-import re
-import time
-from playwright.sync_api import TimeoutError
-from neto_incident_monitor.browser_actions import navigate_page, checkpoint
-from neto_incident_monitor.dashboard import (
-    authenticated_read, check_session, activate_dashboard_widgets, _request_tile, operation, _diagnostics,
-)
-from neto_incident_monitor.login_diagnostics import error_facts
-from neto_incident_monitor.pagination import Cancelled
+"""Read SLA-risk counters and the confirmed aggregate list."""
+from neto_incident_monitor.dashboard import authenticated_read
 
 THREATENED_URL = (
     'https://adeo.service-now.com/now/platform-analytics-workspace/dashboards/params/edit/false/'
@@ -15,67 +7,137 @@ THREATENED_URL = (
     '__state__/b64-tiny~MwXI59oDkaQ8SM4vFHJzNp3mnHkKbaoo'
 )
 KEYS = ('P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie')
-READ_TIMEOUT = 45
+DETAILS_TITLE = 'Zagrożone i po terminie – posortowane wg czasu do przekroczenia SLA'
 
 
 @authenticated_read
 def read_threatened_dashboard(page, stop):
-    checkpoint(stop)
-    operation('navigate')
-    # A fresh navigation makes manual Update a real read, not a cached tab switch.
-    navigate_page(page, THREATENED_URL, stop)
-    check_session(page)
-    deadline = time.monotonic() + READ_TIMEOUT
-    previous, stable_since = None, None
-    next_activation = 0
-    diagnostics = _diagnostics.get()
-    last_states = {}
-    while time.monotonic() < deadline:
+    from neto_incident_monitor.dashboard import read_section_cards
+    titles = tuple('P' + str(p) + ' – < ' + threshold + ' / po terminie'
+                   for p, threshold in enumerate(('1 h', '2 h', '4 h', '1 dzień', '2 dni'), 1))
+    titles += ('Podjęcie – < 5 min / po terminie',)
+    values = read_section_cards(page, 'threatened', titles, stop)
+    return {key: values[title] for key, title in zip(KEYS, titles)}
+
+# Selectors verified on the aggregate NOW-LIST in the authenticated dashboard.
+DETAILS = r"""title => {
+    function nodes(root) {
+        return Array.from(root.querySelectorAll('*')).flatMap(
+            el => el.shadowRoot ? [el, ...nodes(el.shadowRoot)] : [el]);
+    }
+    const documentNodes = nodes(document);
+    const headings = documentNodes.filter(el => el.tagName === 'H2' && el.textContent.trim() ===
+        title);
+    const widgets = documentNodes.filter(el => el.tagName === 'SN-PAR-ANALYTICS-LIST-BASE');
+    if (headings.length !== 1 || widgets.length !== 1) return null;
+    const widget = widgets[0];
+    const local = [...nodes(widget), ...(widget.shadowRoot ? nodes(widget.shadowRoot) : [])];
+    const tables = local.filter(el => el.matches('table.now-list-table[role="grid"]'));
+    if (tables.length !== 1 || local.some(el => el.getAttribute('aria-busy') === 'true' ||
+        (el.matches('now-loader, [role="progressbar"]') && !el.closest('tbody')))) return null;
+    const rows = Array.from(tables[0].querySelectorAll('tbody tr[data-key]'));
+    const pagers = local.filter(el => el.tagName === 'NOW-PAGINATION-CONTROL');
+    const controls = pagers.length === 1
+        ? [...nodes(pagers[0]), ...(pagers[0].shadowRoot ? nodes(pagers[0].shadowRoot) : [])] : [];
+    const ranges = controls.filter(el => !el.children.length &&
+        /^Pokazywanie\s+\d+\s*[-–]\s*\d+\s+z\s+\d+$/.test(el.textContent.trim()));
+    const next = controls.filter(el => el.matches('button[aria-label="Następna strona"]'));
+    return {
+        empty: local.some(el => el.tagName === 'H3' && el.textContent.trim() === 'Brak dostępnych danych.'),
+        range: ranges.length === 1 ? ranges[0].textContent.match(/\d+/g).map(Number) : null,
+        terminal: next.length === 1 && next[0].disabled,
+        rows: rows.map(row => {
+            const cell = key => row.querySelector('[data-column-key="' + key + '"]');
+            const value = key => cell(key)?.textContent.trim() || '';
+            const links = Array.from(cell('task')?.querySelectorAll('a') || [])
+                .filter(link => /^INC\d+$/.test(link.textContent.trim()));
+            return {
+                id: row.getAttribute('data-key'),
+                number: links.length === 1 ? links[0].textContent.trim() : '',
+                url: links.length === 1 ? links[0].href : '',
+                priority: value('task.priority'), target: value('sla.target'),
+                deadline: value('planned_end_time'), remaining: value('business_time_left'),
+                percent: value('business_percentage')
+            };
+        })
+    };
+}"""
+
+
+def parse_details(observation, scores):
+    import re
+    from datetime import datetime
+    from urllib.parse import urlsplit
+    from neto_incident_monitor.service_now_urls import safe_record_url, trusted_url
+
+    if not observation:
+        return None
+    rows = observation['rows']
+    if observation['empty']:
+        return {} if not rows and not any(scores.values()) else None
+    if not rows or not observation['terminal'] or observation['range'] != [1, len(rows), len(rows)]:
+        return None
+
+    incidents, seen = {}, set()
+    counts = dict.fromkeys(KEYS, 0)
+    for row in rows:
+        key, number = row['id'], row['number']
+        if not re.fullmatch(r'[a-f0-9]{32}', key or '', re.I) or key.lower() in seen:
+            return None
+        seen.add(key.lower())
+        if not trusted_url(row['url']):
+            return None
+        link = urlsplit(row['url'])
+        if link.path not in ('/task.do', '/incident.do'):
+            return None
+        url = safe_record_url(link._replace(path='/incident.do', fragment='').geturl(), number)
+        priority = re.match(r'([1-5])(?:\b|$)', row['priority'])
+        target = row['target'].casefold()
+        category = ('Podjęcie' if target in ('odpowiedź', 'response') else
+                    'P' + priority[1] if priority and target in ('rozwiązanie', 'resolution') else None)
+        percent = re.fullmatch(r'(\d+(?:[.,]\d+)?)\s*%', row['percent'])
+        if not url or not category or not percent or not row['remaining']:
+            return None
+        try:
+            deadline = datetime.strptime(row['deadline'], '%Y-%m-%d %H:%M:%S').isoformat()
+        except ValueError:
+            return None
+        counts[category] += 1
+        current = incidents.get(number)
+        if current and current['url'] != url:
+            return None
+        categories = set(current['categories']) if current else set()
+        categories.add(category)
+        if current is None or (deadline, key) < (current['deadline'], current['sla']):
+            incidents[number] = dict(number=number, url=url, deadline=deadline, sla=key,
+                                     remaining=row['remaining'], percent=float(percent[1].replace(',', '.')))
+        incidents[number]['categories'] = [name for name in KEYS if name in categories]
+    return incidents if counts == scores else None
+
+
+@authenticated_read
+def read_threatened_details(page, stop, scores):
+    import time
+    from neto_incident_monitor.browser_actions import checkpoint
+    from neto_incident_monitor.dashboard import check_session, verify_context
+    from neto_incident_monitor.read_budget import remaining_ms
+    from playwright.sync_api import TimeoutError
+
+    deadline = time.monotonic() + 5
+    scrolled = False
+    while True:
         checkpoint(stop)
         check_session(page)
-        if stop.is_set():
-            raise Cancelled()
-        operation('read_scores')
-        current = {}
-        for key in KEYS:
-            checkpoint(stop)
-            # Anchor by category, never by layout order or the extra table below.
-            heading = page.get_by_role('heading', name=re.compile(
-                r'^\s*' + re.escape(key) + r'\s*[-–—:]\s*<')).filter(visible=True)
-            count = heading.count()
-            state = {'state': 'missing' if not count else 'ambiguous'}
-            if count == 1:
+        verify_context(page, 'threatened')
+        result = parse_details(page.evaluate(DETAILS, DETAILS_TITLE), scores)
+        if result is not None or time.monotonic() >= deadline:
+            return result
+        if not scrolled:
+            heading = page.get_by_role('heading', name=DETAILS_TITLE, exact=True)
+            if heading.count() == 1:
+                scrolled = True
                 try:
-                    title = heading.inner_text(timeout=500).strip()
-                    state = _request_tile(page, title)
+                    heading.scroll_into_view_if_needed(timeout=remaining_ms(1200))
                 except TimeoutError:
-                    state = {'state': 'unavailable'}
-            facts = (state['state'], state.get('score_source', 'none'), state.get('loading', False))
-            if diagnostics and last_states.get(key) != facts:
-                diagnostics.record('dashboard_tile_state', risk_tile=key, tile_state=facts[0],
-                                   score_source=facts[1], loading=facts[2])
-                last_states[key] = facts
-            if state['state'] == 'ready':
-                current[key] = state['value']
-        if len(current) == len(KEYS):
-            if current == previous and time.monotonic() - stable_since >= 1:
-                return current
-            if current != previous:
-                previous, stable_since = current, time.monotonic()
-        else:
-            previous = stable_since = None
-            # Observe complete scores first. Do not scroll an unrelated table
-            # when all six counters are already rendered. SPA refreshes can
-            # replace cards during enumeration/scrolling; retry with fresh
-            # locators, within the same overall deadline, without reloading.
-            if time.monotonic() >= next_activation and page.locator('.grid-stack-item-content').filter(visible=True).count():
-                try:
-                    activate_dashboard_widgets(page, stop)
-                except TimeoutError as exc:
-                    checkpoint(stop)
-                    check_session(page)
-                    if diagnostics:
-                        diagnostics.record('dashboard_widgets_retry', **error_facts(exc))
-                next_activation = time.monotonic() + 1
+                    pass
         page.wait_for_timeout(200)
-    raise ValueError('Nie odczytano kompletu sześciu liczników zagrożeń SLA.')

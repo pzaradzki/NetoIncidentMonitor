@@ -1,7 +1,8 @@
 import unittest
 from unittest.mock import Mock, patch
 from playwright.sync_api import sync_playwright, Locator, TimeoutError as PlaywrightTimeoutError
-from neto_incident_monitor.automatic_login import AutomaticLogin
+from neto_incident_monitor.automatic_login import AutomaticLogin, READ_DELIVERY
+from neto_incident_monitor.login_observation import SIGNALS
 
 
 class AutomaticLoginTests(unittest.TestCase):
@@ -20,12 +21,13 @@ class AutomaticLoginTests(unittest.TestCase):
                         page.goto('https://idpb2e.adeo.com/login')
                         clear_manual_handoff(page)
                         page.evaluate('html => document.body.innerHTML = html', '''<input type="password" value="dummy">
-                            <button onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>
+                            <button type="button" onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>
                             <div id="overlay" style="position:fixed;inset:0;z-index:10"></div>''')
                         enabled = [True]
                         diagnostics = Mock()
                         automatic = AutomaticLogin(diagnostics, enabled=lambda: enabled[0])
                         automatic.account_clicked = True
+                        automatic.autofilled = Mock(return_value=True)
                         for _ in range(3):
                             automatic.step(page)
                         self.assertEqual(automatic.submit_attempts, 0)
@@ -61,7 +63,7 @@ class AutomaticLoginTests(unittest.TestCase):
 
     def test_submit_retry_requires_proof_that_no_activation_was_delivered(self):
         form = '''<input readonly value="account"><input type="password" value="dummy">
-            <button onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>'''
+            <button type="button" onclick="window.clicks=(window.clicks||0)+1">Zaloguj się</button>'''
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
@@ -75,6 +77,7 @@ class AutomaticLoginTests(unittest.TestCase):
                         page.evaluate('window.clicks = 0')
                         automatic = AutomaticLogin()
                         automatic.account_clicked = True
+                        automatic.autofilled = Mock(return_value=True)
                         attempts = []
                         def click(locator, **kwargs):
                             if kwargs.get('trial'):
@@ -129,7 +132,7 @@ class AutomaticLoginTests(unittest.TestCase):
                                     automatic.step(page)
                                     self.assertEqual(len(attempts), 2)
                                     self.assertEqual(page.evaluate('window.clicks'), 1)
-                            self.assertTrue(all(timeout == 5000 for timeout in attempts))
+                            self.assertTrue(all(timeout == 500 for timeout in attempts))
             finally:
                 browser.close()
 
@@ -168,14 +171,15 @@ class AutomaticLoginTests(unittest.TestCase):
 
     def test_stalled_submission_is_reported_without_resubmitting(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
-        page.locator.return_value.inner_text.return_value = 'WITAMY'
+        page.evaluate.side_effect = lambda script, *args: {'welcome': True} if script == SIGNALS else False
         automatic = AutomaticLogin()
         automatic.submitted = True
         automatic.submitted_at = 0
         with patch('neto_incident_monitor.automatic_login.monotonic', return_value=31):
             automatic.step(page)
             automatic.step(page)
-        self.assertTrue(automatic.blocked)
+        self.assertTrue(automatic.needs_user)
+        self.assertFalse(automatic.blocked)
         self.assertIn('30 sekund', automatic.reason)
         page.get_by_role.assert_not_called()
 
@@ -186,7 +190,7 @@ class AutomaticLoginTests(unittest.TestCase):
 
     def test_mfa_after_submission_is_reported(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
-        page.locator.return_value.inner_text.return_value = 'Wprowadź kod weryfikacyjny'
+        page.evaluate.side_effect = lambda script, *args: {'intervention': True} if script == SIGNALS else False
         automatic = AutomaticLogin()
         automatic.submitted = True
         automatic.step(page)
@@ -196,7 +200,7 @@ class AutomaticLoginTests(unittest.TestCase):
     def test_resumed_login_waits_for_browser_autofill_and_submits_once(self):
         page = Mock(url='https://idpb2e.adeo.com/resumeSAML20/idp/SSO.ping')
         body, passwords, anchor, buttons = Mock(), Mock(), Mock(), Mock()
-        body.inner_text.return_value = 'WITAMY'
+        page.evaluate.side_effect = lambda script, *args: {'welcome': True} if script == SIGNALS else 0 if script == READ_DELIVERY else False
         passwords.count.return_value = 1
         readiness = iter([False, True, True])
         passwords.first.evaluate.side_effect = lambda script, **kwargs: 'fixture-form' if '__netoFormToken' in script else next(readiness)
@@ -208,6 +212,7 @@ class AutomaticLoginTests(unittest.TestCase):
         page.locator.side_effect = lambda selector: body if selector=='body' else passwords if 'password' in selector else anchor
         page.get_by_role.return_value = buttons
         automatic = AutomaticLogin()
+        automatic.autofilled = Mock(return_value=True)
         automatic.step(page)
         self.assertFalse(automatic.blocked)
         automatic.step(page)
@@ -220,7 +225,7 @@ class AutomaticLoginTests(unittest.TestCase):
     def test_failed_account_click_does_not_mark_selection_complete(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
         body, passwords, accounts, name = Mock(), Mock(), Mock(), Mock()
-        body.inner_text.return_value = 'WITAMY'
+        page.evaluate.side_effect = lambda script, *args: {'welcome': True} if script == SIGNALS else 0 if script == READ_DELIVERY else False
         passwords.count.return_value = 0
         accounts.count.return_value = 1
         accounts.first.locator.return_value = name
@@ -249,11 +254,12 @@ class AutomaticLoginTests(unittest.TestCase):
                     <li class="identifier-first__account-item"><div class="identifier-first__account-name"
                     onclick="window.selected=(window.selected||0)+1">TEST USER</div></li></ul></body>''')
                 automatic = AutomaticLogin()
-                with patch('neto_incident_monitor.automatic_login.monotonic', side_effect=[0, 1, 5, 10, 15]):
+                with patch('neto_incident_monitor.automatic_login.monotonic', side_effect=[0, 1, 5, 10, 31]):
                     for _ in range(5):
                         automatic.step(page)
-                self.assertEqual(page.evaluate('window.selected'), 3)
-                self.assertTrue(automatic.blocked)
+                self.assertEqual(page.evaluate('window.selected'), 1)
+                self.assertTrue(automatic.needs_user)
+                self.assertFalse(automatic.blocked)
                 self.assertFalse(automatic.submitted)
             finally:
                 browser.close()
@@ -320,17 +326,18 @@ class AutomaticLoginTests(unittest.TestCase):
             self.assertFalse(page.evaluate('!!window.clicks'))
             browser.close()
 
-    def test_real_browser_autofill_single_attempt_and_safe_fallbacks(self):
+    def test_synthetic_autofill_single_attempt_and_safe_fallbacks(self):
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             page = browser.new_page()
             page.route('**/*', lambda route: route.fulfill(body='<body>WITAMY</body>', content_type='text/html'))
-            page.goto('https://idpb2.adeo.com/login')
-            form = """<body>WITAMY<input type='password' value='dummy'>
-                <button onclick='window.clicks=(window.clicks||0)+1'>Zaloguj się</button></body>"""
+            page.goto('https://idpb2e.adeo.com/login')
+            form = """<body>WITAMY<form><input type='password' value='dummy'>
+                <button type="button" onclick='window.clicks=(window.clicks||0)+1'>Zaloguj się</button></form></body>"""
             page.set_content(form)
             automatic = AutomaticLogin()
             automatic.account_clicked = True
+            automatic.autofilled = Mock(return_value=True)  # Synthetic autofill evidence, not account-selection evidence.
             automatic.step(page)
             automatic.step(page)
             self.assertEqual(page.evaluate('window.clicks'), 1)
@@ -338,7 +345,7 @@ class AutomaticLoginTests(unittest.TestCase):
             automatic = AutomaticLogin()
             automatic.step(page)
             self.assertFalse(automatic.submitted)
-            page.set_content(form.replace('WITAMY', 'Nieprawidłowe hasło'))
+            page.set_content(form.replace('<form>', '<form><div role=alert>Nieprawidłowe hasło</div>'))
             automatic.step(page)
             self.assertTrue(automatic.blocked)
             page.set_content(form)
@@ -366,12 +373,13 @@ class AutomaticLoginTests(unittest.TestCase):
             automatic = AutomaticLogin()
             automatic.step(page)
             self.assertFalse(automatic.account_clicked)
-            page.set_content('''<body>WITAMY<input type="password" value="dummy">
+            page.set_content('''<body>WITAMY<form><input type="password" value="dummy">
                 <span id="signOnButtonSpan"><a class="btn btn-success ping-button normal allow"
                 id="signOnButton" title="Zaloguj się" onclick="window.anchorClicks=(window.anchorClicks||0)+1">
                 Zaloguj się</a></span></body>''')
             automatic = AutomaticLogin()
             automatic.account_clicked = True
+            automatic.autofilled = Mock(return_value=True)  # Synthetic autofill evidence, not account-selection evidence.
             automatic.step(page)
             automatic.step(page)
             self.assertEqual(page.evaluate('window.anchorClicks'), 1)

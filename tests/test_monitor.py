@@ -17,7 +17,7 @@ class MonitorTests(unittest.TestCase):
                 table = Mock()
                 table.identify_row.return_value = row
                 event = Mock(widget=table, y=42)
-                monitor.items = {(table, "row"): "https://adeo.service-now.com/incident.do?sys_id=test"}
+                monitor.items = {(table, "row"): "https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef"}
                 monitor.row_numbers = {(table, "row"): "INC1234567"}
                 with patch("neto_incident_monitor.app.webbrowser.open", return_value=opened) as browser:
                     App.open_incident(monitor, event)
@@ -116,6 +116,8 @@ class MonitorTests(unittest.TestCase):
             self.assertIn("unread", monitor.current_table.item(row, "tags"))
             monitor.current_table.selection_set(row)
             monitor.mark_selected()
+            monitor.history_writer.submit(lambda: None).result(timeout=5)
+            monitor.drain()
             self.assertEqual(monitor.unread_count.get(), "0")
             self.assertEqual(History(Path(temporary.name) / "history.json").unread(), 1)
             self.assertIn("Monitoring aktywny", monitor.phase.get())
@@ -148,15 +150,18 @@ class MonitorTests(unittest.TestCase):
                 confirm.assert_called_once()
                 self.assertEqual(len(monitor.history.snapshot()), 1)
             with patch("neto_incident_monitor.widgets.confirm_dialog", return_value=True), patch.object(
-                    monitor.history, "clear", side_effect=OSError("disk full")), patch("neto_incident_monitor.app.messagebox.showerror") as error:
+                    monitor.history, "clear", side_effect=OSError("disk full")):
                 monitor.clear_history()
-                error.assert_called_once()
+                monitor.history_writer.submit(lambda: None).result(timeout=5)
+                monitor.drain()
+                self.assertIn("Nie udało się zapisać zmiany historii", monitor.status.get())
                 self.assertEqual(len(monitor.history.snapshot()), 1)
             # An incident queued before the clear must not restore the deleted history.
             monitor.events.put(("incident", ("Gdańsk", incident, False)))
             with patch("neto_incident_monitor.widgets.confirm_dialog", return_value=True), patch("neto_incident_monitor.app.save_json") as state_write:
                 monitor.clear_history()
                 state_write.assert_not_called()
+            monitor.history_writer.submit(lambda: None).result(timeout=5)
             monitor.drain()
             self.assertEqual(len(monitor.table.get_children()), 0)
             self.assertEqual(len(monitor.current_table.get_children()), 1)
@@ -249,9 +254,12 @@ class MonitorTests(unittest.TestCase):
             navigate(page, URL)
 
     def test_authentication_redirect(self):
+        from tests.test_login_observation import page_with, frame_with
         self.assertTrue(authentication_page(Mock(url="https://idp.example.com/SSO.ping"), URL))
         self.assertTrue(authentication_page(Mock(url="https://adeo.service-now.com/login.do"), URL))
-        self.assertFalse(authentication_page(Mock(url=URL), URL))
+        # URL alone does not prove that the document could be inspected.
+        self.assertTrue(authentication_page(Mock(url=URL), URL))
+        self.assertFalse(authentication_page(page_with(frame_with(), url=URL), URL))
 
     def test_real_browser_empty_then_first_incident(self):
         from playwright.sync_api import sync_playwright
@@ -269,7 +277,7 @@ class MonitorTests(unittest.TestCase):
                 self.assertFalse(empty_list(page, "https://other.example/incident_list.do"))
                 # An empty baseline must allow the first later incident through.
                 seen = {URL: []}
-                page.set_content('<table><tr><th>Numer</th><th>Krótki opis</th></tr><tr><td><a href="/incident.do?sys_id=abc">INC0012345</a></td><td>Test</td></tr></table>')
+                page.set_content('<table><tr><th>Numer</th><th>Krótki opis</th></tr><tr><td><a href="/incident.do?sys_id=0123456789abcdef0123456789abcdef">INC0012345</a></td><td>Test</td></tr></table>')
                 incidents = collect(page)
                 self.assertEqual(set(incidents) - set(seen[URL]), {"INC0012345"})
                 self.assertFalse(empty_list(page, URL))

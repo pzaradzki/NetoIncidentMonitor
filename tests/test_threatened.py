@@ -16,7 +16,7 @@ TITLES = ('P1 – < 1 h / po terminie', 'P2 – < 2 h / po terminie',
 
 
 def document(values):
-    return ''.join('<div class="grid-stack-item-content"><h2>' + title.replace('<', '&lt;') + '</h2>'
+    return '<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button>' + ''.join('<div class="grid-stack-item-content"><h2>' + title.replace('<', '&lt;') + '</h2>'
                    '<now-score-basic><span class="now-score-value">' + str(value) + '</span></now-score-basic></div>'
                    for title, value in zip(TITLES, values))
 
@@ -30,7 +30,7 @@ class ThreatenedReaderTests(unittest.TestCase):
                 html = document(range(6)) + '<div hidden>' + document([999] * 6) + '</div>'
                 html += '<div class="grid-stack-item-content"><h2>Inna tabela</h2><span>999</span></div>'
                 page.route('**/*', lambda r: r.fulfill(body=html, content_type='text/html; charset=utf-8'))
-                with patch('neto_incident_monitor.threatened.activate_dashboard_widgets', side_effect=AssertionError('Ready counters must not scroll')):
+                with patch('neto_incident_monitor.dashboard.activate_dashboard_widgets', side_effect=AssertionError('Ready counters must not scroll')):
                     self.assertEqual(read_threatened_dashboard(page, threading.Event()), dict(zip(KEYS, range(6))))
             finally:
                 browser.close()
@@ -42,7 +42,7 @@ class ThreatenedReaderTests(unittest.TestCase):
                 page = browser.new_page()
                 for html in (document([0] * 5), document([0, 0, '...', 0, 0, 0]),
                              document([0] * 6) + document([0])):
-                    with self.subTest(html_length=len(html)), patch('neto_incident_monitor.threatened.READ_TIMEOUT', 0.1):
+                    with self.subTest(html_length=len(html)), patch('neto_incident_monitor.dashboard.REQUEST_READ_TIMEOUT', 0.1):
                         page.route('**/*', lambda r, *, html=html: r.fulfill(body=html, content_type='text/html; charset=utf-8'))
                         with self.assertRaises(ValueError):
                             read_threatened_dashboard(page, threading.Event())
@@ -69,15 +69,15 @@ class ThreatenedReaderTests(unittest.TestCase):
                 loads = []
                 def serve(route):
                     loads.append(True)
-                    route.fulfill(body='<div class="grid-stack-item-content">Loading</div>', content_type='text/html; charset=utf-8')
+                    route.fulfill(body='<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button><div class="grid-stack-item-content">Loading</div>', content_type='text/html; charset=utf-8')
                 page.route('**/*', serve)
                 attempts = []
-                def prepare(page, stop):
+                def prepare(page, stop, **kwargs):
                     attempts.append(True)
                     if len(attempts) == 1:
                         raise TimeoutError('Synthetic replaced widget')
                     page.set_content(document([0] * 6))
-                with patch('neto_incident_monitor.threatened.activate_dashboard_widgets', side_effect=prepare), \
+                with patch('neto_incident_monitor.dashboard.activate_dashboard_widgets', side_effect=prepare), \
                         self.assertLogs(_logger, level='INFO') as logs, diagnostic_steps(LoginDiagnostics(source='dashboard', section='threatened')):
                     result = read_threatened_dashboard(page, threading.Event())
                 self.assertEqual(result, dict.fromkeys(KEYS, 0))
@@ -97,7 +97,7 @@ class ThreatenedReaderTests(unittest.TestCase):
                 page = browser.new_page(viewport={'width': 800, 'height': 500})
                 cards = ''.join(f'<div class="grid-stack-item-content" data-id="{i}" style="height:220px;margin-top:500px"></div>' for i in range(6))
                 import json
-                html = cards + '<script>const titles=' + json.dumps(TITLES) + ''';
+                html = '<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button>' + cards + '<script>const titles=' + json.dumps(TITLES) + ''';
                 const observer=new IntersectionObserver(entries=>{for(const e of entries) if(e.isIntersecting){
                   const card=e.target; const i=+card.dataset.id; const h=document.createElement('h2');
                   h.textContent=titles[i]; card.appendChild(h); const s=document.createElement('now-score-basic');
@@ -147,6 +147,14 @@ class ThreatenedPresentationTests(unittest.TestCase):
             self.assertFalse(app.threatened_incidents_button.alert)
             self.assertEqual([t.value_label.cget('text') for t in panel.tiles], ['0'] * 6)
             self.assertEqual(panel.last_read, 200)
+            self.assertIsNone(panel.last_full_read)
+            panel.apply_details(request, {})
+            self.assertEqual(panel.last_full_read, 200)
+            self.assertIn('Odczytano liczniki i listę', panel.message.get())
+            panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
+            panel.apply_details(request, None)
+            self.assertEqual(panel.last_full_read, 200)
+            self.assertIn('Zachowano ostatnią poprawną listę', panel.message.get())
         finally:
             root.destroy()
 
@@ -222,6 +230,8 @@ class ThreatenedWorkerTests(unittest.TestCase):
         app.stop, app.events, app.threatened_requests = threading.Event(), queue.Queue(), queue.Queue()
         app.threatened_requests.put(4)
         app.browser_runtime = Mock()
+        from contextlib import nullcontext
+        app.browser_runtime.dashboard_read.side_effect = lambda *args: nullcontext()
         app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
         app.restore_login = Mock(return_value=True)
         return app

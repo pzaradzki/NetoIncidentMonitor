@@ -76,7 +76,7 @@ class TeamsTests(unittest.TestCase):
         self.assertEqual(message, "SCTASK1234567 - Laptop <test> - Anna")
         for number in ("INC1234567", "SCTASK1234567"):
             path = 'sc_task' if number.startswith('SCTASK') else 'incident'
-            url = f"https://adeo.service-now.com/{path}.do?sys_id=123&view=default"
+            url = f"https://adeo.service-now.com/{path}.do?sys_id=0123456789abcdef0123456789abcdef&view=default"
             value = payload("Filtr", f"{number} - Opis <test> - Anna", {number: url})
             self.assertIn(f'>{number}</a>', value["text"])
             self.assertIn("&amp;view=default", value["text"])
@@ -123,6 +123,12 @@ class TeamsTests(unittest.TestCase):
             kind, result = events.get(timeout=2)
             self.assertEqual(kind, 'teams_result')
             self.assertEqual(result[:2], (True, True))
-            transport.side_effect = RuntimeError('Offline')
+            transport.side_effect = RuntimeError('PRIVATE_SYNTHETIC_VALUE')
             sender.submit(URL, 'Test', 'Message')
-            self.assertEqual(events.get(timeout=2)[1], (False, False, 'Offline'))
+            self.assertEqual(events.get(timeout=2)[1], (False, False, 'Nie udało się wysłać powiadomienia do Teams.'))
+            with patch('neto_incident_monitor.teams_notifications.message_chunks', return_value=['one', 'two']):
+                transport.side_effect = [None, RuntimeError('PRIVATE_SYNTHETIC_VALUE')]
+                self.assertTrue(sender.submit(URL, 'Test', 'Message'))
+                detail = events.get(timeout=2)[1][2]
+                self.assertIn('części wiadomości: 1', detail)
+                self.assertNotIn('PRIVATE_SYNTHETIC_VALUE', detail)

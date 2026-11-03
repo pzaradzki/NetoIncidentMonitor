@@ -69,6 +69,8 @@ class DashboardControlTests(unittest.TestCase):
             operation('fill_start')
             raise TimeoutError('PRIVATE_LOGIN PRIVATE_TOKEN')
         with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=fail), \
+                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value={}), \
+                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value={}), \
                 self.assertLogs(_logger, level='INFO') as captured:
             app.read_dashboard_request(Mock())
         records = [json.loads(record.getMessage()) for record in captured.records]

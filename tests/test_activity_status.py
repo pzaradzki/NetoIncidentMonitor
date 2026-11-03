@@ -53,7 +53,8 @@ class ActivityStatusTests(unittest.TestCase):
         self.emit(('filter_updating', app.filters[0]['url']), ('phase', 'Błąd odczytu'), ('filter_updating', None))
         self.assertEqual(app.activity_pill.tone, 'error')
         request = app.dashboard_view.request_id
-        self.emit(('dashboard_section_status', (request, 'Wnioski L1', 'Błąd odczytu')), ('dashboard_updating', False))
+        self.emit(('dashboard_section_status', (request, 'Wnioski L1', 'Błąd odczytu')),
+                  ('dashboard_updating', (request, 2026, 10, 'finished')))
         self.assertEqual(app.activity_pill.status_text, 'Błąd odczytu: Wnioski L1')
 
     def test_long_activity_fits_small_header_and_retains_full_tooltip(self):

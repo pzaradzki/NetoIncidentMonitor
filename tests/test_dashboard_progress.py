@@ -64,6 +64,8 @@ class DashboardProgressTests(unittest.TestCase):
                 app.events.put(('dashboard_progress', (request_id, 100, 'Gotowe', 'complete')))
                 app.drain()
                 self.assertIsNotNone(app.dashboard_progress.hide_timer)
+                app.events.put(('dashboard_updating', (*app.dashboard_view.active_request, 'finished')))
+                app.drain()
                 app.refresh_coordinator().finish()
                 app.dashboard_view.request_refresh()
                 self.assertEqual(app.dashboard_progress.percent, 0)

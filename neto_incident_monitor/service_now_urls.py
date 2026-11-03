@@ -1,6 +1,6 @@
 """Explicit tenant policy shared by filters, record links and notifications."""
 import re
-from urllib.parse import urlparse, unquote
+from urllib.parse import parse_qs, urlencode, urlparse, unquote
 
 # This deployment monitors one tenant. Do not infer trust from a pasted URL.
 TENANT_HOST = 'adeo.service-now.com'
@@ -94,4 +94,13 @@ def safe_record_url(value, number, list_url=None):
             return ''
         if parsed.hostname != origin.hostname or (parsed.port or 443) != (origin.port or 443):
             return ''
-    return parsed._replace(netloc=TENANT_HOST).geturl()
+    parameters = parse_qs(parsed.query, keep_blank_values=True)
+    ids = parameters.get("sys_id", [])
+    if len(ids) != 1 or not re.fullmatch(r"[0-9a-fA-F]{32}", ids[0]):
+        return ""
+    query = {"sys_id": ids[0]}
+    for key in ("sysparm_view", "view"):
+        values = parameters.get(key, [])
+        if len(values) == 1 and re.fullmatch(r"[A-Za-z0-9_]{1,64}", values[0]):
+            query[key] = values[0]
+    return parsed._replace(netloc=TENANT_HOST, query=urlencode(query)).geturl()

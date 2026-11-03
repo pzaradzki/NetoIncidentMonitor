@@ -85,21 +85,28 @@ class Sender:
         self.next_send = 0
         threading.Thread(target=self.run, daemon=True).start()
 
-    def submit(self, webhook, title, message, test=False, links=None):
+    def submit(self, webhook, title, message, test=False, links=None, allow_send=None):
         try:
-            self.jobs.put_nowait((webhook, title, message, test, links))
+            self.jobs.put_nowait((webhook, title, message, test, links, allow_send))
+            return True
         except queue.Full:
             self.events.put(('google_chat_result', (False, test, 'Kolejka Google Chat jest pełna. Zgłoszenia pozostają w historii.')))
+            return False
 
     def deliver(self, job):
-        webhook, title, message, test, links = job
+        webhook, title, message, test, links, *guards = job
+        allow_send = guards[0] if guards else None
+        accepted_parts = 0
         try:
             for content in payloads(title, message, links):
                 delay = self.next_send - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
                 try:
+                    if allow_send is not None and not allow_send():
+                        raise DeliveryError("Wysyłka Google Chat została wstrzymana po zmianie ustawień lub zatrzymaniu monitoringu.")
                     send(webhook, content)
+                    accepted_parts += 1
                 finally:
                     self.next_send = time.monotonic() + 1.1
             result = True, test, 'Google Chat przyjął wiadomość. Sprawdź wybraną przestrzeń.'
@@ -107,6 +114,8 @@ class Sender:
             result = False, test, str(error)
         except Exception:
             result = False, test, 'Nie udało się wysłać powiadomienia do Google Chat. Sprawdź webhook, połączenie i uprawnienia.'
+        if not result[0] and accepted_parts:
+            result = (False, test, f'Google Chat przyjął części wiadomości: {accepted_parts}. {result[2]}')
         self.events.put(('google_chat_result', result))
 
     def run(self):

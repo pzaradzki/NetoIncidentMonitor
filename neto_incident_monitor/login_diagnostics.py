@@ -1,7 +1,7 @@
 """Bounded login diagnostics containing structural facts, never form values."""
 import json
 import logging
-from logging.handlers import RotatingFileHandler
+from neto_incident_monitor.safe_logging import DiagnosticFileHandler
 from threading import Lock
 from time import perf_counter
 from urllib.parse import urlparse
@@ -15,31 +15,24 @@ _logger = logging.getLogger('neto.login_diagnostics')
 _logger.propagate = False
 _logger.setLevel(logging.INFO)
 TRACE = ContextVar('authentication_trace', default=None)
+READ = ContextVar('diagnostic_read', default=None)
+RUN_ID = uuid4().hex
 
-SNAPSHOT = """() => {
-    const visible = el => !!el.getClientRects().length;
-    const passwords = [...document.querySelectorAll('input[type=password]')].filter(visible);
-    const identities = [...document.querySelectorAll('input')].filter(el =>
-        visible(el) && ['text', 'email', 'tel'].includes(el.type));
-    const buttons = [...document.querySelectorAll('button, input[type=submit], a#signOnButton')]
-        .filter(el => visible(el) && (el.id === 'signOnButton' || /^zaloguj się$/i.test((el.innerText || el.value || '').trim())));
-    const text = document.body ? document.body.innerText : '';
-    return {
-        password_count: passwords.length,
-        password_filled: passwords.some(el => !!el.value),
-        password_enabled: passwords.some(el => !el.disabled),
-        password_autofilled: passwords.some(el => el.matches(':-webkit-autofill')),
-        password_manual_edit: !!(window.__netoInputGuard && window.__netoInputGuard.manual),
-        identity_count: identities.length,
-        identity_locked: identities.some(el => el.readOnly || el.disabled),
-        login_button_count: buttons.length,
-        login_button_enabled: buttons.some(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true' && !el.classList.contains('disabled')),
-        account_count: [...document.querySelectorAll('#existingAccountsSelectionList .identifier-first__account-item')].filter(visible).length,
-        welcome: /WITAMY|WELCOME/i.test(text),
-        intervention: /incorrect|invalid|błędne hasło|kod weryfik|verification code|authenticator|captcha|zablokowan/i.test(text),
-        document_ready: document.readyState === 'complete'
-    };
-}"""
+
+def diagnostic_read(function):
+    # A new actual execution gets an ID even when periodic work reuses a UI ID.
+    from functools import wraps
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        token = READ.set(uuid4().hex)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            READ.reset(token)
+    return wrapped
+
+
+from neto_incident_monitor.login_observation import SIGNALS as SNAPSHOT
 
 FIELDS = ('password_count', 'password_filled', 'password_enabled', 'password_autofilled',
           'password_manual_edit', 'identity_count', 'identity_locked', 'login_button_count',
@@ -47,12 +40,32 @@ FIELDS = ('password_count', 'password_filled', 'password_enabled', 'password_aut
 
 # Only explicitly approved structural fields may reach disk. Unknown text is
 # discarded rather than redacted after the fact.
-NUMERIC_FIELDS = set(FIELDS) | {'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s',
+NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', 'foreground_confirmed', 'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s',
     'auto_blocked', 'auto_submitted', 'account_selected', 'blocked', 'supported_origin',
     'password_ready', 'button_count', 'aria_or_class_disabled', 'attempt',
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
-    'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available', 'widget_count', 'activated_count'}
+    'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available', 'widget_count', 'activated_count',
+    'filter_index', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size',
+    'row_count', 'records_read', 'duration_ms', 'request_id', 'expected_count', 'ready_count', 'tile_index', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'context_confirmed', 'category_count', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'payload_bytes', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
 TEXT_FIELDS = {
+    'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
+                      'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
+                      'stale_id', 'period_mismatch'},
+    'rendering_scope': {'dashboard', 'login'},
+    'recovery_reason': {'logout', 'network', 'stalled', 'popup_closed'},
+    'login_state': {'authentication', 'session', 'target', 'unknown', 'logout'},
+    'previous_login_state': {'authentication', 'session', 'target', 'unknown', 'logout', 'initial'},
+    'login_evidence': {'logout_document', 'authentication_surface', 'observation_failed', 'session_confirmed', 'session_unconfirmed', 'context_unconfirmed'},
+    'login_surface': {'main', 'owned_popup'},
+    'rendering_reason': {'start_failed', 'ack_failed', 'context_left', 'authentication', 'session_unconfirmed', 'page_closed', 'not_needed', 'page_changed', 'read_finished', 'runtime_closed'},
+    'refresh_mode': {'observed','document_fallback'},
+    'read_reason': {'rendering_unavailable', 'wrong_dashboard','wrong_tab','wrong_period','wrong_filter','ambiguous_period',
+                    'ambiguous_widget','incomplete_widgets','definition_changed','timeout','document_changed',
+                    'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected'},
+    'cache_result': {'saved','failed','restored','invalid','skipped'},
+    'delay_reason': {'filter','dashboard','login','browser','idle'},
+    'outcome': {'returned', 'error', 'cancelled', 'authentication'},
+    'wait_reason': {'loading', 'missing', 'invalid', 'unstable', 'ready', 'observation_failed'},
     'risk_tile': {'P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'},
     'tile': {'Otwarte wnioski L1', 'Wnioski L1 >7 dni', 'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1'},
     'tile_state': {'ready', 'missing', 'ambiguous', 'invalid', 'unavailable', 'loading'},
@@ -60,14 +73,25 @@ TEXT_FIELDS = {
     'activity': {'login', 'dashboard', 'filters'},
     'readiness_reason': {'covered', 'unstable', 'disabled', 'hidden', 'detached', 'outside_viewport', 'unavailable'},
     'origin': {'adeo_identity', 'servicenow', 'other'},
-    'source': {'dashboard', 'monitor'},
+    'filter_outcome': {'success', 'error', 'cancelled', 'discarded', 'waiting_login', 'interrupted', 'rejected'},
+    'source': {'dashboard', 'monitor', 'pagination'},
+    'pagination_stage': {'navigate', 'resolve_url', 'read_rows', 'first_page', 'list_total',
+                         'next_page', 'verify_complete', 'retry', 'prepare', 'history_write'},
+    'pagination_mode': {'ranged', 'unpaginated'},
+    'pager_direction': {'first', 'next'},
+    'pagination_reason': {'ready', 'loading', 'page_unavailable', 'ambiguous_list',
+        'pager_disagreement', 'invalid_metadata', 'metadata_missing', 'range_mismatch',
+        'row_count_mismatch', 'record_type_mismatch', 'schema_changed', 'query_mismatch', 'view_mismatch', 'list_changed', 'missing_pager', 'premature_end',
+        'overlapping_rows', 'total_mismatch', 'document_changed', 'page_timeout',
+        'read_timeout', 'resolve_timeout', 'large_list_rejected', 'unexpected',
+        'timeout', 'element_unavailable', 'network_connection'},
     'section': {'sla', 'held', 'requests', 'threatened'},
     'category': {'status', 'location', 'assigned', 'agent', 'other'},
-    'operation': {'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'commit_period', 'category_select', 'category_apply', 'prepare_widgets', 'read_scores'},
+    'operation': {'document_ready', 'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'commit_period', 'refresh_cards', 'category_select', 'category_apply', 'prepare_widgets', 'read_scores'},
     'network_error': {'aborted', 'timeout', 'dns', 'connection', 'certificate', 'other'},
     'error_category': {'timeout', 'browser_closed', 'profile_locked', 'browser_missing',
         'access_denied', 'network_dns', 'network_connection', 'network_tls',
-        'document_changed', 'ambiguous_locator', 'element_unavailable', 'file_access', 'unexpected'},
+        'document_changed', 'navigation_interrupted', 'ambiguous_locator', 'element_unavailable', 'file_access', 'unexpected'},
     'delivery': {'observed', 'not_observed', 'unknown'},
     'error_type': {'Error', 'TimeoutError', 'TargetClosedError', 'RuntimeError',
                    'ValueError', 'OSError', 'PermissionError', 'LoginTargetUnavailable'},
@@ -78,9 +102,14 @@ TEXT_FIELDS = {
         'strona wymaga interwencji użytkownika lub zgłasza błąd',
         'brak zakończenia logowania przez 30 sekund po zatwierdzeniu',
         'nie udało się wykonać kliknięcia logowania po trzech próbach',
-        'wybór konta nie przeszedł do formularza po trzech próbach'},
+        'wybór konta nie przeszedł do formularza po trzech próbach',
+        'wybór konta nie spowodował przejścia do formularza',
+        'nierozpoznany krok logowania wymaga obsługi użytkownika'},
 }
-EVENTS = set('''start blocked automatic_skipped awaiting_submission_result dashboard_widgets_retry
+EVENTS = set('''threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred category_check_recovered category_check_failed dashboard_context dashboard_refresh section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end dashboard_observation pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
+filter_read_start filter_read_resumed filter_read_end filter_read_error filter_links_degraded filter_commit_start filter_commit_complete
+pagination_approval_wait pagination_action pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
+start blocked automatic_skipped awaiting_submission_result dashboard_widgets_retry
 waiting_password_fill waiting_remembered_form submit_unavailable submit_retry_cancelled
 submit_attempt submit_error submit_retry_scheduled submit_clicked account_selection_ambiguous
 account_click_attempt account_click_error account_waiting_ready submit_waiting_ready account_clicked browser_closed automatic_login_step_error
@@ -90,6 +119,10 @@ page_state login_still_waiting inspection_error section_read_attempt section_rea
 dashboard_scores_attempt dashboard_scores_error dashboard_scores_retry dashboard_tile_state dashboard_tile_missing dashboard_widgets_activated
 session_expired navigation document_response document_failed initial_navigation_attempt initial_navigation_error
 authentication_popup dashboard_operation dashboard_navigation section_read_error browser_options_changed browser_activity visibility_deferred authentication_popup_closed session_confirmed browser_launch_attempt browser_launched monitor_error monitor_finished browser_restart_limited browser_restart_delay'''.split())
+
+
+NUMERIC_FIELDS.update({'active_request_id', 'expected_year', 'expected_month'})
+EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 
 
 def readiness_facts(error):
@@ -113,14 +146,15 @@ def error_facts(error):
         (('err_name_not_resolved',), 'network_dns'),
         (('err_cert_',), 'network_tls'),
         (('err_connection_', 'err_internet_disconnected'), 'network_connection'),
-        (('execution context was destroyed', 'cannot find context'), 'document_changed'),
+        (('interrupted by another navigation', 'err_aborted'), 'navigation_interrupted'),
+        (('execution context was destroyed', 'cannot find context', 'frame was detached', 'frame has been detached'), 'document_changed'),
         (('strict mode violation',), 'ambiguous_locator'),
         (('not attached to the dom', 'element is not visible', 'element is not enabled'), 'element_unavailable'),
         (('access denied', 'permission denied'), 'access_denied'),
         (('timeout', 'timed out'), 'timeout'),
     ) if any(marker in message for marker in markers)), None)
     if category is None:
-        category = 'timeout' if type(error).__name__ == 'TimeoutError' else 'file_access' if isinstance(error, OSError) else 'unexpected'
+        category = 'timeout' if type(error).__name__ in ('TimeoutError', 'BudgetExpired') else 'file_access' if isinstance(error, OSError) else 'unexpected'
     return {'error_type': type(error).__name__, 'error_category': category}
 
 
@@ -134,6 +168,10 @@ def safe_facts(facts):
             clean[key] = value
         elif key == 'error_type':
             clean[key] = 'Error'
+        elif key == 'action_id' and isinstance(value, str):
+            import re
+            if re.fullmatch(r'[a-f0-9]{32}', value):
+                clean[key] = value
         elif key == 'app_version' and value == __version__:
             clean[key] = value
     return clean
@@ -141,11 +179,16 @@ def safe_facts(facts):
 
 class LoginDiagnostics:
     def __init__(self, **options):
+        self.context = safe_facts(options)
+        self.read_id = READ.get() or uuid4().hex
+        self.warned = False
         self.session = uuid4().hex[:12]
         self.started = perf_counter()
         self.previous = {}
         self.sequence = 0
         self.trace = TRACE.get() or uuid4().hex
+        self.network_error = None
+        self.document_status = None
         from neto_incident_monitor import __version__
         self.record('start', app_version=__version__, **options)
 
@@ -157,6 +200,14 @@ class LoginDiagnostics:
                 self.record('navigation', origin=origin)
         def response(result):
             if result.request.resource_type == 'document':
+                try:
+                    main = result.request.frame == page.main_frame
+                except Exception:
+                    main = False
+                if main:
+                    self.document_status = result.status
+                    if result.status < 400:
+                        self.network_error = None
                 self.record('document_response', http_status=result.status)
         def failed(request):
             if request.resource_type == 'document':
@@ -166,6 +217,11 @@ class LoginDiagnostics:
                     ('ABORTED', 'aborted'), ('TIMED_OUT', 'timeout'),
                     ('NAME_NOT_RESOLVED', 'dns'), ('CERT_', 'certificate'),
                     ('CONNECTION_', 'connection')) if marker in failure), 'other')
+                try:
+                    if request.frame == page.main_frame:
+                        self.network_error = category
+                except Exception:
+                    pass
                 self.record('document_failed', network_error=category)
         listeners = [('framenavigated', navigation), ('response', response), ('requestfailed', failed)]
         for event, callback in listeners:
@@ -182,7 +238,9 @@ class LoginDiagnostics:
         try:
             if event not in EVENTS:
                 return
-            facts = safe_facts(facts)
+            facts = {**self.context, **safe_facts(facts)}
+            if event == 'section_read_attempt':
+                self.context.update({k: v for k, v in facts.items() if k == 'attempt'})
             # Callers supply fixed event codes and booleans/counts, never DOM text.
             now = perf_counter()
             signature = json.dumps(facts, sort_keys=True)
@@ -194,28 +252,40 @@ class LoginDiagnostics:
             with _lock:
                 if not _logger.handlers:
                     DATA.mkdir(parents=True, exist_ok=True)
-                    handler = RotatingFileHandler(DATA / 'login-diagnostics.jsonl',
+                    handler = DiagnosticFileHandler(DATA / 'login-diagnostics.jsonl',
                                                   maxBytes=2_000_000, backupCount=3, encoding='utf-8')
                     handler.setFormatter(logging.Formatter('%(message)s'))
                     _logger.addHandler(handler)
             from datetime import datetime, timezone
             _logger.info(json.dumps({'time': datetime.now(timezone.utc).isoformat(),
+                                    'run_id': RUN_ID, 'read_id': self.read_id,
                                     'session': self.session, 'trace': self.trace, 'sequence': self.sequence,
                                     'elapsed_s': round(now - self.started, 1),
                                     'event': event, **facts}, ensure_ascii=False))
         except Exception:
             # Diagnostics must never interrupt authentication or print unsafe exceptions.
-            logging.getLogger('servicenow').warning('Nie udało się zapisać diagnostyki logowania.')
+            if not self.warned:
+                self.warned = True
+                try:
+                    logging.getLogger('servicenow').warning('Nie udało się zapisać diagnostyki logowania.')
+                except Exception:
+                    pass
 
-    def inspect(self, page, automatic):
+    def inspect(self, page, automatic, target='https://adeo.service-now.com/', surface_alias='main'):
         try:
-            host = urlparse(page.url).hostname or ''
-            origin = 'adeo_identity' if host.endswith('.adeo.com') else 'servicenow' if host.endswith('.service-now.com') else 'other'
-            raw = page.evaluate(SNAPSHOT)
-            facts = {key: raw[key] for key in FIELDS
-                     if isinstance(raw, dict) and type(raw.get(key)) in (bool, int)}
-            self.record('page_state', origin=origin, **facts,
-                        frame_count=len(page.frames), page_count=len(page.context.pages),
+            from neto_incident_monitor.authentication import login_observation
+            observed = login_observation(page, target, surface=surface_alias)
+            facts = observed.facts
+            state_key = (observed.state, observed.evidence, observed.generation)
+            previous = getattr(self, '_login_observation_key', None)
+            if state_key != previous:
+                self.record('login_state_changed', login_state=observed.state,
+                            previous_login_state=previous[0] if previous else 'initial',
+                            login_evidence=observed.evidence, login_surface=observed.surface,
+                            document_generation=observed.generation)
+                self._login_observation_key = state_key
+            self.record('page_state', origin=observed.origin, **facts,
+                        frame_count=observed.frame_count, page_count=len(page.context.pages),
                         auto_blocked=bool(automatic and automatic.blocked),
                         auto_submitted=bool(automatic and automatic.submitted),
                         account_selected=bool(automatic and automatic.account_clicked))

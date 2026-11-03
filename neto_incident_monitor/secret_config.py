@@ -90,9 +90,29 @@ def secret_containers(settings):
             yield entry, True
 
 
+def notification_settings(settings):
+    global_keys = (*KEYS, "teams_enabled", "google_chat_enabled", "notify", "notification_library")
+    filter_keys = (*KEYS, "enabled", "notify_teams", "notify_google_chat",
+                   "notify_windows", "notification_templates")
+
+    def values(entry, keys):
+        return {key: value.original if isinstance(value, UnavailableSecret) else value
+                for key in keys if (value := entry.get(key)) is not None}
+
+    filters = {entry["url"]: values(entry, filter_keys)
+               for entry in settings.get("filters", []) if isinstance(entry, dict) and "url" in entry}
+    return values(settings, global_keys), filters
+
+
 def save_config(path, settings):
     with LOCK:
+        from uuid import uuid4
+        previous = load_config(path, {}, migrate_plaintext=False)
         encoded = dict(settings)
+        revision = previous.get("notification_revision")
+        if not revision or notification_settings(previous) != notification_settings(settings):
+            revision = uuid4().hex
+        encoded["notification_revision"] = revision
         if isinstance(encoded.get('filters'), list):
             encoded['filters'] = [dict(entry) if isinstance(entry, dict) else entry for entry in encoded['filters']]
         for container, _ in secret_containers(encoded):
@@ -116,7 +136,7 @@ def save_config(path, settings):
                 temporary.unlink()
 
 
-def load_config(path, default):
+def load_config(path, default, *, migrate_plaintext=True):
     with LOCK:
         if not path.exists():
             return default
@@ -136,7 +156,7 @@ def load_config(path, default):
                     enabled_key = 'notify_' + key.removesuffix('_webhook') if per_filter else key.replace('_webhook', '_enabled')
                     container[enabled_key] = False
                     settings.protection_errors.append('Nie można odczytać zapisanego webhooka. Wprowadź go ponownie w ustawieniach powiadomień.')
-        if migrate:
+        if migrate and migrate_plaintext:
             try:
                 save_config(path, settings)
             except OSError:

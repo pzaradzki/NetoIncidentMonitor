@@ -17,9 +17,9 @@ class RequestListTests(unittest.TestCase):
             wrapped = BASE + '/now/nav/ui/classic/params/target/' + quote(direct[len(BASE)+1:], safe='')
             self.assertEqual(normalize_list_url(wrapped), direct)
             number = prefix + '0012345'
-            record = f'{BASE}/{table}.do?sys_id=abc'
+            record = f'{BASE}/{table}.do?sys_id=0123456789abcdef0123456789abcdef'
             self.assertEqual(safe_record_url(record, number, direct), record)
-            self.assertEqual(safe_record_url(BASE + '/incident.do?sys_id=abc', number), '')
+            self.assertEqual(safe_record_url(BASE + '/incident.do?sys_id=0123456789abcdef0123456789abcdef', number), '')
             self.assertEqual(safe_record_url(record.replace('adeo.service-now.com', 'evil.test'), number), '')
             title, text = standard('Filtr', [{'number': number, 'short_description': 'Opis'}])
             self.assertEqual(title, 'Filtr · 1')
@@ -39,12 +39,22 @@ class RequestListTests(unittest.TestCase):
                     page.route(BASE + '/**', lambda route: route.fulfill(body='<html></html>', content_type='text/html'))
                     page.goto(f'{BASE}/{table}_list.do')
                     number = prefix + '0012345'
-                    page.set_content(f'<table><tr><th name="{table}.number">Numer</th><th name="{table}.short_description">Krótki opis</th><th name="{table}.u_custom">Własna</th></tr><tr><td><a href="/{table}.do?sys_id=abc">{number}</a></td><td>Opis</td><td>Wartość</td></tr></table>')
+                    page.set_content(f'<table><tr><th name="{table}.number">Numer</th><th name="{table}.short_description">Krótki opis</th><th name="{table}.u_custom">Własna</th></tr><tr><td><a href="/{table}.do?sys_id=0123456789abcdef0123456789abcdef">{number}</a></td><td>Opis</td><td>Wartość</td></tr></table>')
                     found = {}; columns = ColumnDiscovery()
                     found = collect(page, columns)
                     self.assertIn(number, found)
                     self.assertEqual(found[number]['_values']['sn:u_custom'], 'Wartość')
-                    self.assertEqual(found[number]['url'], f'{BASE}/{table}.do?sys_id=abc')
+                    self.assertEqual(found[number]['url'], f'{BASE}/{table}.do?sys_id=0123456789abcdef0123456789abcdef')
+                    field = 'request_state' if prefix == 'REQ' else 'stage'
+                    page.set_content(
+                        f'<table><tr><th glide_field="{table}.number">Numer</th>'
+                        f'<th glide_field="{table}.{field}">Etap testowy</th></tr>'
+                        f'<tr><td><a href="/{table}.do?sys_id=0123456789abcdef0123456789abcdef">{number}</a></td>'
+                        '<td>W trakcie</td></tr></table>')
+                    incident = collect(page)[number]
+                    self.assertEqual(incident['_values']['sn:' + field], 'W trakcie')
+                    self.assertEqual(incident['state'], 'W trakcie' if prefix == 'REQ' else '')
+                    self.assertEqual(incident['summary'], number)
                     page.set_content('<div>No records to display</div>')
                     self.assertTrue(empty_list(page, page.url))
             finally:

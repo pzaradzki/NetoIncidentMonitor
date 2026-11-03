@@ -4,12 +4,17 @@ from time import monotonic
 from playwright.sync_api import TimeoutError
 from neto_incident_monitor.pagination import Cancelled
 
+from neto_incident_monitor.read_budget import CURRENT, remaining_ms
+
 ACTION_TICK = ContextVar('browser_action_tick', default=None)
 
 
 def checkpoint(stop):
     if stop is not None and stop.is_set():
         raise Cancelled()
+    budget = CURRENT.get()
+    if budget:
+        budget.check()
     tick = ACTION_TICK.get()
     if tick:
         tick()
@@ -19,7 +24,7 @@ def checkpoint(stop):
 
 def navigate_page(page, url, stop, timeout=60000):
     checkpoint(stop)
-    deadline = monotonic() + timeout / 1000
+    deadline = monotonic() + remaining_ms(timeout) / 1000
     committed = False
     def navigated(frame):
         nonlocal committed
@@ -28,7 +33,7 @@ def navigate_page(page, url, stop, timeout=60000):
     page.on('framenavigated', navigated)
     try:
         try:
-            page.goto(url, wait_until='commit', timeout=1000)
+            page.goto(url, wait_until='commit', timeout=remaining_ms(1000))
             committed = True
         except TimeoutError:
             pass  # Keep the pending navigation; do not issue another request.
@@ -39,7 +44,7 @@ def navigate_page(page, url, stop, timeout=60000):
             checkpoint(stop)
             if committed:
                 try:
-                    page.wait_for_load_state('domcontentloaded', timeout=500)
+                    page.wait_for_load_state('domcontentloaded', timeout=remaining_ms(500))
                     checkpoint(stop)
                     return
                 except TimeoutError:
@@ -55,13 +60,13 @@ def navigate_page(page, url, stop, timeout=60000):
 
 
 def wait_control(control, stop, timeout=30000, state='visible', check=None):
-    deadline = monotonic() + timeout / 1000
+    deadline = monotonic() + remaining_ms(timeout) / 1000
     while monotonic() < deadline:
         checkpoint(stop)
         if check:
             check()
         try:
-            control.wait_for(state=state, timeout=500)
+            control.wait_for(state=state, timeout=remaining_ms(500))
             checkpoint(stop)
             return
         except TimeoutError:
@@ -71,14 +76,14 @@ def wait_control(control, stop, timeout=30000, state='visible', check=None):
 
 def ready_control(control, stop, timeout=30000, check=None, editable=False):
     """Wait for actionability in short trials, without sending a real click."""
-    deadline = monotonic() + timeout / 1000
+    deadline = monotonic() + remaining_ms(timeout) / 1000
     while monotonic() < deadline:
         checkpoint(stop)
         if check:
             check()
         try:
-            control.click(trial=True, timeout=500)
-            if not editable or control.is_editable(timeout=500):
+            control.click(trial=True, timeout=remaining_ms(500))
+            if not editable or control.is_editable(timeout=remaining_ms(500)):
                 checkpoint(stop)
                 return
         except TimeoutError:
@@ -89,7 +94,7 @@ def ready_control(control, stop, timeout=30000, check=None, editable=False):
 
 def read_control(control, stop, read, timeout=15000, check=None, assertion=False):
     """Retry only observations; never repeat a possibly delivered action."""
-    deadline = monotonic() + timeout / 1000
+    deadline = monotonic() + remaining_ms(timeout) / 1000
     while monotonic() < deadline:
         checkpoint(stop)
         if check:

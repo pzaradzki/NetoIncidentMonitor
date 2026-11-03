@@ -317,7 +317,7 @@ def build_ui(app, settings):
     ttk.Label(state, textvariable=app.selected_filter_name, font=("Segoe UI", 10, "bold"),
               foreground=TEXT).pack(side="left", padx=(0, 12))
     from neto_incident_monitor.widgets import StatusPill
-    app.phase_label = StatusPill(state)
+    app.phase_label = StatusPill(state, compact=True)
     app.phase_label.pack(side="left")
     app.table_load_status = tk.StringVar(value='')
     ttk.Label(state, textvariable=app.table_load_status, style='Muted.TLabel').pack(side='left', padx=(12, 0))

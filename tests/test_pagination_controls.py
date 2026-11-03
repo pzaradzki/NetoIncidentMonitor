@@ -13,13 +13,14 @@ class PaginationControlsTests(unittest.TestCase):
     def test_modern_pager_moves_without_actionability_and_resets_restored_page(self):
         html = '''<style>@keyframes moving {from {transform:translateX(0)} to {transform:translateX(60px)}}
           button {animation:moving .15s linear infinite alternate}</style>
-          <table><tr><th glide_field="incident.number">Numer</th></tr>
+          <table first_row="3" last_row="3" total_rows="3" rows_per_page="1"><tr><th glide_field="incident.number">Numer</th></tr>
           <tr><td><a id="inc" href="/incident.do"></a></td></tr></table>
           <div style="height:5000px"></div>
           <button title="Pierwsza strona" onclick="n=1;render()">First</button>
           <input class="list_row_number_input" onkeydown="if(event.key==='Enter'){n=Number(this.value);render()}">
           <button title="Następna strona" onclick="n++;render()">Next</button>
           <script>let n=3;function render(){document.querySelector('#inc').textContent='INC000000'+n;
+          document.querySelector('table').setAttribute('first_row',n);document.querySelector('table').setAttribute('last_row',n);
           document.querySelector('input').value=n;
           document.querySelector('[title="Pierwsza strona"]').disabled=n===1;
           document.querySelector('[title="Następna strona"]').disabled=n===3;}render();</script>'''

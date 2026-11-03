@@ -22,85 +22,60 @@ class LoginTransitionTests(unittest.TestCase):
         runtime = BrowserRuntime(Mock(), options, Mock(return_value=window), state, Mock(), Mock())
         return runtime, options, window, state
 
-    def test_login_and_dashboard_stay_visible_until_filters_start(self):
+    def test_login_visible_but_dashboard_respects_hiding(self):
         runtime, options, window, state = self.runtime({'hide_browser': True, 'minimize_browser': True})
         runtime.set_activity('login')
         window.hide.assert_not_called()
-        window.show.assert_called_with(activate=False)
+        runtime.page.bring_to_front.assert_called_once()  # Auto off means immediate manual handoff.
         runtime.complete_login()
-        window.hide.assert_not_called()
-        runtime.set_activity('dashboard')
-        window.show.assert_called_with(activate=False)
-        runtime.set_activity('filters')
-        window.hide.assert_called_once()
+        runtime.page.bring_to_front.reset_mock()
         window.reset_mock()
-        # A manual dashboard refresh restores the already hidden native window.
         runtime.set_activity('dashboard')
-        window.show.assert_called_once_with(activate=False)
-        window.hide.assert_not_called()
-        runtime.page.bring_to_front.assert_not_called()
-        runtime.set_activity('filters')
         window.hide.assert_called_once()
+        window.show.assert_not_called()
+        runtime.page.bring_to_front.assert_not_called()
 
-    def test_visible_phases_do_not_repeat_focus_or_apply_hide_setting_changes(self):
+    def test_dashboard_option_changes_apply_without_stealing_focus(self):
         runtime, options, window, state = self.runtime({})
         runtime.set_activity('dashboard')
-        runtime.page.bring_to_front.reset_mock()
-        state.reset_mock()
-        options.update(hide_browser=True, minimize_browser=True)
-        runtime.commands.put('hide')
+        options.update(hide_browser=True)
         runtime.tick()
         runtime.tick()
-        window.hide.assert_not_called()
-        runtime.page.bring_to_front.assert_not_called()
-        state.assert_not_called()
-        runtime.set_activity('filters')
         window.hide.assert_called_once()
-
-    def test_only_explicit_show_activates_browser_during_visible_phase(self):
-        runtime, _, window, _ = self.runtime({'hide_browser': True})
-        runtime.set_activity('login')
         runtime.page.bring_to_front.assert_not_called()
+        options.update(hide_browser=False, minimize_browser=True)
+        runtime.tick()
         window.show.assert_called_with(activate=False)
+        window.minimize.assert_not_called()
+        runtime.set_activity('filters')
+        window.minimize.assert_called_once()
+
+    def test_explicit_show_persists_across_activity_changes(self):
+        runtime, _, window, _ = self.runtime({'hide_browser': True})
+        runtime.set_activity('dashboard')
         runtime.commands.put('show')
         runtime.tick()
-        window.show.assert_called_with(activate=True)
         runtime.page.bring_to_front.assert_called_once()
         runtime.tick()
         runtime.page.bring_to_front.assert_called_once()
-        runtime.set_activity('dashboard')
-        window.show.assert_called_with(activate=False)
-        runtime.page.bring_to_front.assert_called_once()
-
-    def test_filter_visibility_uses_latest_preferences_after_dashboard(self):
-        for minimized in (False, True):
-            runtime, options, window, state = self.runtime({'hide_browser': True})
-            runtime.set_activity('login')
-            runtime.set_activity('dashboard')
-            options.update(hide_browser=False, minimize_browser=minimized)
-            runtime.tick()
-            runtime.set_activity('filters')
-            window.hide.assert_not_called()
-            if minimized:
-                window.minimize.assert_called_once()
-            else:
-                window.show.assert_called_with(activate=False)
-            runtime.page.bring_to_front.assert_not_called()
-
-    def test_reauthentication_is_visible_and_restores_dashboard_phase(self):
-        runtime, options, window, state = self.runtime({'hide_browser': True})
-        runtime.set_activity('filters')
-        runtime.set_activity('login')
-        runtime.manual_required = True
-        runtime.complete_login()
-        self.assertEqual(runtime.activity, 'login')
-        self.assertFalse(runtime.manual_required)
         window.reset_mock()
+        runtime.set_activity('filters')
         runtime.set_activity('dashboard')
         window.hide.assert_not_called()
-        window.show.assert_called_with(activate=False)
 
-    def test_dashboard_requests_show_browser_for_every_section_including_manual_refresh(self):
+    def test_reauthentication_remains_visible_until_dashboard_resumes(self):
+        runtime, options, window, state = self.runtime({'hide_browser': True})
+        runtime.set_activity('login')
+        runtime.manual_required = True
+        runtime.tick()
+        runtime.page.bring_to_front.assert_called_once()
+        runtime.complete_login()
+        window.reset_mock()
+        runtime.set_activity('dashboard')
+        window.hide.assert_called_once()
+        window.show.assert_not_called()
+
+    def test_dashboard_requests_scope_visibility_for_every_section(self):
         from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
         app = App.__new__(App)
         app.stop = threading.Event()
@@ -109,19 +84,19 @@ class LoginTransitionTests(unittest.TestCase):
         runtime, _, window, state = self.runtime({'hide_browser': True})
         app.browser_runtime = runtime
         for request in (1, 2):
-            runtime.set_activity('filters')
             app.dashboard_requests.put((request, 2026, 10))
             def values(titles):
                 self.assertEqual(runtime.activity, 'dashboard')
-                window.show.assert_called_with(activate=False)
+                self.assertIsNotNone(runtime.window)
                 return dict.fromkeys(titles, 0)
             with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=lambda *args: values(TITLES)), \
                     patch('neto_incident_monitor.dashboard.read_held_dashboard', side_effect=lambda *args: values(HELD_TITLES)), \
                     patch('neto_incident_monitor.dashboard.read_requests_dashboard', side_effect=lambda *args: values(REQUEST_TITLES)):
                 app.read_dashboard_request(runtime.page)
-            self.assertEqual(runtime.activity, 'dashboard')
+            self.assertEqual(runtime.activity, 'filters')
+            self.assertIsNone(runtime.rendering.client)
         window.reset_mock()
-        app.read_dashboard_request(runtime.page)  # No queued request: no phase change.
+        app.read_dashboard_request(runtime.page)
         window.show.assert_not_called()
         window.hide.assert_not_called()
 
@@ -216,63 +191,85 @@ class LoginTransitionTests(unittest.TestCase):
         control.wait_for.assert_called_once_with(state='visible', timeout=500)
 
     def test_session_confirmation_does_not_require_first_filter_records(self):
-        frame = Mock(url=TARGET)
-        frame.locator.return_value.count.return_value = 0
-        frame.evaluate.return_value = True
-        page = Mock(url=TARGET, frames=[frame])
+        from tests.test_login_observation import frame_with, page_with
+        page = page_with(frame_with(session_signal=True))
         page.is_closed.return_value = False
         with patch('neto_incident_monitor.app.collect', side_effect=AssertionError('Must not read filter to confirm session')):
             self.assertTrue(wait_for_login(page, TARGET, threading.Event()))
         self.assertTrue(authenticated_session(page, TARGET))
 
-    def test_popup_closed_without_session_has_explicit_cancellation(self):
-        page = Mock(url=TARGET)
+    def test_popup_closed_without_session_recovers_and_waits(self):
+        from tests.test_login_observation import page_with, frame_with, signals
+        page = page_with(frame_with(session_signal=False))
         page.is_closed.return_value = False
-        popup = Mock(url='https://idpb2e.adeo.com/login')
-        popup.is_closed.return_value = True
-        with patch('neto_incident_monitor.authentication.login_surface', return_value=popup), \
-                patch('neto_incident_monitor.authentication.authenticated_session', return_value=False), \
-                patch('neto_incident_monitor.app.time.monotonic', return_value=0):
-            with self.assertRaises(LoginPopupClosed):
-                wait_for_login(page, TARGET, threading.Event())
+        popup_frame = frame_with(url='https://idpb2e.adeo.com/login',password_count=1)
+        popup = page_with(popup_frame,url='https://idpb2e.adeo.com/login')
+        popup.is_closed.return_value = False; popup.opener.return_value = page
+        page.context.pages = [page,popup]
+        stop = threading.Event(); ticks=[0]
+        def pulse(_):
+            ticks[0]+=1
+            popup.is_closed.return_value=True
+            if ticks[0]>=3:stop.set()
+        page.wait_for_timeout.side_effect=pulse
+        with patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.time.monotonic',return_value=0):
+            self.assertFalse(wait_for_login(page,TARGET,stop))
+        navigate.assert_called_once()
+        self.assertTrue(stop.is_set())
 
-    def test_popup_cancel_stops_monitor_and_keeps_explanatory_status(self):
+    def test_restore_login_does_not_set_stop_on_its_own(self):
+        app=App.__new__(App);app.stop=threading.Event();app.events=queue.Queue();app.browser_window=None
+        with patch('neto_incident_monitor.app.wait_for_login',return_value=False):
+            self.assertFalse(app.restore_login(Mock(),TARGET,{}))
+        self.assertFalse(app.stop.is_set())
+
+    def test_confirmed_session_updates_filter_phase_before_reads_start(self):
         app = App.__new__(App)
         app.stop = threading.Event()
         app.events = queue.Queue()
         app.browser_window = None
-        with patch('neto_incident_monitor.app.wait_for_login', side_effect=LoginPopupClosed('Zamknięto okno logowania.')):
-            self.assertFalse(app.restore_login(Mock(), TARGET, {}))
-        self.assertTrue(app.stop.is_set())
-        self.assertEqual(app.login_cancel_message, 'Zamknięto okno logowania.')
+        with patch('neto_incident_monitor.app.wait_for_login', return_value=True):
+            self.assertTrue(app.restore_login(Mock(), TARGET, {}))
+        self.assertEqual(app.events.get_nowait(), ('phase', 'Oczekiwanie'))
 
-    def test_stale_identity_in_original_tab_does_not_hide_popup_cancellation(self):
-        page = Mock(url=TARGET)
+    def test_stale_identity_cannot_confirm_session_after_popup_close(self):
+        from tests.test_login_observation import page_with, frame_with, signals
+        page = page_with(frame_with(session_signal=True))
         page.is_closed.return_value = False
-        popup = Mock(url='https://idpb2e.adeo.com/login')
-        popup.is_closed.return_value = True
-        with patch('neto_incident_monitor.authentication.login_surface', return_value=popup), \
-                patch('neto_incident_monitor.authentication.authenticated_session', return_value=True):
-            with self.assertRaises(LoginPopupClosed):
-                wait_for_login(page, TARGET, threading.Event())
+        popup_frame = frame_with(url='https://idpb2e.adeo.com/login',password_count=1)
+        popup = page_with(popup_frame,url='https://idpb2e.adeo.com/login')
+        popup.is_closed.return_value = False; popup.opener.return_value = page
+        page.context.pages = [page,popup]
+        stop = threading.Event(); ticks=[0]
+        def pulse(_):
+            ticks[0]+=1
+            popup.is_closed.return_value=True
+            if ticks[0]>=3:stop.set()
+        page.wait_for_timeout.side_effect=pulse
+        with patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.time.monotonic',return_value=0):
+            self.assertFalse(wait_for_login(page,TARGET,stop))
+        navigate.assert_called_once()
+        self.assertTrue(stop.is_set())
 
     def test_authenticated_popup_resumes_original_tab(self):
-        page = Mock(url=TARGET, frames=[Mock(url=TARGET)])
-        page.is_closed.return_value = False
-        popup = Mock(url=TARGET)
-        popup.is_closed.return_value = False
-        with patch('neto_incident_monitor.authentication.login_surface', side_effect=[popup, page]), \
-                patch('neto_incident_monitor.authentication.authenticated_session', return_value=True), \
-                patch('neto_incident_monitor.app.authentication_page', return_value=False), \
-                patch('neto_incident_monitor.app.navigate') as navigate:
-            self.assertTrue(wait_for_login(page, TARGET, threading.Event()))
-        navigate.assert_called_once()
+        from tests.test_login_observation import page_with, frame_with, signals
+        page=page_with(frame_with());page.is_closed.return_value=False
+        pf=frame_with(url='https://idpb2e.adeo.com/login',password_count=1)
+        popup=page_with(pf,url='https://idpb2e.adeo.com/login');popup.is_closed.return_value=False;popup.opener.return_value=page
+        page.context.pages=[page,popup]
+        def pulse(_):
+            popup.url=TARGET;pf.url=TARGET;pf.evaluate.return_value=signals(session_signal=True)
+        page.wait_for_timeout.side_effect=pulse
+        def navigate(*_):page.frames[0].evaluate.return_value=signals(session_signal=True)
+        with patch('neto_incident_monitor.app.navigate',side_effect=navigate) as call,patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True):
+            self.assertTrue(wait_for_login(page,TARGET,threading.Event()))
+        call.assert_called_once()
 
     def test_live_toggle_reuses_guard_when_automatic_login_is_reenabled(self):
         runtime, options, _, _ = self.runtime({'auto_login': False})
-        page = Mock(url='https://idpb2e.adeo.com/login')
+        from tests.test_login_observation import page_with,frame_with
+        page = page_with(frame_with(url='https://idpb2e.adeo.com/login',password_count=1),url='https://idpb2e.adeo.com/login')
         page.is_closed.return_value = False
-        page.evaluate.return_value = False
         stop = threading.Event()
         ticks = [0]
         def pulse(_):
@@ -285,6 +282,7 @@ class LoginTransitionTests(unittest.TestCase):
         with patch('neto_incident_monitor.automatic_login.AutomaticLogin') as automatic, \
                 patch('neto_incident_monitor.app.time.monotonic', return_value=0):
             automatic.return_value.blocked = False
+            automatic.return_value.needs_user = False
             self.assertFalse(wait_for_login(page, TARGET, stop, runtime=runtime))
         automatic.assert_called_once()
         automatic.return_value.step.assert_called_once()
@@ -323,7 +321,8 @@ class LoginTransitionTests(unittest.TestCase):
                 automatic.step(fresh)
                 fresh.locator('input').evaluate("el => el.outerHTML = '<input type=password value=dummy>'")
                 automatic.step(fresh)
-                self.assertTrue(automatic.blocked)
+                self.assertTrue(automatic.needs_user)
+                self.assertFalse(automatic.blocked)
                 self.assertFalse(automatic.account_clicked)
                 self.assertFalse(fresh.evaluate('!!window.clicks'))
                 fresh.evaluate('''() => {
@@ -345,7 +344,8 @@ class LoginTransitionTests(unittest.TestCase):
                 pending.step(navigated)
                 navigated.reload()
                 pending.step(navigated)
-                self.assertTrue(pending.blocked)
+                self.assertTrue(pending.needs_user)
+                self.assertFalse(pending.blocked)
                 self.assertFalse(pending.account_clicked)
             finally:
                 browser.close()
@@ -383,6 +383,7 @@ class LoginTransitionTests(unittest.TestCase):
                 page.goto('https://idpb2e.adeo.com/login')
                 automatic = AutomaticLogin()
                 automatic.account_clicked = True
+                automatic.autofilled = Mock(return_value=True)  # Synthetic CSS evidence.
                 original = Locator.click
                 def two_clicks(locator, **kwargs):
                     original(locator, **kwargs)

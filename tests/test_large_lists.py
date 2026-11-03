@@ -29,13 +29,16 @@ class LargeListTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 url = "https://adeo.service-now.com/sc_task_list.do"
+                from tests.list_fixture import classic_list
+                from neto_incident_monitor.app import collect
+                html = classic_list(total=81527, size=1).replace('incident', 'sc_task').replace('INC', 'SCTASK')
                 page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(
-                    content_type="text/html; charset=utf-8", body='<div class="list2_paging">1 do 20 z 81 527</div>'))
+                    content_type="text/html; charset=utf-8", body=html))
                 page.goto(url)
                 self.assertEqual(list_total(page, url), 81527)
                 approve = Mock(return_value=False)
                 with self.assertRaises(LargeListRejected):
-                    read_all(page, url, threading.Event(), lambda _: {"SCTASK1234567": {}},
+                    read_all(page, url, threading.Event(), collect,
                              lambda *_: False, lambda *_: False, lambda *_: None, approve_large=approve)
                 approve.assert_called_once_with(81527)
             finally:

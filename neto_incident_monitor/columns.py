@@ -58,7 +58,8 @@ class ColumnDiscovery(set):
         self.schema = None
 
     def discover(self, schema):
-        if self.schema is not None and {c['key'] for c in self.schema} != {c['key'] for c in schema}:
-            raise RuntimeError('Zestaw kolumn zmienił się podczas odczytu. Wynik zostanie pobrany ponownie.')
+        if self.schema is not None and {c['key']: c['label'] for c in self.schema} != {c['key']: c['label'] for c in schema}:
+            from neto_incident_monitor.list_context import ListStateError
+            raise ListStateError("schema_changed")
         if self.schema is None:
             self.schema = schema

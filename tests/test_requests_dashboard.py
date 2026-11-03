@@ -15,8 +15,9 @@ from neto_incident_monitor.pagination import Cancelled, AuthenticationRequired
 
 
 def tiles(titles=REQUEST_TITLES):
-    return ''.join(f'<button aria-label="{title.replace(">", "> ")}, {index}">{index}</button>'
-                   for index, title in enumerate(titles))
+    return ''.join('<div class="grid-stack-item-content"><h2>' + html.escape(title) + '</h2>'
+        + f'<now-score-basic><span class="now-score-value">{index}</span></now-score-basic></div>'
+        for index, title in enumerate(titles))
 
 
 def fixture(scores, checked=True):
@@ -26,7 +27,7 @@ def fixture(scores, checked=True):
             '<sn-component-filter><h3>Agenci L1</h3><label><input id="agents" type="checkbox" '
             + ('checked' if checked else '') + '>Zaznacz wszystko</label>'
             '<button onclick="window.applied=(window.applied||0)+1;'
-            'document.getElementById(\'scores\').innerHTML=window.scores">Zastosuj</button>'
+            'if(typeof window.scores===\'string\')document.getElementById(\'scores\').innerHTML=window.scores">Zastosuj</button>'
             '</sn-component-filter><div id="scores">' + scores + '</div>')
 
 
@@ -77,7 +78,9 @@ class RequestsDashboardTests(unittest.TestCase):
         for index, card in enumerate(items):
             card.bounding_box.return_value = {'x': 0, 'y': index * 500}
         items[0].scroll_into_view_if_needed.side_effect = lambda **kwargs: stop.set()
-        with self.assertRaises(Cancelled):
+        # Exercise cancellation between widget actions independently of auth.
+        with patch('neto_incident_monitor.dashboard.authentication_required', return_value=False), \
+                self.assertRaises(Cancelled):
             activate_dashboard_widgets(page, stop)
         items[0].scroll_into_view_if_needed.assert_called_once()
         items[1].scroll_into_view_if_needed.assert_not_called()
@@ -104,7 +107,9 @@ class RequestsDashboardTests(unittest.TestCase):
                 page.route('**/*', lambda route: route.fulfill(body=html, content_type='text/html; charset=utf-8'))
                 page.goto(DASHBOARD_URL)
                 with diagnostic_steps(LoginDiagnostics()), self.assertLogs(_logger, level='INFO') as logs:
-                    values = read_requests_dashboard(page, threading.Event())
+                    from neto_incident_monitor.section_runner import run_section
+                    values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
+                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: len(v) == 4)
                 self.assertEqual(values, dict(zip(REQUEST_TITLES, range(4))))
                 facts = _request_tile(page, REQUEST_TITLES[0])
                 self.assertEqual(facts['score_source'], 'widget_value')
@@ -155,7 +160,7 @@ class RequestsDashboardTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.route('**/*', lambda route: route.fulfill(
-                    body=fixture('', checked=False), content_type='text/html; charset=utf-8'))
+                    body=fixture('', checked=False)+'<script>window.scores='+json.dumps(tiles())+'</script>', content_type='text/html; charset=utf-8'))
                 page.goto(DASHBOARD_URL)
                 page.evaluate('html => window.scores = html', tiles())
                 values = read_requests_dashboard(page, threading.Event())
@@ -166,7 +171,7 @@ class RequestsDashboardTests(unittest.TestCase):
             finally:
                 browser.close()
 
-    def test_retries_once_and_returns_complete_snapshot_after_reload(self):
+    def test_single_owner_retries_once_and_returns_complete_snapshot_after_reload(self):
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
@@ -174,19 +179,21 @@ class RequestsDashboardTests(unittest.TestCase):
                 loads = []
                 def serve(route):
                     loads.append(True)
-                    scores = tiles(REQUEST_TITLES[:-1] if len(loads) == 1 else REQUEST_TITLES)
+                    scores = tiles(REQUEST_TITLES[:-1] if len(loads) <= 2 else REQUEST_TITLES)
                     route.fulfill(body=fixture(scores), content_type='text/html; charset=utf-8')
                 page.route('**/*', serve)
                 page.goto(DASHBOARD_URL)
                 with patch('neto_incident_monitor.dashboard.REQUEST_READ_TIMEOUT', 2), \
                         self.assertLogs(_logger, level='INFO') as logs, diagnostic_steps(LoginDiagnostics()):
-                    values = read_requests_dashboard(page, threading.Event())
+                    from neto_incident_monitor.section_runner import run_section
+                    values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
+                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: len(v) == 4)
                 self.assertEqual(len(values), 4)
-                self.assertEqual(len(loads), 2)
+                self.assertEqual(len(loads), 4)
                 records = [json.loads(r.getMessage()) for r in logs.records]
-                self.assertEqual(sum(r['event'] == 'dashboard_scores_retry' for r in records), 1)
+                self.assertEqual(sum(r['event'] == 'section_read_retry' for r in records), 1)
                 self.assertTrue(any(r['event'] == 'dashboard_tile_state' and
-                                    r.get('tile') == REQUEST_TITLES[-1] and r.get('tile_state') == 'missing'
+                                    r.get('tile_index') == 3 and r.get('tile_state') == 'missing'
                                     for r in records))
             finally:
                 browser.close()
@@ -201,32 +208,22 @@ class RequestsDashboardTests(unittest.TestCase):
                 self.assertLogs(_logger, level='INFO') as logs:
             app.read_dashboard_request(Mock())
         records = [json.loads(r.getMessage()) for r in logs.records]
-        partial = next(r for r in records if r['event'] == 'section_read_partial')
+        partial = next(r for r in records if r['event'] == 'section_read_error' and r.get('section') == 'requests')
         self.assertFalse(any(r['event'] == 'section_read_complete' and r['session'] == partial['session'] for r in records))
-        self.assertTrue(any(r['event'] == 'dashboard_tile_missing' and r['tile'] == REQUEST_TITLES[-1] for r in records))
+        self.assertTrue(any(r.get('read_reason') == 'incomplete_widgets' for r in records))
 
     def test_persistent_missing_tile_retries_only_once(self):
-        partial = dict.fromkeys(REQUEST_TITLES[:-1], 0)
-        page = Mock(url=DASHBOARD_URL, frames=[])
-        with patch('neto_incident_monitor.dashboard.open_dashboard_tab'), \
-                patch('neto_incident_monitor.dashboard.activate_dashboard_widgets'), \
-                patch('neto_incident_monitor.dashboard.ensure_all_categories') as ensure, \
-                patch('neto_incident_monitor.dashboard._read_request_scores', return_value=partial) as scores, \
-                patch('neto_incident_monitor.dashboard.navigate_page') as navigate:
-            self.assertEqual(read_requests_dashboard(page, threading.Event()), partial)
-        self.assertEqual(scores.call_count, 2)
-        self.assertEqual(ensure.call_count, 2)
-        navigate.assert_called_once()
+        from neto_incident_monitor.section_runner import run_section
+        reader = Mock(return_value=dict.fromkeys(REQUEST_TITLES[:-1], 0))
+        with self.assertRaises(ValueError):
+            run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), Mock(), Mock(), lambda v: len(v) == 4)
+        self.assertEqual(reader.call_count, 2)
 
     def test_cancel_and_session_expiry_are_not_retried_as_score_errors(self):
+        from neto_incident_monitor.section_runner import run_section
         for error in (Cancelled(), AuthenticationRequired()):
-            with self.subTest(error=type(error).__name__), \
-                    patch('neto_incident_monitor.dashboard.open_dashboard_tab'), \
-                    patch('neto_incident_monitor.dashboard.activate_dashboard_widgets'), \
-                    patch('neto_incident_monitor.dashboard.ensure_all_categories'), \
-                    patch('neto_incident_monitor.dashboard._read_request_scores', side_effect=error), \
-                    patch('neto_incident_monitor.dashboard.navigate_page') as navigate:
-                page = Mock(url=DASHBOARD_URL, frames=[])
-                with self.assertRaises(type(error)):
-                    read_requests_dashboard(page, threading.Event())
-                navigate.assert_not_called()
+            reader = Mock(side_effect=error)
+            restore = Mock(return_value=False)
+            with self.subTest(error=type(error).__name__), self.assertRaises((Cancelled, AuthenticationRequired)):
+                run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), restore, Mock(), lambda v: True)
+            self.assertEqual(reader.call_count, 1)

@@ -37,7 +37,7 @@ class BrowserWindow:
         finally:
             session.detach()
 
-    def _apply(self, show, activate=True, asynchronous=False):
+    def _apply(self, show, activate=True, asynchronous=False, include_minimized=False):
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
@@ -82,7 +82,8 @@ class BrowserWindow:
                             user32.ShowWindowAsync(hwnd, command)
                     if show and show != 'minimized' and activate:
                         _restore_foreground(user32, hwnd)
-                visible.append(bool(user32.IsWindowVisible(hwnd)) and not user32.IsIconic(hwnd))
+                visible.append(bool(user32.IsWindowVisible(hwnd)) and
+                               (include_minimized or not user32.IsIconic(hwnd)))
             return True
 
         user32.EnumWindows(visit, 0)
@@ -95,6 +96,19 @@ class BrowserWindow:
             self.visible = visible
             self.visibility_changed()
         return visible
+
+    def is_foreground(self):
+        """Return a boolean for our PID, without observing other window titles."""
+        api = ctypes.WinDLL('user32')
+        api.GetForegroundWindow.restype = wintypes.HWND
+        api.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        pid = wintypes.DWORD()
+        api.GetWindowThreadProcessId(api.GetForegroundWindow(), ctypes.byref(pid))
+        return pid.value == self.pid
+
+    def is_hidden(self):
+        """A minimized taskbar window is not the same as a hidden window."""
+        return not self._apply(None, include_minimized=True)
 
     def hide(self):
         self._apply(False)

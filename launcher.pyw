@@ -45,7 +45,9 @@ def main():
         threading.excepthook = thread_exception
         sys.stdout = LogStream(logging.INFO)
         sys.stderr = LogStream(logging.ERROR)
-        logging.info("Uruchomienie aplikacji bez konsoli")
+        from neto_incident_monitor import __version__
+        from neto_incident_monitor.login_diagnostics import RUN_ID
+        logging.info("Uruchomienie aplikacji: wersja=%s run_id=%s", __version__, RUN_ID)
         if "--smoke-test" in sys.argv:
             from tools.package_smoke import main as smoke_main
             smoke_main(Path(sys.argv[sys.argv.index("--smoke-test") + 1]))
@@ -63,7 +65,7 @@ def main():
         finally:
             root.destroy()
     finally:
-        logging.info("Zakończenie aplikacji")
+        logging.info("Zakończenie aplikacji: run_id=%s", locals().get("RUN_ID", "unavailable"))
         sys.stdout, sys.stderr = previous_stdout, previous_stderr
         threading.excepthook = previous_thread_hook
         if handler is not None:

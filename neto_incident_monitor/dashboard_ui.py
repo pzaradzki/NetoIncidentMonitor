@@ -20,8 +20,10 @@ def bind_dashboard_wheel(widget, callback):
 
 def build_dashboard(parent, app, cache_path=None):
     from neto_incident_monitor.runtime_paths import DATA
-    from neto_incident_monitor.dashboard_cache import load_snapshot, save_snapshot
-    cache_path = cache_path if cache_path is not None else DATA / 'dashboard-cache.json'
+    from neto_incident_monitor.dashboard_cache import load_snapshot, save_sections, valid_values, NAMES
+    from neto_incident_monitor.dashboard import measured_record
+    from pathlib import Path
+    cache_path = Path(cache_path) if cache_path is not None else DATA / 'dashboard-cache.json'
     panel = tk.Frame(parent, bg=BG)
     canvas = tk.Canvas(panel, bg=BG, highlightthickness=0, borderwidth=0)
     scroll = ttk.Scrollbar(panel, orient='vertical', command=canvas.yview)
@@ -48,8 +50,24 @@ def build_dashboard(parent, app, cache_path=None):
     panel.value_labels = {}
     panel.data_period = None
     panel.snapshot_values = {}
+    panel.section_snapshots = {}
+    panel.cache_error = False
     panel.restored_snapshot = False
     panel.request_id = 0
+    panel.active_request = None
+    panel.request_period = None
+    panel.period_controls = []
+    panel.request_diagnostics = None
+    panel.request_sections = set()
+    panel.last_complete_read_at = None
+    def record(event, **facts):
+        try:
+            if panel.request_diagnostics is None:
+                from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+                panel.request_diagnostics = LoginDiagnostics(source='dashboard')
+            measured_record(panel.request_diagnostics, event, **facts)
+        except Exception:
+            pass  # Diagnostic setup cannot change request ownership.
     panel.section_states = {}
     panel.section_pills = {}
     def section_header(parent, section):
@@ -71,7 +89,7 @@ def build_dashboard(parent, app, cache_path=None):
 
     def finish_pending():
         for section, state in panel.section_states.items():
-            if state in ('Oczekuje', 'W trakcie aktualizacji'):
+            if state in ('Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
                 set_section_state(panel.request_id, section, 'Dane nieaktualne')
     panel.finish_pending = finish_pending
     panel.message = tk.StringVar(panel, value="Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.")
@@ -88,17 +106,29 @@ def build_dashboard(parent, app, cache_path=None):
     panel.last_read_text = '—'
     def set_message(description):
         year, month = panel.data_period or (int(panel.year.get()), months.index(panel.month.get()) + 1)
-        panel.message.set(f'Dane za okres {months[month - 1].lower()} {year}. • '
+        panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year}. • '
                           f'Ostatnio odczytano: {panel.last_read_text} • {description}')
     panel.set_message = set_message
     set_message('Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.')
     def period_changed(event=None):
+        if panel.active_request is not None:
+            request_id, year, month = panel.active_request
+            if panel.year.get() != str(year):
+                panel.year.set(str(year))
+            if panel.month.get() != months[month - 1]:
+                panel.month.set(months[month - 1])
+            record('dashboard_period_state', request_id=request_id, year=year, month=month,
+                   request_state='blocked')
+            return
         panel.request_id += 1
         if hasattr(app, 'dashboard_progress'):
             app.dashboard_progress.hide()
-        for section in panel.section_pills:
-            set_section_state(panel.request_id, section, 'Dane nieaktualne')
-        set_message('Zmieniono okres — kliknij Aktualizuj. Kafelki pokazują poprzedni odczyt.')
+        set_section_state(panel.request_id, 'Dashboard SLA', 'Dane nieaktualne')
+        year, month = int(panel.year.get()), months.index(panel.month.get()) + 1
+        record('dashboard_period_state', request_id=panel.request_id, year=year, month=month,
+               request_state='idle_changed')
+        set_message(f'Wybrano {months[month - 1].lower()} {year} — kliknij Aktualizuj. '
+                    'Kafelki SLA pokazują poprzedni odczyt.')
 
     for label, variable, options, width in (("Miesiąc", panel.month, months, 16),
                                 ("Rok", panel.year, tuple(str(y) for y in range(2026, 2031)), 7)):
@@ -107,22 +137,79 @@ def build_dashboard(parent, app, cache_path=None):
         tk.Label(field, text=label, bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 5))
         combo = ttk.Combobox(field, values=options, state="readonly", width=width, textvariable=variable)
         combo.pack()
+        panel.period_controls.append(combo)
         combo.bind('<<ComboboxSelected>>', period_changed)
+
+    restoring_period = False
+    def protect_period(*_):
+        nonlocal restoring_period
+        if panel.active_request is not None and not restoring_period:
+            restoring_period = True
+            try:
+                period_changed()
+            finally:
+                restoring_period = False
+    for variable in (panel.month, panel.year):
+        variable.trace_add('write', protect_period)
+
+    def set_updating(request_id, year, month, state):
+        if panel.active_request != (request_id, year, month):
+            record('dashboard_request_state', request_id=request_id,
+                   active_request_id=panel.request_id,
+                   request_state='period_mismatch' if request_id == panel.request_id else 'stale_id')
+            return False
+        record('dashboard_request_state', request_id=request_id, year=year, month=month,
+               request_state=state)
+        if state in ('finished', 'cancelled', 'queue_error'):
+            panel.active_request = None
+            for combo in panel.period_controls:
+                combo.configure(state='readonly')
+            panel.finish_pending()
+            record('dashboard_period_state', request_id=request_id, year=year, month=month,
+                   request_state='unlocked')
+        return True
+    panel.set_updating = set_updating
+
+    def cancel_request():
+        if panel.active_request is not None:
+            set_updating(*panel.active_request, 'cancelled')
+    panel.cancel_request = cancel_request
 
     def request(automatic=False, coordinated=False):
         if not automatic and not coordinated:
             return app.request_refresh('dashboard')
+        if panel.active_request is not None:
+            return False
         if not automatic and (not app.worker or not app.worker.is_alive()):
             set_message('Najpierw uruchom monitoring i zaloguj się w ServiceNow.')
-            return
+            return False
+        year, month = int(panel.year.get()), months.index(panel.month.get()) + 1
         panel.request_id += 1
+        panel.active_request = (panel.request_id, year, month)
+        panel.request_period = (year, month)
+        panel.request_sections.clear()
+        panel.request_diagnostics = None
+        for combo in panel.period_controls:
+            combo.configure(state='disabled')
+        record('dashboard_period_state', request_id=panel.request_id, year=year, month=month,
+               request_state='locked')
         if hasattr(app, 'dashboard_progress'):
             app.dashboard_progress.start(panel.request_id)
         for section in panel.section_pills:
             set_section_state(panel.request_id, section, 'Oczekuje')
-        app.dashboard_requests.put((panel.request_id, int(panel.year.get()), months.index(panel.month.get()) + 1))
+        try:
+            app.dashboard_requests.put(panel.active_request)
+        except Exception:
+            set_updating(*panel.active_request, 'queue_error')
+            if hasattr(app, 'dashboard_progress'):
+                app.dashboard_progress.hide()
+            set_message('Nie udało się zlecić aktualizacji dashboardu. Spróbuj ponownie.')
+            return False
+        record('dashboard_request_state', request_id=panel.request_id, year=year, month=month,
+               request_state='queued')
         set_message('Oczekiwanie na zalogowanie i odczyt dashboardu…' if automatic else
                           'Oczekiwanie na odczyt w przeglądarce… Poprzednie dane mogą być nieaktualne.')
+        return True
 
     panel.request_refresh = request
 
@@ -187,52 +274,108 @@ def build_dashboard(parent, app, cache_path=None):
     from neto_incident_monitor.dashboard import REQUEST_TITLES
     for column, title in enumerate(REQUEST_TITLES):
         tile(title, column, 0, title_wrap=140, columns=4)
+    def render_snapshots():
+        from datetime import datetime
+        panel.snapshot_values = {}
+        for alias, snapshot in panel.section_snapshots.items():
+            panel.snapshot_values.update(snapshot['values'])
+            if alias == 'sla':
+                panel.data_period = (snapshot['year'], snapshot['month'])
+        panel.last_read_text = (datetime.fromisoformat(panel.last_complete_read_at).strftime('%d.%m.%Y %H:%M:%S')
+                                if panel.last_complete_read_at else '—')
+        for title, variable in panel.values.items():
+            if title != 'WJRUW':
+                variable.set(str(panel.snapshot_values[title]) if title in panel.snapshot_values else '—')
+        from neto_incident_monitor.dashboard import calculate_wjruw
+        sla = panel.section_snapshots.get('sla', {}).get('values', {})
+        indicator = calculate_wjruw(sla)
+        panel.values['WJRUW'].set('Brak danych' if indicator is None else f'{indicator:.2f}%'.replace('.', ','))
+        panel.value_labels['WJRUW'].configure(font=('Segoe UI', 12 if indicator is None else 28))
+
     def result(payload, restored_at=None):
         from datetime import datetime
         request_id, year, month, values, error, *extra = payload
         if request_id != panel.request_id:
+            record('dashboard_result_rejected', request_id=request_id,
+                   active_request_id=panel.request_id, request_state='stale_id')
             return
+        if panel.request_period is not None and (year, month) != panel.request_period:
+            record('dashboard_result_rejected', request_id=request_id, year=year, month=month,
+                   expected_year=panel.request_period[0], expected_month=panel.request_period[1],
+                   request_state='period_mismatch')
+            return
+        if panel.request_period is not None and panel.active_request is None:
+            record('dashboard_result_rejected', request_id=request_id, request_state='finished')
+            return
+        message = extra[0] if extra else ''
+        metadata = extra[1] if len(extra) > 1 else None
         if error:
-            set_message('Nie udało się odczytać danych. Sprawdź logowanie w przeglądarce i spróbuj ponownie. Poprzedni odczyt jest nieaktualny.')
-        else:
-            if panel.data_period != (year, month):
-                panel.snapshot_values = {}
-            panel.snapshot_values.update(values)
-            values = panel.snapshot_values
-            panel.data_period = (year, month)
-            for title in panel.values:
-                if title != 'WJRUW' and title not in values:
-                    panel.values[title].set('—')
-            for title, value in values.items():
-                panel.values[title].set(str(value))
-            from neto_incident_monitor.dashboard import calculate_wjruw
-            indicator = calculate_wjruw(values)
-            panel.values['WJRUW'].set('Brak danych' if indicator is None else f'{indicator:.2f}%'.replace('.', ','))
-            panel.value_labels['WJRUW'].configure(font=('Segoe UI', 12 if indicator is None else 28))
-            read_at = restored_at or datetime.now().isoformat(timespec='seconds')
-            timestamp = datetime.fromisoformat(read_at)
-            panel.restored_snapshot = bool(restored_at)
-            panel.last_read_text = f'{timestamp:%d.%m.%Y %H:%M:%S}'
-            description = 'Zapisane dane mogą być nieaktualne.' if restored_at else 'Dane zostały zaktualizowane.'
-            if not restored_at:
-                try:
-                    save_snapshot(cache_path, year, month, dict(values), read_at)
-                except OSError as exc:
-                    import logging
-                    logging.getLogger('servicenow').warning(
-                        'Zapis dashboard-cache.json: %s, errno=%s, winerror=%s.',
-                        type(exc).__name__, exc.errno, getattr(exc, 'winerror', None))
-                    description += ' Nie udało się zapisać odczytu na dysku.'
-            if extra and extra[0]:
-                description = extra[0] + (' Nie udało się zapisać odczytu na dysku.' if 'Nie udało się zapisać' in description else '')
-            set_message(description)
+            set_message('Nie udało się odczytać danych. Zachowano ostatnie poprawne wyniki i ich daty.')
+            return
+        if metadata:
+            alias = metadata['section']
+            now = datetime.now().astimezone().isoformat(timespec='seconds')
+            previous = panel.section_snapshots.get(alias)
+            if metadata.get('error'):
+                panel.request_sections.discard(alias)
+                if previous:
+                    previous.update(last_attempt_at=now, last_outcome='error')
+            elif valid_values(alias, metadata['values']):
+                panel.request_sections.add(alias)
+                panel.section_snapshots[alias] = {'values': dict(metadata['values']),
+                    'read_at': metadata['read_at'], 'last_attempt_at': now, 'last_outcome': 'success',
+                    'complete': True, 'year': year if alias == 'sla' else None,
+                    'month': month if alias == 'sla' else None}
+            else:
+                panel.request_sections.discard(alias)
+                set_section_state(request_id, NAMES[alias], 'Błąd odczytu')
+                return
+            render_snapshots()
+            diagnostics = metadata['diagnostics']
+            try:
+                if panel.section_snapshots:
+                    save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at)
+                panel.cache_error = False
+                measured_record(diagnostics, 'dashboard_cache', cache_result='saved' if panel.section_snapshots else 'skipped')
+            except OSError as exc:
+                panel.cache_error = True
+                from neto_incident_monitor.login_diagnostics import error_facts
+                measured_record(diagnostics, 'dashboard_cache', cache_result='failed',
+                    os_errno=exc.errno, winerror=getattr(exc, 'winerror', None), **error_facts(exc))
+        if not metadata and panel.request_sections == {'sla', 'held', 'requests'}:
+            # Only a completed full transaction advances the public timestamp.
+            panel.last_complete_read_at = datetime.now().astimezone().isoformat(timespec='seconds')
+            render_snapshots()
+            record('dashboard_complete', request_id=request_id, year=year, month=month, outcome='returned')
+            try:
+                save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at)
+                panel.cache_error = False
+                record('dashboard_cache', cache_result='saved')
+            except OSError as exc:
+                panel.cache_error = True
+                from neto_incident_monitor.login_diagnostics import error_facts
+                record('dashboard_cache', cache_result='failed', **error_facts(exc))
+        panel.restored_snapshot = False
+        message = message or 'Dane zostały zaktualizowane. Wstrzymane L1 i Wnioski L1 przedstawiają stan bieżący.'
+        if panel.cache_error:
+            message += ' Nie udało się zapisać odczytu na dysku.'
+        set_message(message)
     panel.apply_result = result
     cached = load_snapshot(cache_path)
+    if cached or cache_path.exists():
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+        measured_record(LoginDiagnostics(source='dashboard'), 'dashboard_cache',
+            cache_result='restored' if cached else 'invalid')
     if cached:
-        panel.month.set(months[cached['month'] - 1])
-        panel.year.set(str(cached['year']))
-        result((panel.request_id, cached['year'], cached['month'], cached['values'], None),
-               restored_at=cached['read_at'])
+        panel.section_snapshots = cached['sections']
+        panel.last_complete_read_at = cached.get('last_complete_read_at')
+        sla = panel.section_snapshots.get('sla')
+        if sla:
+            panel.month.set(months[sla['month'] - 1])
+            panel.year.set(str(sla['year']))
+        render_snapshots()
+        panel.restored_snapshot = True
+        set_message('Zapisane dane mogą być nieaktualne. Wstrzymane L1 i Wnioski L1 przedstawiają stan z poprzedniego odczytu.')
     notice_text = tk.Label(content, textvariable=panel.message, wraplength=700,
                            bg=BG, fg=MUTED, font=('Segoe UI', 10),
                            justify='left', anchor='w')

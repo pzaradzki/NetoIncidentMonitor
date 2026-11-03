@@ -13,7 +13,7 @@ Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych
 - Osobny widok incydentów zagrożonych SLA, sprawdzany co minutę od zakończenia poprzedniej próby, również pomiędzy odczytami filtrów.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Zmiany najnowszego wydania opisuje [v1.7.17](docs/releases/v1.7.17.md).
+Zmiany przygotowanej lokalnie wersji opisuje [v1.8.0](docs/releases/v1.8.0.md). Ta wersja nie została jeszcze opublikowana na GitHubie. Zachowano również opis [v1.7.17](docs/releases/v1.7.17.md).
 
 ## Uruchomienie
 
@@ -44,4 +44,4 @@ Aktualizacja zachowuje dane użytkownika. Nie udostępniaj katalogu danych, poni
 
 Wymagany Python 3.12. Uruchom `start.bat`, aby przygotować środowisko i uruchomić aplikację.
 
-Szczegółowe informacje zawiera [dokumentacja użytkownika i projektu](docs/user-guide.md).
+Szczegółowe informacje: [instrukcja użytkownika](docs/user-guide.md) oraz [indeks dokumentacji projektu](docs/README.md).

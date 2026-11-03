@@ -46,6 +46,7 @@ class StatusPill(tk.Canvas):
             "Zaktualizowany": ("#244b37", "#8ee2ac"),
             "Błąd odczytu": ("#472c33", "#ff929e"),
             "W trakcie aktualizacji": ("#27364a", "#9ac4f4"),
+            "Ponawianie odczytu": ("#433923", "#efc778"),
             "Dane nieaktualne": ("#433923", "#efc778"),
             "Oczekuje": ("#343942", "#c8cdd6"),
             "Monitoring aktywny": ("#243d33", "#85d6aa"),
@@ -161,6 +162,7 @@ class IncidentMenu(tk.Toplevel):
         self.bind("<Up>", lambda event: self.select((self.selected - 1) % len(self.rows)))
         self.bind("<Return>", lambda event: self.invoke(self.selected))
         self.bind("<ButtonPress-1>", self.outside_click)
+        self.bind("<ButtonPress-3>", self.redirect_right_click)
         self.bind("<FocusOut>", lambda event: self.after_idle(self.check_focus))
 
     def add_command(self, label, command):
@@ -198,12 +200,28 @@ class IncidentMenu(tk.Toplevel):
         if self.winfo_exists() and str(self.tk.call('focus')) != str(self):
             self.destroy()
 
+    def redirect_right_click(self, event):
+        x, y = event.x_root, event.y_root
+        owner = self.master
+        self.destroy()
+        target = owner.winfo_containing(x, y)
+        if target is not None and target.winfo_toplevel() == owner.winfo_toplevel():
+            target.event_generate("<ButtonPress-3>", x=x - target.winfo_rootx(),
+                                  y=y - target.winfo_rooty(), rootx=x, rooty=y)
+        return "break"
+
     def show(self, x, y):
+        import sys
+
         self.update_idletasks()
-        x = max(0, min(x, self.winfo_screenwidth() - self.winfo_reqwidth()))
-        y = max(0, min(y, self.winfo_screenheight() - self.winfo_reqheight()))
-        self.geometry(f"+{x}+{y}")
-        self.deiconify()
+        if sys.platform == "win32":
+            from neto_incident_monitor.window_style import move_popup
+            self.deiconify()
+            self.update_idletasks()
+            move_popup(self, x, y)
+        else:
+            self.geometry(f"+{x}+{y}")
+            self.deiconify()
         self.lift()
         self.grab_set()
         self.focus_force()

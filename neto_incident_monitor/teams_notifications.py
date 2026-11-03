@@ -91,6 +91,10 @@ def message_chunks(title, message, links=None):
         yield current
 
 
+class DeliveryError(RuntimeError):
+    pass
+
+
 def send(webhook, title, message, links=None):
     webhook = validate_webhook(webhook)
     request = Request(webhook, data=json.dumps(payload(title, message, links)).encode("utf-8"),
@@ -98,11 +102,11 @@ def send(webhook, title, message, links=None):
     try:
         with build_opener(NoRedirect).open(request, timeout=15) as response:
             if not 200 <= response.status < 300:
-                raise RuntimeError("Teams nie przyjął powiadomienia.")
+                raise DeliveryError("Teams nie przyjął powiadomienia.")
     except HTTPError as error:
-        raise RuntimeError(f"Teams odrzucił żądanie (HTTP {error.code}). Sprawdź przepływ i uprawnienia.") from None
+        raise DeliveryError(f"Teams odrzucił żądanie (HTTP {error.code}). Sprawdź przepływ i uprawnienia.") from None
     except Exception:
-        raise RuntimeError("Nie udało się połączyć z Teams. Sprawdź sieć i adres webhooka.") from None
+        raise DeliveryError("Nie udało się połączyć z Teams. Sprawdź sieć i adres webhooka.") from None
 
 
 class Sender:
@@ -111,19 +115,28 @@ class Sender:
         self.jobs = queue.Queue(maxsize=20)
         threading.Thread(target=self.run, daemon=True).start()
 
-    def submit(self, webhook, title, message, test=False, links=None):
+    def submit(self, webhook, title, message, test=False, links=None, allow_send=None):
         try:
-            self.jobs.put_nowait((webhook, title, message, test, links))
+            self.jobs.put_nowait((webhook, title, message, test, links, allow_send))
+            return True
         except queue.Full:
             self.events.put(("teams_result", (False, test, "Kolejka Teams jest pełna. Alerty zachowano w historii.")))
+            return False
 
     def run(self):
         while True:
-            webhook, title, message, test, links = self.jobs.get()
+            webhook, title, message, test, links, allow_send = self.jobs.get()
+            accepted_parts = 0
             try:
                 for chunk in message_chunks(title, message, links):
+                    if allow_send is not None and not allow_send():
+                        raise DeliveryError("Wysyłka Teams została wstrzymana po zmianie ustawień lub zatrzymaniu monitoringu.")
                     send(webhook, title, chunk, links)
+                    accepted_parts += 1
                 result = True, test, "Teams przyjął żądanie. Sprawdź wiadomość i historię uruchomień przepływu."
             except Exception as error:
-                result = False, test, str(error)
+                detail = str(error) if isinstance(error, DeliveryError) else "Nie udało się wysłać powiadomienia do Teams."
+                if accepted_parts:
+                    detail = f"Teams przyjął części wiadomości: {accepted_parts}. {detail}"
+                result = False, test, detail
             self.events.put(("teams_result", result))

@@ -48,7 +48,8 @@ class ShortLinkTests(unittest.TestCase):
                             body = '<iframe style="width:800px;height:500px" src="/sc_task_list.do?sysparm_query=active%3Dtrue"></iframe>'
                         else:
                             body = ('<p>Brak rekordów do wyświetlenia</p>' if empty else
-                                    '<table><tr><th>Numer</th></tr><tr><td><a href="/sc_task.do?sys_id=1">SCTASK1954200</a></td></tr></table>')
+                                    '<table first_row="1" last_row="1" total_rows="1" rows_per_page="20"><tr><th>Numer</th></tr><tr><td><a href="/sc_task.do?sys_id=1">SCTASK1954200</a></td></tr></table>')
+                            body += '<script>window.g_user={userID:"synthetic"}</script>'
                             body += '<button data-type="list_nav_next" disabled>Next</button>'
                         request.fulfill(content_type='text/html; charset=utf-8', body=body)
                     page.route('**/*', route)

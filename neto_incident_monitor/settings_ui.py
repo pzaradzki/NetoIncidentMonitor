@@ -106,6 +106,10 @@ def build_settings(app, settings):
     app.google_chat_enabled = tk.BooleanVar(value=settings.get("google_chat_enabled", False))
     Toggle(controls, app.google_chat_enabled).pack(side="right")
     RoundedButton(controls, text="Konfiguruj", command=app.configure_google_chat).pack(side="right", padx=(0, 14))
+    controls = row(notifications, "Powiadomienia o zagrożeniu SLA",
+                   "Wysyłaj alerty przez włączone kanały. Wyłączanie alertów jest niezalecane.")
+    app.notify_threatened = tk.BooleanVar(value=settings.get("notify_threatened", True))
+    Toggle(controls, app.notify_threatened).pack(side="right")
 
     startup = section("URUCHAMIANIE I OKNO APLIKACJI")
     for key, title, description in (

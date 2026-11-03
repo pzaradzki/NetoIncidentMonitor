@@ -22,11 +22,11 @@ TARGET = 'https://adeo.service-now.com/incident_list.do'
 
 class AuthenticationHardeningTests(unittest.TestCase):
     def test_inline_login_and_foreign_frames_are_detected(self):
-        frame = Mock()
-        frame.locator.return_value.count.return_value = 1
-        page = Mock(url=TARGET, frames=[frame])
+        from tests.test_login_observation import frame_with, page_with, signals
+        frame = frame_with(password_count=1)
+        page = page_with(frame)
         self.assertTrue(authentication_required(page, TARGET))
-        frame.locator.return_value.count.return_value = 0
+        frame.evaluate.return_value = signals()
         self.assertFalse(authentication_required(page, TARGET))
 
     def test_popup_detection_ignores_unrelated_tabs(self):
@@ -63,53 +63,65 @@ class AuthenticationHardeningTests(unittest.TestCase):
         navigate.assert_called_once()
 
     def test_confirmed_window_is_not_restored_again_when_user_minimizes(self):
-        page = Mock()
+        from tests.test_login_observation import page_with, frame_with
+        page = page_with(frame_with(url='https://idpb2e.adeo.com/login', password_count=1), url='https://idpb2e.adeo.com/login')
         page.is_closed.return_value = False
-        stop = Mock()
-        stop.is_set.side_effect = [False, False, False, True]
-        window = Mock()
-        window.is_visible.side_effect = [True, False]
-        with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 21]), \
-                patch('neto_incident_monitor.app.set_chromium_window_state'):
-            self.assertFalse(wait_for_login(page, TARGET, stop, browser_window=window))
-        window.show.assert_called_once()
-        self.assertEqual(window.is_visible.call_count, 1)
+        stop = threading.Event()
+        ticks = [0]
+        def pulse(_):
+            ticks[0] += 1
+            if ticks[0] >= 5: stop.set()
+        page.wait_for_timeout.side_effect = pulse
+        window = Mock(); window.show.return_value = True
+        self.assertFalse(wait_for_login(page, TARGET, stop, browser_window=window))
+        window.show.assert_called_once_with(activate=True)
 
     def test_failed_window_restoration_alerts_once_and_stops_stealing_focus(self):
-        page = Mock()
+        from tests.test_login_observation import page_with, frame_with
+        page = page_with(frame_with(url='https://idpb2e.adeo.com/login', password_count=1), url='https://idpb2e.adeo.com/login')
         page.is_closed.return_value = False
-        stop = Mock()
-        stop.is_set.side_effect = [False] * 5 + [True]
-        window = Mock()
-        window.is_visible.return_value = False
+        stop = threading.Event()
+        ticks = [0]
+        def pulse(_):
+            ticks[0] += 1
+            if ticks[0] >= 5: stop.set()
+        page.wait_for_timeout.side_effect = pulse
+        window = Mock(); window.show.return_value = False; window.is_visible.return_value = False
         alert = Mock()
-        with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 21, 23, 25, 27]), \
-                patch('neto_incident_monitor.app.set_chromium_window_state'):
-            self.assertFalse(wait_for_login(page, TARGET, stop, browser_window=window,
-                                            on_visibility_failure=alert))
+        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: ticks[0]*3):
+            self.assertFalse(wait_for_login(page, TARGET, stop, browser_window=window, on_visibility_failure=alert))
         self.assertEqual(window.show.call_count, 3)
         alert.assert_called_once()
 
-    def test_unrecognized_list_ends_with_actionable_error(self):
-        page = Mock(url=TARGET, frames=[Mock(url=TARGET)])
+    def test_unrecognized_list_keeps_monitor_waiting_until_stop(self):
+        from tests.test_login_observation import page_with, frame_with
+        page = page_with(frame_with())
         page.is_closed.return_value = False
-        with patch('neto_incident_monitor.app.authentication_page', return_value=False), \
-                patch('neto_incident_monitor.app.collect', return_value={}), \
-                patch('neto_incident_monitor.app.empty_list', return_value=False), \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 0, 181]):
-            with self.assertRaises(LoginTargetUnavailable):
-                wait_for_login(page, TARGET, threading.Event())
+        stop = threading.Event()
+        ticks = [0]
+        def pulse(_):
+            ticks[0] += 1
+            if ticks[0] >= 5: stop.set()
+        page.wait_for_timeout.side_effect = pulse
+        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.collect') as collect:
+            self.assertFalse(wait_for_login(page,TARGET,stop))
+        collect.assert_not_called()
+        self.assertLessEqual(navigate.call_count, 4)
 
-    def test_repeated_list_inspection_errors_do_not_bypass_deadline(self):
-        page = Mock(url=TARGET, frames=[Mock(url=TARGET)])
+    def test_repeated_observation_errors_remain_cancellable_without_leaking_messages(self):
+        from tests.test_login_observation import page_with, frame_with
+        page = page_with(frame_with(url='https://idpb2e.adeo.com/login', password_count=1), url='https://idpb2e.adeo.com/login')
         page.is_closed.return_value = False
-        with patch('neto_incident_monitor.app.authentication_page', return_value=False), \
-                patch('neto_incident_monitor.app.collect', side_effect=Error('PRIVATE_TOKEN')), \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=range(0, 1000, 100)):
-            with self.assertRaises(LoginTargetUnavailable):
-                wait_for_login(page, TARGET, threading.Event())
+        stop = threading.Event()
+        ticks = [0]
+        def pulse(_):
+            ticks[0] += 1
+            if ticks[0] >= 5: stop.set()
+        page.wait_for_timeout.side_effect = pulse
+        from neto_incident_monitor.login_diagnostics import _logger
+        with patch('neto_incident_monitor.authentication.login_observation',side_effect=Error('PRIVATE_TOKEN')), self.assertLogs(_logger,level='INFO') as logs:
+            self.assertFalse(wait_for_login(page,TARGET,stop))
+        self.assertNotIn('PRIVATE_TOKEN',' '.join(logs.output))
 
     def test_diagnostic_allowlist_discards_arbitrary_credentials(self):
         secret = 'PRIVATE_LOGIN_PASSWORD_TOKEN'
@@ -239,6 +251,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
                 page.goto('https://idpb2e.adeo.com/login')
                 automatic = AutomaticLogin()
                 automatic.account_clicked = True
+                automatic.autofilled = Mock(return_value=True)  # Synthetic CSS evidence.
                 original_click = Locator.click
                 def click(locator, **kwargs):
                     if not kwargs.get('trial'):
@@ -268,6 +281,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
                 page.goto('https://idpb2e.adeo.com/login')
                 automatic = AutomaticLogin()
                 automatic.account_clicked = True
+                automatic.autofilled = Mock(return_value=True)  # Synthetic CSS evidence.
                 automatic.step(page)
                 automatic.step(page)
                 self.assertTrue(automatic.submitted)

@@ -1,5 +1,7 @@
 # Niestandardowe powiadomienia dla filtrów
 
+> Archiwum: zachowano wcześniejsze ustalenia i propozycje. Ten opis nie jest kontraktem wersji 1.8.0 i nie upoważnia do wznowienia prac. Bieżące dokumenty: [indeks dokumentacji](../README.md).
+
 Status: zaimplementowano wspólną bibliotekę nazwanych, dwupoziomowych szablonów w konfiguracji kanałów filtra (22.10.2026).
 
 ## Aktualna obsługa

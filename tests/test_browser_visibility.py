@@ -2,21 +2,23 @@ import unittest
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import wait_for_login
+from tests.test_login_observation import page_with, frame_with
 
 
 class BrowserVisibilityTests(unittest.TestCase):
     def test_failed_native_show_is_retried_until_confirmed(self):
-        page = Mock()
+        page = page_with(frame_with(password_count=1))
         page.is_closed.return_value = False
         stop = Mock()
         stop.is_set.side_effect = [False, False, False, True]
         window = Mock()
-        window.is_visible.side_effect = [False, False, True]
+        window.is_visible.side_effect = [False, True]
+        window.show.side_effect = [False, True]
         with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
                 patch('neto_incident_monitor.app.time.monotonic', return_value=30), \
                 patch('neto_incident_monitor.app.set_chromium_window_state'), \
                 patch('neto_incident_monitor.login_diagnostics.LoginDiagnostics') as diagnostics:
-            with patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 30, 32]):
+            with patch('neto_incident_monitor.app.time.monotonic', side_effect=iter(range(0,200,3))):
                 self.assertFalse(wait_for_login(page, 'https://adeo.service-now.com/incident_list.do',
                                                 stop, browser_window=window))
         self.assertEqual(window.show.call_count, 2)
@@ -25,7 +27,7 @@ class BrowserVisibilityTests(unittest.TestCase):
         self.assertIn('manual_login_shown', events)
 
     def test_automatic_step_error_does_not_prevent_manual_window(self):
-        page = Mock()
+        page = page_with(frame_with(password_count=1))
         page.is_closed.return_value = False
         stop = Mock()
         stop.is_set.side_effect = [False, True]
@@ -46,21 +48,21 @@ class BrowserVisibilityTests(unittest.TestCase):
         activity.assert_called_with('Wymagane ręczne logowanie', 'waiting')
 
     def test_manual_login_focuses_immediately_when_automatic_login_is_disabled(self):
-        page = Mock()
+        page = page_with(frame_with(password_count=1))
         page.is_closed.return_value = False
         stop = Mock()
         stop.is_set.side_effect = [False, True]
         with patch("neto_incident_monitor.app.authentication_page", return_value=True), \
-                patch("neto_incident_monitor.app.time.monotonic", side_effect=[0, 0]), \
+                patch("neto_incident_monitor.app.time.monotonic", return_value=0), \
                 patch("neto_incident_monitor.app.set_chromium_window_state", return_value=True) as state:
             self.assertFalse(wait_for_login(page, "https://adeo.service-now.com/incident_list.do", stop, False, True))
             state.assert_called_once_with(page, "normal")
             page.bring_to_front.assert_called_once()
 
     def test_restored_session_stays_in_background(self):
-        page = Mock()
+        page = page_with(frame_with(password_count=1))
         page.is_closed.return_value = False
-        page.frames = [Mock(url="https://adeo.service-now.com/incident_list.do")]
+        page.frames = [frame_with(session_signal=True)]
         stop = Mock()
         stop.is_set.return_value = False
         with patch("neto_incident_monitor.app.authentication_page", return_value=False), \

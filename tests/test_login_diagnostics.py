@@ -40,10 +40,12 @@ class LoginDiagnosticsTests(unittest.TestCase):
         with self.assertLogs(diagnostics._logger, level='INFO') as captured:
             log = diagnostics.LoginDiagnostics()
             page = Mock(url='https://adeo.service-now.com/private')
-            page.evaluate.side_effect = RuntimeError('PRIVATE_PASSWORD PRIVATE_TOKEN')
+            page.frames = [Mock()]
+            page.frames[0].evaluate.side_effect = RuntimeError('PRIVATE_PASSWORD PRIVATE_TOKEN')
+            page.context.pages = [page]
             log.inspect(page, None)
         self.assertNotIn('PRIVATE_', '\n'.join(captured.output))
-        self.assertIn('RuntimeError', captured.output[-1])
+        self.assertIn('observation_failed', '\n'.join(captured.output))
 
     def test_disk_failure_does_not_stop_login(self):
         with patch.object(diagnostics._logger, 'info', side_effect=OSError('disk full')):

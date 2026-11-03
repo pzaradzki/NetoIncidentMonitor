@@ -11,6 +11,17 @@ def colorref(value):
     return red | (green << 8) | (blue << 16)
 
 
+def move_popup(window, x, y):
+    """Use signed desktop coordinates, including monitors left of the primary."""
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetAncestor.restype = wintypes.HWND
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int,
+                                  ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    hwnd = user32.GetAncestor(window.winfo_id(), 2)
+    user32.SetWindowPos(hwnd, None, x, y, 0, 0, 0x0015)  # NOSIZE | NOZORDER | NOACTIVATE
+
+
 def apply_window_style(window):
     if sys.platform != "win32" or not window.winfo_exists():
         return

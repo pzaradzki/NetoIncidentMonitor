@@ -67,6 +67,10 @@ def render(config, name, incidents):
 def linked_parts(text, links):
     """Link only trusted record numbers, at any position in a template."""
     from neto_incident_monitor.service_now_urls import safe_record_url
+    from neto_incident_monitor.threatened import THREATENED_URL
+    if text == THREATENED_URL and (links or {}).get(text) == THREATENED_URL:
+        yield "Otwórz incydenty zagrożone w SNOW", THREATENED_URL
+        return
     position = 0
     for match in re.finditer(r'(?<!\w)(?:INC|SCTASK|REQ|RITM)\d{1,20}(?!\w)', text):
         url = safe_record_url((links or {}).get(match[0], ''), match[0])

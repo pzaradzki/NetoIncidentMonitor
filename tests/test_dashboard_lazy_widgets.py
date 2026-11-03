@@ -44,7 +44,7 @@ class DashboardLazyWidgetTests(unittest.TestCase):
                     'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: ' +
                     document.getElementById('start').value + ' - ' + document.getElementById('end').value)">Zastosuj</button>'''
                 page.route('**/*', lambda route: route.fulfill(
-                    body=controls + lazy_cards(TITLES), content_type='text/html; charset=utf-8'))
+                    body='<button role="tab" aria-selected="true">Dasboard SLA</button><now-popover-panel>'+controls+'</now-popover-panel>'+''.join('<sn-component-filter><h3>'+c+'</h3><label><input type="checkbox" checked>Wybierz wszystko</label><button>Zastosuj</button></sn-component-filter>' for c in ('Status zgłoszenia','Lokalizacja','Przypisany do')) + lazy_cards(TITLES), content_type='text/html; charset=utf-8'))
                 page.goto(DASHBOARD_URL)
                 self.assertEqual(page.get_by_role('heading', name=TITLES[0], exact=True).count(), 0)
                 def categories(*args):
@@ -53,7 +53,7 @@ class DashboardLazyWidgetTests(unittest.TestCase):
                     self.assertEqual(page.evaluate('window.activated'), 0)
                 with patch('neto_incident_monitor.dashboard.ensure_all_categories', side_effect=categories) as ensure:
                     result = read_dashboard(page, 2026, 10, threading.Event())
-                ensure.assert_called_once()
+                self.assertEqual(ensure.call_count, 2)  # settings restored after a fresh-document fallback
                 self.assertEqual(result, dict(zip(TITLES, range(len(TITLES)))))
                 self.assertEqual(page.evaluate('window.activated'), 11)
             finally:
@@ -66,7 +66,7 @@ class DashboardLazyWidgetTests(unittest.TestCase):
                 page = browser.new_page(viewport={'width': 900, 'height': 600})
                 controls = '''<button role="tab" aria-selected="true">Wstrzymane L1</button>
                     <sn-component-filter><h3>Agent L1</h3>
-                    <label><input type="checkbox" checked>Wybierz wszystko</label></sn-component-filter>'''
+                    <label><input type="checkbox" checked>Wybierz wszystko</label><button>Zastosuj</button></sn-component-filter>'''
                 page.route('**/*', lambda route: route.fulfill(
                     body=controls + lazy_cards(HELD_TITLES), content_type='text/html; charset=utf-8'))
                 page.goto(DASHBOARD_URL)

@@ -16,7 +16,7 @@ URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue
 
 
 class ReliabilityTests(unittest.TestCase):
-    def test_empty_list_is_success_even_with_incomplete_pager(self):
+    def test_bound_empty_list_is_success_even_with_incomplete_pager(self):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True, timeout=15000)
@@ -24,6 +24,7 @@ class ReliabilityTests(unittest.TestCase):
                 page = browser.new_page()
                 html = '''<div style="display:none">Brak rekordów do wyświetlenia</div>
                     <div>\n Brak rekordów\n do wyświetlenia. \n</div>
+                    <table query="active=true" first_row="1" last_row="0" total_rows="0" rows_per_page="20"><tr><th>Number</th></tr></table>
                     <input class="list2_page" value="1"><div class="list2_paging"></div>'''
                 page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
                 result, pages = read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
@@ -65,12 +66,13 @@ class ReliabilityTests(unittest.TestCase):
                 page = browser.new_page()
                 # Simulate ServiceNow remembering the last row in the session
                 # and ignoring first_row=1 on the next full page navigation.
-                html = '''<table><tr><th>Number</th></tr><tr><td><a id="inc" href="/incident.do"></a></td></tr></table>
+                html = '''<table query="active=true" first_row="1" last_row="1" total_rows="3" rows_per_page="1"><tr><th>Number</th></tr><tr><td><a id="inc" href="/incident.do"></a></td></tr></table>
                   <button data-type="list_nav_first" title="First page" onclick="firstPage()">First</button>
                   <button data-type="list_nav_next" title="Next page" onclick="nextPage()">Next</button>
                   <input class="list2_page">
                   <script>let n=Number(sessionStorage.getItem('row')||1);
                   function render(){document.querySelector('#inc').textContent='INC000000'+n;
+                    document.querySelector('table').setAttribute('first_row',n);document.querySelector('table').setAttribute('last_row',n);
                     document.querySelector('input').value=n;
                     document.querySelector('[data-type=list_nav_first]').disabled=n===1;
                     document.querySelector('[data-type=list_nav_next]').disabled=n===3;
@@ -154,9 +156,10 @@ class ReliabilityTests(unittest.TestCase):
             browser = playwright.chromium.launch(headless=True, timeout=15000)
             try:
                 page = browser.new_page()
-                html = '''<table><tr><th>Numer</th><th>Krótki opis</th></tr><tr><td><a id="inc" href="/incident.do">INC0000001</a></td><td>Test</td></tr></table>
+                html = '''<table query="active=true" first_row="1" last_row="1" total_rows="3" rows_per_page="1"><tr><th>Numer</th><th>Krótki opis</th></tr><tr><td><a id="inc" href="/incident.do">INC0000001</a></td><td>Test</td></tr></table>
                   <button data-type="list_nav_next" title="Następna strona" onclick="step()">Next</button>
                   <script>let n=1;function step(){n++;document.querySelector('#inc').textContent='INC000000'+n;
+                  document.querySelector('table').setAttribute('first_row',n);document.querySelector('table').setAttribute('last_row',n);
                   if(n===3)document.querySelector('button').disabled=true;}</script>'''
                 page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html; charset=utf-8", body=html))
                 progress = []
@@ -170,7 +173,7 @@ class ReliabilityTests(unittest.TestCase):
                 self.assertEqual(count, 3)
                 # Unknown pager fails rather than silently saving one page.
                 page.unroute("https://adeo.service-now.com/**")
-                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body='<table><tr><th>Number</th></tr><tr><td><a href="/incident.do">INC0000001</a></td></tr></table><input class="list2_page">'))
+                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(content_type="text/html", body='<table query="active=true"><tr><th>Number</th></tr><tr><td><a href="/incident.do">INC0000001</a></td></tr></table><input class="list2_page">'))
                 with self.assertRaisesRegex(RuntimeError, "Nie rozpoznano"):
                     read_all(page, URL, threading.Event(), collect, empty_list, authentication_page, navigate)
                 # A broken second page must not return a partial result.
