@@ -4,6 +4,8 @@ Bieżąca wersja lokalna to [1.8.1](../wersje/v1.8.1.md).
 
 ## Pozostałe tematy
 
+- [Diagnostyka przed wydaniem 1.8.1](diagnostyka-przed-wydaniem-1.8.1.md) — cztery błędy regresji i warunki wznowienia publikacji.
+
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu.
 - [Paginacja listy zagrożeń SLA](paginacja-listy-zagrozen-sla.md) jest odłożona do czasu pojawienia się rzeczywistej listy z co najmniej dwiema stronami.
 - Potencjalny kanał e-mail: [rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md) — jednorazowa wysyłka i dostarczenie potwierdzone; brak zatwierdzonego planu implementacji, konieczna weryfikacja zasad relay i innych komputerów.

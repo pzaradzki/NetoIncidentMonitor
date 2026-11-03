@@ -21,7 +21,7 @@ class ContextMenuTests(TestCase):
         app.test_record_notification(app.current_table, 'SCTASK1234567', 'https://adeo.service-now.com/sc_task.do')
         self.assertEqual(app.notify_filter.call_args.args[1][0]['short_description'], 'Current task')
         self.assertTrue(app.notify_filter.call_args.kwargs['manual'])
-        app.test_record_notification(Mock(), 'INC1234567', 'https://adeo.service-now.com/incident.do')
+        app.test_record_notification(Mock(), 'INC1234567', 'https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef')
         self.assertEqual(app.notify_filter.call_args.args[1][0]['short_description'], 'Historical incident')
         app.history.mark_read.assert_not_called()
 
@@ -33,7 +33,7 @@ class ContextMenuTests(TestCase):
         table = Mock()
         table.identify_row.return_value = 'clicked'
         app.row_numbers = {(table, 'clicked'): 'INC1234567'}
-        app.items = {(table, 'clicked'): 'https://adeo.service-now.com/incident.do'}
+        app.items = {(table, 'clicked'): 'https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef'}
         event = SimpleNamespace(widget=table, y=20, x_root=100, y_root=200)
         with patch('neto_incident_monitor.app.IncidentMenu') as factory:
             menu = factory.return_value
@@ -42,7 +42,7 @@ class ContextMenuTests(TestCase):
             commands['Kopiuj numer']()
             app.root.clipboard_append.assert_called_with('INC1234567')
             commands['Kopiuj link']()
-            app.root.clipboard_append.assert_called_with('https://adeo.service-now.com/incident.do')
+            app.root.clipboard_append.assert_called_with('https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef')
             with patch('neto_incident_monitor.app.webbrowser.open', return_value=False):
                 commands['Otwórz incydent']()
                 app.mark_read.assert_not_called()
@@ -53,7 +53,7 @@ class ContextMenuTests(TestCase):
             commands['Oznacz jako przeczytany']()
             app.mark_read.assert_called_once_with(['INC1234567'])
             commands['Test powiadomienia']()
-            app.test_record_notification.assert_called_once_with(table, 'INC1234567', 'https://adeo.service-now.com/incident.do')
+            app.test_record_notification.assert_called_once_with(table, 'INC1234567', 'https://adeo.service-now.com/incident.do?sys_id=0123456789abcdef0123456789abcdef')
             table.selection_set.assert_called_once_with('clicked')
             menu.show.assert_called_once_with(100, 200)
 

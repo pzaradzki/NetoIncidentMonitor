@@ -1,3 +1,4 @@
+from tests.list_fixture import classic_list
 import threading
 import unittest
 from unittest.mock import Mock
@@ -47,16 +48,16 @@ class ShortLinkTests(unittest.TestCase):
                         if '__tinyId__' in request.request.url:
                             body = '<iframe style="width:800px;height:500px" src="/sc_task_list.do?sysparm_query=active%3Dtrue"></iframe>'
                         else:
-                            body = ('<p>Brak rekordów do wyświetlenia</p>' if empty else
-                                    '<table first_row="1" last_row="1" total_rows="1" rows_per_page="20"><tr><th>Numer</th></tr><tr><td><a href="/sc_task.do?sys_id=1">SCTASK1954200</a></td></tr></table>')
+                            body = classic_list(total=0 if empty else 1, size=20)
+                            body = body.replace('incident', 'sc_task').replace('INC', 'SCTASK')
+                            body = body.replace('sys_id=synthetic', 'sys_id=0123456789abcdef0123456789abcdef')
                             body += '<script>window.g_user={userID:"synthetic"}</script>'
-                            body += '<button data-type="list_nav_next" disabled>Next</button>'
                         request.fulfill(content_type='text/html; charset=utf-8', body=body)
                     page.route('**/*', route)
                     navigate(page, SHORT)
                     self.assertTrue(wait_for_login(page, SHORT, threading.Event()))
                     rows, pages = read_all(page, SHORT, threading.Event(), collect, empty_list, authentication_page, navigate)
-                    self.assertEqual(set(rows), set() if empty else {'SCTASK1954200'})
+                    self.assertEqual(set(rows), set() if empty else {'SCTASK0000001'})
                     self.assertEqual(pages, 1)
                     self.assertIn('/sc_task_list.do?', page.url)
                     self.assertIn('sysparm_first_row=1', page.url)

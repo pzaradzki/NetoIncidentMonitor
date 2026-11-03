@@ -216,6 +216,7 @@ class DashboardPeriodTests(unittest.TestCase):
         with patch('neto_incident_monitor.app.save_json'), \
                 patch('neto_incident_monitor.app.read_json', return_value={}), \
                 patch('neto_incident_monitor.app.messagebox.showerror') as error, \
+                patch.object(self.app.alert_writer, 'submit'), \
                 patch('neto_incident_monitor.app.threading.Thread') as thread:
             def fail_start():
                 self.assertIsNotNone(self.panel.active_request)

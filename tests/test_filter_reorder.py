@@ -15,7 +15,7 @@ class FilterReorderTests(unittest.TestCase):
 
     def tearDown(self):
         for timer in self.root.tk.call("after", "info"):
-            self.root.after_cancel(timer)
+            self.root.tk.call("after", "cancel", timer)
         self.root.destroy()
 
     def test_filter_scrollbar_hides_when_all_rows_fit(self):
