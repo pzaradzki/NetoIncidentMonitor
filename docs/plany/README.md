@@ -4,7 +4,6 @@ Bieżąca wersja lokalna to [1.8.1](../wersje/v1.8.1.md).
 
 ## Pozostałe tematy
 
-- [Diagnostyka przed wydaniem 1.8.1](diagnostyka-przed-wydaniem-1.8.1.md) — cztery błędy regresji i warunki wznowienia publikacji.
 
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu.
 - [Paginacja listy zagrożeń SLA](paginacja-listy-zagrozen-sla.md) jest odłożona do czasu pojawienia się rzeczywistej listy z co najmniej dwiema stronami.
@@ -17,6 +16,7 @@ W ramach wcześniejszego buildu 1.8.0 zakończono [ochronę okresu podczas aktua
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Diagnostyka przed wydaniem 1.8.1](zakonczone/diagnostyka-przed-wydaniem-1.8.1.md) | Cztery poprawki testów, pełna regresja i publikacja ZIP-a |
 | [Lista zagrożeń SLA i powiadomienia](zakonczone/lista-zagrozonych-i-powiadomienia.md) | Odbiór jednej strony w ukrytym Chromium. Dwa rzeczywiste rekordy, zapis historii, testowa kolejka bez duplikatu i potwierdzony zapis diagnostyki. |
 | [Obsługa kodu PingID](zakonczone/obsluga-pingid-mfa.md) | Rzeczywista próba odsłonięcia ukrytego okna i powrotu do sesji. Użytkownik potwierdził pojawienie się okna także w EXE 1.8.1. |
 | [Stabilizacja odczytu filtrów](zakonczone/stabilizacja-odczytu-filtrow.md) | Odbiór zakresowy G 81/81. Zmienna aktywna lista REQ odrzucana przy zmianie liczebności. [Odbiór EXE 1.8.1](../wersje/v1.8.1.md) |
