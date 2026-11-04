@@ -1,13 +1,12 @@
 """Window-only entry point with local rotating diagnostic logs."""
 import logging
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import runpy
 import sys
 import threading
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
-from neto_incident_monitor.safe_logging import SafeExceptionFormatter, thread_exception
+from neto_incident_monitor.safe_logging import DiagnosticFileHandler, SafeExceptionFormatter, thread_exception
 
 
 class LogStream:
@@ -24,7 +23,10 @@ class LogStream:
 
     def flush(self):
         for handler in logging.getLogger().handlers:
-            handler.flush()
+            try:
+                handler.flush()
+            except Exception:
+                pass
 
     def isatty(self):
         return False
@@ -48,9 +50,8 @@ def main():
             if not finish_with_retry(DataReset()):
                 return
         data = DATA
-        data.mkdir(parents=True, exist_ok=True)
-        handler = RotatingFileHandler(data / "monitor.log", maxBytes=2_000_000,
-                                      backupCount=3, encoding="utf-8")
+        handler = DiagnosticFileHandler(data / "monitor.log", maxBytes=2_000_000,
+                                      backupCount=3, encoding="utf-8", delay=True)
         handler.setFormatter(SafeExceptionFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         logging.getLogger().addHandler(handler)
         logging.getLogger().setLevel(logging.INFO)

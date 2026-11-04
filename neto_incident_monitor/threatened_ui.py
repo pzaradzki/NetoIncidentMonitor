@@ -341,7 +341,9 @@ def build_threatened_view(parent, app):
         set_state(panel.request_id, 'Oczekuje')
         app.threatened_requests.put(panel.request_id)
         if automatic:
-            panel.message.set('Oczekiwanie na zalogowanie. Zagrożenia zostaną sprawdzone przed dashboardem i filtrami.')
+            dashboard_pending = getattr(getattr(app, 'dashboard_view', None), 'active_request', None) is not None
+            panel.message.set('Oczekiwanie na zalogowanie. Zagrożenia zostaną sprawdzone '
+                              + ('po dashboardzie i przed filtrami.' if dashboard_pending else 'przed filtrami.'))
             if panel.simulated:
                 panel.message.set(panel.message.get() + ' Wyświetlane dane testowe.')
         update_button()

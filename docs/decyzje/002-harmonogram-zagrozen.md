@@ -1,6 +1,6 @@
 # 002 — Harmonogram zagrożeń SLA
 
-Data: 1 listopada 2026. **Status: przyjęta; stosowana.**
+Data: 1 listopada 2026. **Status: zastąpiona 4 listopada 2026 przez [018](018-kolejnosc-aktualizacji.md).** Poniżej zachowano pierwotny wybór i uzasadnienie. Nowa decyzja zmienia pierwszeństwo dashboardu, zachowując terminy zagrożeń.
 
 **Decyzja:** pierwsze sprawdzenie zagrożeń odbywa się po logowaniu, przed dashboardem i filtrami. Następny termin wyznaczamy zegarem monotonicznym na 60 s od zakończenia próby, także błędnej. Ręczna aktualizacja ustawia ten sam termin od nowa.
 

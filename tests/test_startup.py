@@ -9,6 +9,45 @@ from neto_incident_monitor.startup import set_windows_startup, startup_command
 
 
 class StartupTests(unittest.TestCase):
+    def test_windows_startup_has_no_ui_control_and_other_start_options_remain(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.widgets import Toggle
+
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+
+        for status in ('disabled', 'current', 'repaired', 'unknown'):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
+                root = tk.Tk()
+                try:
+                    with patch('neto_incident_monitor.app.read_json', return_value={}), \
+                            patch('neto_incident_monitor.startup.set_windows_startup') as write:
+                        app = App(root, history_path=Path(folder) / 'history.json',
+                                  enable_tray=False, apply_startup=False, windows_startup=status)
+                        toggles = [w for w in descendants(app.settings_window) if isinstance(w, Toggle)]
+                        self.assertFalse(any(w.variable is app.start_with_windows for w in toggles))
+                        self.assertTrue(any(w.variable is app.start_monitoring for w in toggles))
+                        self.assertTrue(any(w.variable is app.start_minimized for w in toggles))
+                        self.assertEqual(app.start_with_windows.get(), status in ('current', 'repaired'))
+                        write.assert_not_called()
+                finally:
+                    root.destroy()
+
+    def test_fresh_windows_registration_is_disabled_for_both_variants(self):
+        import winreg
+        from neto_incident_monitor.startup import reconcile_windows_startup
+        for packaged in (False, True):
+            with self.subTest(packaged=packaged), \
+                    patch.object(sys, 'frozen', packaged, create=True), \
+                    patch.object(winreg, 'OpenKey', side_effect=FileNotFoundError), \
+                    patch.object(winreg, 'CreateKeyEx') as create, \
+                    patch.object(winreg, 'SetValueEx') as write:
+                self.assertEqual(reconcile_windows_startup(), 'disabled')
+                create.assert_not_called()
+                write.assert_not_called()
+
     def test_start_minimized_respects_tray_readiness_and_user_preferences(self):
         from neto_incident_monitor.app import App
         cases = [

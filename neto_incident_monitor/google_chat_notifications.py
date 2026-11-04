@@ -39,29 +39,29 @@ def plain(value):
 
 
 def payloads(title, message, links=None):
-    from neto_incident_monitor.notification_templates import linked_parts, slices
+    from neto_incident_monitor.notification_templates import linked_parts, _message_atoms, _pack_message
     header = plain(title[:300])
-    current = header
-    result = []
-    for line in (part for line in message.split('\n') for part in slices(line, 3000)):
-        parts = []
-        for value, url in linked_parts(line, links):
-            if url and len(url) <= 4000:
-                url = quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
-                parts.append(f'<{url}|{value}>' if len(url) <= 8000 else plain(value))
-            else:
-                parts.append(plain(value))
-        text = ''.join(parts)
-        if len(text.encode('utf-8')) > 26000:
-            text = text.encode('utf-8')[:26000].decode('utf-8', errors='ignore') + '…'
-        candidate = current + ('\n' if current else '') + text
-        if (len(candidate.encode('utf-8')) > 28000
-                or len(json.dumps({'text': candidate}, ensure_ascii=False).encode('utf-8')) > 30000):
-            result.append({'text': current})
-            current = header
-        current += ('\n' if current else '') + text
-    result.append({'text': current})
-    return result
+    def content(body):
+        return header + ('\n' if header and body else '') + body
+    def fits(body):
+        text = content(body)
+        return (len(text.encode('utf-8')) <= 28000 and
+                len(json.dumps({'text': text}, ensure_ascii=False).encode('utf-8')) <= 30000)
+    def atoms():
+        for index, line in enumerate(message.split('\n')):
+            if index:
+                yield '\n', False
+            for value, url in linked_parts(line, links):
+                if url and len(url) <= 4000:
+                    url = quote(url, safe=":/?#[]@!$&'()*+,;=%~-._")
+                    if len(url) <= 8000:
+                        yield f'<{url}|{value}>', True
+                        continue
+                yield from _message_atoms(plain(value))
+    try:
+        return [{'text': content(body)} for body in _pack_message(atoms(), fits)]
+    except ValueError:
+        raise DeliveryError('Element wiadomości Google Chat nie mieści się w limicie. Skróć szablon.') from None
 
 
 def send(webhook, content):

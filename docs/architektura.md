@@ -1,6 +1,6 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje wersja [1.9.0](wersje/v1.9.0.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.9.1](wersje/v1.9.1.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
 
 ## Przepływ i odpowiedzialności
 
@@ -19,8 +19,14 @@ Bieżący stan opisuje wersja [1.9.0](wersje/v1.9.0.md). Zakres wykonanych prób
 
 ## Zasady współpracy modułów
 
+### Źródła po audycie technicznym — 4 listopada 2026
+
+Zwykły log i JSONL używają wspólnego bezpiecznego handlera; błąd IO nie wraca do uszkodzonego handlera przez stderr. `alert_writer` obserwuje każde Future. Tylko odczyt outbox ma ograniczone ponowienia 1/5 s; nie powtarzamy niepewnej wysyłki. Wiadomości są dzielone według rozmiaru końcowego JSON bez obcinania treści. Przed utworzeniem App `data_validation.py` sprawdza lokalne dane bez migracji/zapisu; uszkodzenie lub brak dostępu otwiera ekran informacyjny zamiast monitoringu. DPAPI nadal zachowuje nieczytelny szyfrogram. [Decyzja 017](decyzje/017-odpornosc-lokalnego-io.md), [status i próby](../AUDIT.md).
+
+Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wydania 1.9.1](plany/zakonczone/wydanie-1.9.1.md). Po zamknięciu audytu na osobne zlecenie przebudowano główną paczkę `dist/Neto Incident Monitor/` i sprawdzono ją offline; usunięto starsze paczki audytowe oraz nieaktualny ZIP. Logi źródłowe pozostają w `data/`; rozbieżność z ogólną polityką lokalnego katalogu danych użytkownika jest jawnie odłożona do uzgodnienia, nie rozstrzygnięta przez ten audyt.
+
 - Tk jest obsługiwane na głównym wątku; worker przekazuje wyniki przez kolejkę zdarzeń. Operacje Playwright należą do jednego workera. Szczegóły: [decyzja 001](decyzje/001-watki-i-kolejki.md).
-- Start: logowanie → zagrożenia → opcjonalny dashboard → filtry. Zagrożenia są sprawdzane ponownie 60 s od zakończenia poprzedniej próby, w bezpiecznych punktach między filtrami. To nie gwarantuje odczytu dokładnie co minutę: [decyzja 002](decyzje/002-harmonogram-zagrozen.md).
+- Start: logowanie → opcjonalny dashboard → zagrożenia → filtry. Pełna ręczna aktualizacja także wykonuje dashboard przed zagrożeniami i filtrami. Aktualizacje pojedynczych sekcji pozostają niezależne. Zagrożenia są sprawdzane ponownie 60 s od zakończenia poprzedniej próby, po dashboardzie i między całymi filtrami; nie tworzymy zaległych minut ani natychmiastowej powtórki po obsłużeniu kolejki. Dashboard, jego retry lub logowanie mogą opóźnić zagrożenia: [decyzja 018](decyzje/018-kolejnosc-aktualizacji.md), zastępująca 002.
 - Błąd, brak danych i prawidłowe zero są odrębnymi stanami. Czytnik zbiera wynik, a UI nie powinno zgadywać jego poprawności: [decyzja 003](decyzje/003-poprawnosc-i-aktualnosc.md).
 - Współdzielimy mechanizmy, nie limity dobrane przypadkowo. Liczba prób, budżet czasu i kompletność są częścią kontraktu danej operacji; nie dodajemy zagnieżdżonych ponowień: [decyzja 005](decyzje/005-kompletny-odczyt-listy.md).
 - Diagnostyka jest częścią funkcji i korzysta ze wspólnych zabezpieczeń: [decyzja 004](decyzje/004-bezpieczna-diagnostyka.md).
@@ -29,7 +35,7 @@ Bieżący stan opisuje wersja [1.9.0](wersje/v1.9.0.md). Zakres wykonanych prób
 
 - EXE przechowuje dane użytkownika w `%LOCALAPPDATA%/NetoIncidentMonitor`; uruchomienie ze źródeł używa katalogu projektu `data/`. Rozstrzyga `runtime_paths.py`.
 - Historia, stan obecności filtrów i cache dashboardu mają różne role. Nie zastępujemy jednego drugim ani nie dołączamy danych użytkownika do wydania.
-- Nowa paginacja zwraca kompletny, zweryfikowany wynik albo błąd. Została sprawdzona w źródłach; test nowego EXE pozostaje osobnym krokiem.
+- Paginacja zwraca kompletny, zweryfikowany wynik albo błąd. Odbiór źródeł i wydania 1.9.0 opisuje kontrakt list. Paczki po audycie mają odbiór offline, bez ponownego odczytu rzeczywistego ServiceNow.
 - Dashboard i zagrożenia używają wspólnego `read_tile/read_scores`; liczy się lokalny stan konkretnego widżetu, nie ładowanie obcego wykresu. `dashboard_context.py` potwierdza dashboard, zakładkę i kontrolkę daty; kategorie są stosowane osobno.
 - `section_runner.py` jest jedynym właścicielem ponowień sekcji: aktywny budżet 60 s, najwyżej jedno odzyskanie, osobne oczekiwanie na logowanie. `read_budget.py` ogranicza podrzędne oczekiwania. Szczegóły i granice: [decyzja 006](decyzje/006-odczyt-sekcji-dashboardu.md).
 - Cache schematu 2 przechowuje kompletne wyniki i czasy poszczególnych sekcji. Błąd nie zmienia daty sukcesu ani nie miesza kafelków z różnych prób; WJRUW używa jednego kompletu SLA. Migrowany stary cache ma niepotwierdzone czasy sekcji.
@@ -66,7 +72,7 @@ W bieżących źródłach historia filtrów przechowuje zgłoszenia i daty wykry
 
 Reset danych korzysta ze ścieżki zamykania i blokady pojedynczej instancji. Launcher wznawia przerwaną operację przed otwarciem logów, a w trybie źródłowym zakres ogranicza lista danych wykonawczych. [Decyzja 013](decyzje/013-reset-danych-aplikacji.md).
 
-Autostart Windows odczytuje wpis `Run` bieżącego wariantu pod blokadą głównej instancji. Jeśli wpis istnieje i wskazuje dawną ścieżkę, aplikacja nadpisuje tę samą wartość. Ustawienia systemowe wyłączające uruchamianie wpisu pozostają w gestii Windows.
+Autostart Windows jest ukryty w UI: użytkownik nie może go włączyć z ustawień aplikacji. Mechanizm rejestracji, naprawy istniejącego wpisu i usuwania przy resecie pozostaje dostępny wewnętrznie. Domyślnie autostart jest wyłączony — brak wpisu nie powoduje jego utworzenia. Ukrycie opcji nie usuwa wcześniej istniejących wpisów. Autostart Windows odczytuje wpis `Run` bieżącego wariantu pod blokadą głównej instancji. Jeśli wpis istnieje i wskazuje dawną ścieżkę, aplikacja nadpisuje tę samą wartość. Ustawienia systemowe wyłączające uruchamianie wpisu pozostają w gestii Windows.
 
 Sekcja Wnioski L1 obejmuje pięć kafelków. Starszy zapis czterech wartości jest pomijany dla tej sekcji. Poprawne migawki SLA i Wstrzymanych L1 pozostają dostępne, a wspólny czas pełnego odczytu jest czyszczony.
 

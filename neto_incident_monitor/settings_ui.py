@@ -115,8 +115,7 @@ def build_settings(app, settings):
     startup = section("URUCHAMIANIE I OKNO APLIKACJI")
     app.start_with_windows = tk.BooleanVar(value=app.windows_startup in ("current", "repaired"))
     app.startup_status_text = tk.StringVar(value=app.windows_startup_description())
-    controls = row(startup, "Uruchom aplikację przy starcie systemu", app.startup_status_text)
-    Toggle(controls, app.start_with_windows).pack(side="right")
+    # Keep registration support internally; Windows autostart is not exposed in UI.
     for key, title, description in (
         ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Wymaga włączonego filtra; może wymagać zalogowania do ServiceNow."),
         ("start_minimized", "Uruchom aplikację zminimalizowaną", "Rozpoczynaj pracę ze zminimalizowanym oknem."),

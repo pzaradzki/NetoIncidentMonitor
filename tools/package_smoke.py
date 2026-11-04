@@ -34,6 +34,17 @@ def main(output):
             if app.tray:
                 app.tray.stop()
         window.destroy()
+        from neto_incident_monitor.data_validation import preflight, StartupDataError
+        with tempfile.TemporaryDirectory(prefix='sn-validation-') as directory:
+            config = Path(directory) / 'config.json'
+            config.write_text('{invalid', encoding='utf-8')
+            try:
+                preflight(config, Path(directory) / 'history.json')
+                raise AssertionError('Invalid configuration accepted')
+            except StartupDataError as error:
+                assert error.category == 'invalid'
+                assert config.read_text(encoding='utf-8') == '{invalid'
+                result['startup_validation'] = 'ok'
         with sync_playwright() as playwright:
             result["browser_executable"] = playwright.chromium.executable_path
             browser = playwright.chromium.launch(headless=True, channel="chromium")

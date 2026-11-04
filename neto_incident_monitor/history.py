@@ -17,9 +17,12 @@ class History:
         self.membership = None
         raw = {}
         if self.store.exists():
-            with closing(sqlite3.connect(self.store)) as db:
+            with closing(sqlite3.connect(self.store.resolve().as_uri() + '?mode=ro', uri=True)) as db:
                 version, = db.execute("PRAGMA user_version").fetchone()
                 if version == 1:
+                    tables = {name for name, in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                    if not {'history', 'membership'} <= tables:
+                        raise ValueError('Niekompletny magazyn filtrów.')
                     raw = dict((key, json.loads(value)) for key, value in db.execute(
                         "SELECT key, value FROM history"))
                     from neto_incident_monitor.filter_state import validate_membership
@@ -32,8 +35,8 @@ class History:
                     raise ValueError("Nieprawidłowa wersja magazynu filtrów.")
         if self.membership is None and self.path.exists():
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise ValueError("Nieprawidłowy format historii filtrów.")
+        from neto_incident_monitor.data_validation import validate_history
+        validate_history(raw)
         self.records = raw
         migrated = {}
         for record in self.records.values():
@@ -91,7 +94,7 @@ class History:
     def threatened_snapshot(self):
         if not self.store.exists():
             return {}
-        with closing(sqlite3.connect(self.store)) as db:
+        with closing(sqlite3.connect(self.store.resolve().as_uri() + '?mode=ro', uri=True)) as db:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'threatened_history'").fetchone():
                 return {}
             return {key: json.loads(value) for key, value in db.execute(

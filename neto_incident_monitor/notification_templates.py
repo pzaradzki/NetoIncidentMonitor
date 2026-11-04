@@ -33,6 +33,50 @@ def slices(text, width):
     yield text[start:]
 
 
+def _message_atoms(text):
+    """Bound plain spans while retaining complete record identifiers."""
+    position = 0
+    for match in re.finditer(r'(?:INC|SCTASK|REQ|RITM)\d{1,20}', text):
+        for start in range(position, match.start(), 512):
+            yield text[start:min(start + 512, match.start())], False
+        yield match[0], True
+        position = match.end()
+    for start in range(position, len(text), 512):
+        yield text[start:start + 512], False
+
+
+def _pack_message(atoms, fits):
+    """Validate the entire batch before transport; never split rendered links."""
+    if not fits(''):
+        raise ValueError('Message header exceeds payload limit')
+    chunks, current = [], ''
+    for part, atomic in atoms:
+        if fits(current + part):
+            current += part
+            continue
+        if current:
+            chunks.append(current)
+            current = ''
+        while part and not fits(part):
+            if atomic:
+                raise ValueError('Message atom exceeds payload limit')
+            low, high = 0, len(part)
+            while low < high:
+                middle = (low + high + 1) // 2
+                if fits(part[:middle]):
+                    low = middle
+                else:
+                    high = middle - 1
+            if not low:
+                raise ValueError('Message character exceeds payload limit')
+            chunks.append(part[:low])
+            part = part[low:]
+        current = part
+    if current or not chunks:
+        chunks.append(current)
+    return chunks
+
+
 def validate(message, item, schema, bindings=None):
     if not message.strip() or not item.strip():
         raise ValueError('Oba szablony muszą zawierać tekst.')

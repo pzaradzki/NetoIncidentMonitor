@@ -131,6 +131,16 @@ authentication_popup dashboard_operation dashboard_navigation section_read_error
 NUMERIC_FIELDS.update({
     'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
+EVENTS.add('alert_delivery')
+EVENTS.add('startup_validation')
+TEXT_FIELDS['data_area'] = {'configuration', 'history'}
+TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})
+NUMERIC_FIELDS.add('accepted_parts')
+TEXT_FIELDS.update({
+    'delivery_stage': {'read', 'route', 'claim', 'send', 'finish', 'worker'},
+    'delivery_outcome': {'started', 'retry', 'error', 'cancelled', 'complete', 'accepted', 'uncertain'},
+    'channel': {'windows', 'teams', 'google_chat'},
+})
 
 
 def readiness_facts(error):

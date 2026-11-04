@@ -1,8 +1,11 @@
 # Plany i pozostałe prace
 
-Bieżąca wersja to [1.9.0](../wersje/v1.9.0.md).
+Bieżąca wersja to [1.9.1](../wersje/v1.9.1.md).
 
 ## Pozostałe tematy
+
+
+- [Etap napraw audytu](zakonczone/naprawy-audytu.md) zamknięto za zgodą użytkownika 4 listopada 2026 po testach automatycznych, offline i wstępnych testach użytkowych bez zgłoszonych problemów. Kolejne funkcjonalności można planować niezależnie. Pozostają decyzje o retencji outbox i lokalizacji logów źródłowych oraz pomiary opóźnień Tk. Nowych paczek audytowych nie opublikowano.
 
 
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu.
@@ -22,6 +25,10 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.9.1](zakonczone/wydanie-1.9.1.md) | Przygotowanie publikacji: poprawki audytu, kolejność aktualizacji i ukryty autostart Windows. |
+| [Ukrycie autostartu Windows](zakonczone/ukrycie-autostartu-windows.md) | Przełącznik ukryty; mechanizm zachowany, domyślnie wyłączony; lokalny build i smoke OK. |
+| [Kolejność aktualizacji](zakonczone/kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; 493 testy (2 pominięcia), lokalny build i offline smoke; główna paczka zaktualizowana, bez publikacji. |
+| [Naprawy audytu technicznego](zakonczone/naprawy-audytu.md) | A01–A06/A09 naprawione, A10 częściowo; końcowe 486 testów (2 pominięcia), pięć osobnych buildów i prób offline, bez publikacji. |
 | [Wydanie 1.9.0](zakonczone/wydanie-1.9.0.md) | 465 testów (463 zaliczone, 2 pominięte), kontrola ZIP i rozpakowanego EXE, publikacja i zgodność pobranej paczki. |
 | [Obsługa długich adresów list](zakonczone/obsluga-dlugich-adresow-list.md) | 66 testów, rzeczywiste dodanie filtra, zapis i odczyty po restarcie przebudowanego EXE na osobnych danych. |
 | [Naprawa filtra „Dyżur 1L”](zakonczone/naprawa-filtra-dyzur-1l.md) | Potwierdzony alias daty, 75 testów i rzeczywisty odbiór źródeł oraz przebudowanego EXE na osobnych danych. |
@@ -36,7 +43,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 | [Ukryty dashboard](zakonczone/odczyt-dashboardu-w-ukrytym-chromium.md) | Badania A–C i wdrożenie D1–D5; [raport](../weryfikacja/odbior-ukrytego-dashboardu.md) |
 | [Logowanie i ukryte SSO](zakonczone/stabilizacja-logowania.md) | A–F; [raport](../weryfikacja/odbior-stabilizacji-logowania.md), z jawnymi ograniczeniami realnego SSO |
 
-Bieżące zachowanie: [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). Wydanie: [1.9.0](../wersje/v1.9.0.md).
+Bieżące zachowanie: [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). Wydanie: [1.9.1](../wersje/v1.9.1.md).
 
 Zakończono zmianę otwierania list dashboardu: wartości odświeżają się bez pozyskiwania linków, a pojedynczy cel jest potwierdzany po kliknięciu. Kafelki z cache również mają akcję, SLA zachowuje okres wyświetlonej migawki, a błąd pozwala ponowić kliknięcie. [Decyzja i ograniczenia](../decyzje/014-linki-dashboardu-na-zadanie.md), [lokalne i rzeczywiste próby](../kontrakty/kontrakt-odczytu-dashboardu.md). Funkcja jest częścią EXE 1.9.0.
 

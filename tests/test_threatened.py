@@ -190,7 +190,7 @@ class ThreatenedPresentationTests(unittest.TestCase):
             self.assertTrue(app.threatened_view.pending)
             self.assertFalse(app.threatened_view.refresh_button.enabled)
             app.schedule.request.assert_not_called()
-            self.assertIn('przed dashboardem i filtrami', app.threatened_view.message.get())
+            self.assertIn('przed filtrami', app.threatened_view.message.get())
         finally:
             root.destroy()
 
@@ -266,7 +266,7 @@ class ThreatenedWorkerTests(unittest.TestCase):
         self.assertEqual(results[0][:2], (4, values))
         app.browser_runtime.set_activity.assert_called_with('filters')
 
-    def test_startup_read_runs_after_login_before_dashboard_and_filters_only_once(self):
+    def test_startup_read_runs_after_dashboard_before_filters_only_once(self):
         from neto_incident_monitor.history import History
         with tempfile.TemporaryDirectory() as folder:
             app = self.app()
@@ -299,7 +299,7 @@ class ThreatenedWorkerTests(unittest.TestCase):
                     patch('neto_incident_monitor.app.read_all', side_effect=filters), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, True]):
                 app.monitor(settings)
-            self.assertEqual(order[:4], ['login', 'threatened', 'dashboard', 'filter'])
+            self.assertEqual(order[:4], ['login', 'dashboard', 'threatened', 'filter'])
             self.assertEqual(order.count('threatened'), 1)
             self.assertEqual(order.count('dashboard'), 2)
 

@@ -13,7 +13,7 @@ Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych
 - Osobny widok incydentów zagrożonych SLA, sprawdzany co minutę od zakończenia poprzedniej próby, również pomiędzy odczytami filtrów.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Bieżące wydanie opisano w [notatkach 1.9.0](docs/wersje/v1.9.0.md). Wcześniejsze opisy zachowano w [indeksie wersji](docs/wersje/README.md).
+Bieżące wydanie opisano w [notatkach 1.9.1](docs/wersje/v1.9.1.md). Wcześniejsze opisy zachowano w [indeksie wersji](docs/wersje/README.md).
 
 ## Uruchomienie
 
@@ -45,3 +45,17 @@ Aktualizacja zachowuje dane użytkownika. Nie udostępniaj katalogu danych, poni
 Wymagany Python 3.12. Uruchom `start.bat`, aby przygotować środowisko i uruchomić aplikację.
 
 Szczegółowe informacje: [instrukcja użytkownika](docs/instrukcja-uzytkownika.md) oraz [indeks dokumentacji projektu](docs/README.md).
+
+## Weryfikacja źródeł
+
+W istniejącym środowisku uruchom:
+
+```powershell
+.venv\Scripts\python.exe -B -m tools.run_regression --output build/regression.json
+```
+
+Runner używa osobnego procesu i tymczasowych danych dla każdego modułu. Testy natywnego fokusu działają pojedynczo; pozostałe w najwyżej trzech procesach (`--jobs 1` wyłącza równoległość). Błędy callbacków Tk powodują niezaliczenie modułu. Wynik JSON zawiera liczniki, identyfikatory testów i przyczyny pominięć; nie zawiera treści wyjątków. Domyślny limit modułu to 180 s (`--timeout`).
+
+`.venv\Scripts\python.exe -B -m tools.preview_ui` tworzy podgląd z danych syntetycznych w `build/ui-preview.png`, bez użycia danych i sesji monitora. Test regresyjny narzędzia sprawdza przepływ z atrapą przechwytywania obrazu, nie stanowi odbioru wizualnego zrzutu.
+
+Naprawy audytu wchodzące do 1.9.1 i granice weryfikacji opisuje [AUDIT.md](AUDIT.md). Testy lokalne i offline nie zastępują nowego odbioru rzeczywistego ServiceNow.

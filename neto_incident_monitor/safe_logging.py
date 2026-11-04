@@ -4,6 +4,7 @@ from logging.handlers import RotatingFileHandler
 from time import monotonic
 from pathlib import Path
 import traceback
+import sys
 from copy import copy
 
 
@@ -14,6 +15,41 @@ class DiagnosticFileHandler(RotatingFileHandler):
         self.retry_at = 0
         self.failures = 0
         self.warned = False
+
+    def _open(self):
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
+
+    def flush(self):
+        try:
+            super().flush()
+        except Exception:
+            self.handleError(None)
+
+    def close(self):
+        try:
+            super().close()
+        except Exception:
+            self.handleError(None)
+            self.stream = None
+            logging.Handler.close(self)
+
+    def notice(self, message, level=logging.WARNING):
+        # Never route a sink failure back through logging or redirected stderr.
+        try:
+            logger = logging.getLogger('servicenow')
+            record = logger.makeRecord(logger.name, level, '', 0, message, (), None)
+            delivered = False
+            while logger is not None:
+                for handler in logger.handlers:
+                    if handler is not self and level >= handler.level:
+                        handler.handle(record)
+                        delivered = True
+                logger = logger.parent if logger.propagate else None
+            if not delivered and sys.__stderr__ is not None:
+                sys.__stderr__.write(message + '\n')
+        except Exception:
+            pass
 
     def emit(self, record):
         if monotonic() < self.retry_at:
@@ -26,20 +62,14 @@ class DiagnosticFileHandler(RotatingFileHandler):
         if self.failures == failures and self.retry_at:
             self.retry_at = 0
             self.warned = False
-            try:
-                logging.getLogger('servicenow').info('Przywrócono zapis diagnostyki logowania.')
-            except Exception:
-                pass
+            self.notice('Przywrócono zapis diagnostyki.', logging.INFO)
 
     def handleError(self, record):
         self.failures += 1
         self.retry_at = monotonic() + 30
         if not self.warned:
             self.warned = True
-            try:
-                logging.getLogger('servicenow').warning('Nie udało się zapisać diagnostyki logowania; zapis zostanie ponowiony.')
-            except Exception:
-                pass
+            self.notice('Nie udało się zapisać diagnostyki; ponowienie za 30 s.')
 
 
 class SafeExceptionFormatter(logging.Formatter):

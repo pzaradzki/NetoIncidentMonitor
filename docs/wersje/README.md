@@ -1,6 +1,7 @@
 # Opisy wersji
 
-- [1.9.0](v1.9.0.md) — bieżące wydanie: dane aplikacji, autostart, dashboard i poprawki filtrów.
+- [1.9.1](v1.9.1.md) — bieżące wydanie: odporność IO, kompletność powiadomień, kolejność odświeżania i ukryty autostart Windows.
+- [1.9.0](v1.9.0.md) — poprzednie wydanie: dane aplikacji, autostart, dashboard i poprawki filtrów.
 - [1.8.1](v1.8.1.md) — poprzednie wydanie i historia lokalnych przebudów przed 1.9.0.
 
 - [1.8.0](v1.8.0.md) — wcześniejszy lokalny EXE, sprawdzony offline; **bez publikacji i nowego ZIP-a**.

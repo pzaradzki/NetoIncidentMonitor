@@ -5,7 +5,7 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | ID | Decyzja |
 | --- | --- |
 | [001](001-watki-i-kolejki.md) | Jeden właściciel Playwright; Tk i zadania w tle komunikują się kolejkami. |
-| [002](002-harmonogram-zagrozen.md) | Zagrożenia po logowaniu i 60 s od zakończenia; wtrącanie między całymi filtrami. |
+| [002](002-harmonogram-zagrozen.md) | Zastąpiona przez 018; zachowuje pierwotne uzasadnienie priorytetu zagrożeń. |
 | [003](003-poprawnosc-i-aktualnosc.md) | Brak danych i błąd nie oznaczają zera ani świeżego sukcesu. |
 | [004](004-bezpieczna-diagnostyka.md) | Wspólna, ograniczona diagnostyka bez danych wrażliwych. |
 | [005](005-kompletny-odczyt-listy.md) | Pełna walidacja listy przed zapisaniem; ograniczone ponowienie od początku. |
@@ -20,6 +20,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [014](014-linki-dashboardu-na-zadanie.md) | Pobieranie celu pojedynczego kafelka dopiero po kliknięciu, poza odświeżaniem wartości. |
 | [015](015-rownowaznosc-dat-filtrow.md) | Ścisłe porównywanie filtrów z potwierdzoną równoważnością siedmiodniowej daty. |
 | [016](016-normalizacja-adresow-list.md) | Rozpakowanie długich adresów list bez utraty kodowania i parametrów. |
+| [017](017-odpornosc-lokalnego-io.md) | Odporne logowanie, obserwowana kolejka alertów, kompletny podział wiadomości i walidacja przed startem. |
+| [018](018-kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; zachowany niezależny harmonogram zagrożeń. |
 
 ## Format i utrzymanie
 

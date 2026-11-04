@@ -141,6 +141,8 @@ def load_config(path, default, *, migrate_plaintext=True):
         if not path.exists():
             return default
         raw = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(raw, dict):
+            raise ValueError('Nieprawidłowy format konfiguracji.')
         settings = Settings(raw)
         migrate = False
         for container, per_filter in secret_containers(settings):

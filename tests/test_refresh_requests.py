@@ -53,10 +53,7 @@ class RefreshRequestsTests(unittest.TestCase):
                         patch('neto_incident_monitor.app.read_all', side_effect=read), \
                         patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True) as wait:
                     app.monitor(dict(urls=urls, filters=app.filters, interval=3600, task_interval=3600))
-                expected = ['threatened', 'dashboard']
-                if slow_dashboard:
-                    expected += ['threatened']  # One overdue run, not a backlog of two.
-                expected += [0, 1, 'threatened', 2]
+                expected = ['dashboard', 'threatened', 0, 1, 'threatened', 2]
                 self.assertEqual(order, expected)
                 self.assertEqual(wait.call_args.args[2], 25)
                 self.assertEqual(app.threatened_next_read - clock[0], 25)
@@ -137,7 +134,7 @@ class RefreshRequestsTests(unittest.TestCase):
 
     def test_worker_obeys_scope_and_full_order(self):
         for scope, expected in (
-            ('all', ['threatened', 'dashboard', 'A', 'B']),
+            ('all', ['dashboard', 'threatened', 'A', 'B']),
             ('dashboard', ['dashboard']),
             ('threatened', ['threatened']),
             ('filter', ['B']),

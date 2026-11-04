@@ -161,6 +161,8 @@ def load_filters(settings, tolerate_invalid=False):
         {"name": f"Filtr {index}", "url": url}
         for index, url in enumerate(settings.get("urls", []), 1)
     ]
+    from neto_incident_monitor.data_validation import validate_filters
+    validate_filters(entries)
     result = []
     for entry in entries:
         try:
@@ -851,9 +853,12 @@ class App(DynamicColumns, TableLoading):
         RoundedButton(buttons, text="Wyłącz filtr", command=lambda: finish(False, True)).pack(side="right", padx=8)
         dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False, True))
         timer = None
+        geometry_timer = None
         def cleanup(event):
-            if event.widget is dialog and timer is not None:
-                dialog.after_cancel(timer)
+            if event.widget is dialog:
+                for pending in (timer, geometry_timer):
+                    if pending is not None:
+                        dialog.after_cancel(pending)
         dialog.bind("<Destroy>", cleanup, add="+")
         def tick():
             nonlocal timer
@@ -880,7 +885,7 @@ class App(DynamicColumns, TableLoading):
         dialog.lift()
         dialog.attributes("-topmost", True)
         # Reapply after mapping: Windows can reposition transient windows.
-        dialog.after_idle(lambda: dialog.geometry(geometry) if dialog.winfo_exists() else None)
+        geometry_timer = dialog.after_idle(lambda: dialog.geometry(geometry) if dialog.winfo_exists() else None)
 
     def make_table(self, parent, history):
         columns = [(key, label, width) for key, label, width in FIELDS if key != "time"]
@@ -1180,21 +1185,79 @@ class App(DynamicColumns, TableLoading):
                               **{item["number"]: item["url"] for item in incidents}},
                        request_id=request_id)
 
+    def submit_alert_delivery(self, recover=False):
+        future = self.alert_writer.submit(self.deliver_alerts, recover)
+        def completed(result):
+            if not result.cancelled() and result.exception() is not None:
+                App.alert_delivery_error(self, result.exception(), 'worker')
+        future.add_done_callback(completed)
+        return future
+
+    @staticmethod
+    def alert_delivery_error(app, error, stage, diagnostics=None):
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+        diagnostics = diagnostics or LoginDiagnostics(source='monitor')
+        diagnostics.record('alert_delivery', delivery_stage=stage, delivery_outcome='error', **error_facts(error))
+        app.events.put(('status', 'Nie udało się obsłużyć kolejki powiadomień. '
+                       'Zachowano zadania; wynik rozpoczętej wysyłki może być niepewny.'))
+
     def deliver_alerts(self, recover=False):
+        import sqlite3
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+        diagnostics = LoginDiagnostics(source='monitor')
+        started = time.monotonic()
+        outcome = 'cancelled'
+        diagnostics.record('alert_delivery', delivery_stage='read', delivery_outcome='started')
+        try:
+            for attempt in range(1, 4):
+                if self.stop.is_set():
+                    return
+                try:
+                    jobs = self.history.pending_alerts(recover=recover)
+                    break
+                except (sqlite3.Error, OSError) as error:
+                    diagnostics.record('alert_delivery', delivery_stage='read', attempt=attempt,
+                                       delivery_outcome='retry' if attempt < 3 else 'error', **error_facts(error))
+                    if attempt == 3:
+                        raise
+                    if self.stop.wait((1, 5)[attempt - 1]):
+                        return
+            state = {'stage': 'route'}
+            try:
+                App._deliver_alert_jobs(self, jobs, diagnostics, state)
+            except Exception as error:
+                outcome = 'error'
+                App.alert_delivery_error(self, error, state['stage'], diagnostics)
+                return
+            outcome = 'cancelled' if self.stop.is_set() else state.get('outcome', 'complete')
+        except Exception as error:
+            outcome = 'error'
+            App.alert_delivery_error(self, error, 'read', diagnostics)
+        finally:
+            diagnostics.record('alert_delivery', delivery_stage='worker', delivery_outcome=outcome,
+                               duration_ms=round((time.monotonic() - started) * 1000))
+
+    def _deliver_alert_jobs(self, jobs, diagnostics, state_context):
         from neto_incident_monitor import teams_notifications, google_chat_notifications
-        for key, job in self.history.pending_alerts(recover=recover):
+        for key, job in jobs:
             if self.stop.is_set():
                 return
+            state_context['stage'] = 'route'
             channel = job["channel"]
             route = self.alert_routes(job["url"]).get(channel)
+            state_context['stage'] = 'claim'
             if not route or route[0] != job["target"]:
                 self.history.transition_alert(key, "pending", "cancelled")
+                diagnostics.record('alert_delivery', delivery_stage='claim', delivery_outcome='cancelled',
+                                   action_id=key, channel=channel)
                 App.log_threatened_delivery(key, job, "cancelled", 0)
                 continue
             if not self.history.transition_alert(key, "pending", "sending"):
                 continue
             state = "uncertain"
             accepted = 0
+            diagnostics.record('alert_delivery', delivery_stage='send', delivery_outcome='started',
+                               action_id=key, channel=channel)
             try:
                 if channel == "windows":
                     from plyer import notification
@@ -1216,10 +1279,16 @@ class App(DynamicColumns, TableLoading):
                         if channel == "google_chat":
                             self.stop.wait(1.1)
                 state = "accepted"
-            except Exception:
+            except Exception as error:
+                state_context['outcome'] = 'uncertain'
+                diagnostics.record('alert_delivery', delivery_stage='send', delivery_outcome='uncertain',
+                                   action_id=key, channel=channel, accepted_parts=accepted, **error_facts(error))
                 self.events.put(("status", f"Wynik wysyłki {channel} jest niepewny. Potwierdzone części: {accepted}."))
             finally:
+                state_context['stage'] = 'finish'
                 self.history.transition_alert(key, "sending", state)
+                diagnostics.record('alert_delivery', delivery_stage='finish', delivery_outcome=state,
+                                   action_id=key, channel=channel, accepted_parts=accepted)
                 App.log_threatened_delivery(key, job, state, accepted)
 
     @staticmethod
@@ -1722,7 +1791,7 @@ class App(DynamicColumns, TableLoading):
             self.threatened_view.request_refresh(coordinated=True)
         self.update_refresh_controls()
         self.schedule.request()
-        self.status.set('Zlecono pełną aktualizację: zagrożenia → dashboard → filtry.' if scope == 'all' else
+        self.status.set('Zlecono pełną aktualizację: dashboard → incydenty zagrożone → filtry.' if scope == 'all' else
                         'Zlecono aktualizację wybranego zakresu.')
         return True
 
@@ -1930,7 +1999,7 @@ class App(DynamicColumns, TableLoading):
         self.monitor_generation = object()
         self.stop.clear()
         if hasattr(self, "alert_writer"):
-            self.alert_writer.submit(self.deliver_alerts, True)
+            self.submit_alert_delivery(True)
         self.threatened_next_read = None
         self.refresh_coordinator().finish()
         self.refresh_coordinator().reserve('startup')
@@ -1950,9 +2019,9 @@ class App(DynamicColumns, TableLoading):
         self.notify_check.configure(state="disabled")
         for button in self.filter_buttons:
             button.configure(state="disabled")
-        self.threatened_view.request_refresh(automatic=True)
         if self.dashboard_auto_refresh.get():
             self.dashboard_view.request_refresh(automatic=True)
+        self.threatened_view.request_refresh(automatic=True)
         self.worker = threading.Thread(target=self.monitor, args=(settings,), daemon=True)
         try:
             self.worker.start()
@@ -2077,11 +2146,15 @@ class App(DynamicColumns, TableLoading):
                         task = self.refresh_coordinator().scheduled()
                         scope, target_url = task
                         self.events.put(('refresh_state', None))
-                        if scope in ('startup', 'all', 'threatened', 'scheduled'):
-                            self.read_threatened_request(page)
                         if scope in ('startup', 'all', 'dashboard', 'scheduled'):
                             self.threatened_delay_reason = 'dashboard'
                             self.read_dashboard_request(page)
+                        if self.stop.is_set():
+                            break
+                        if scope in ('startup', 'all', 'threatened', 'scheduled'):
+                            self.read_threatened_request(page)
+                        if self.stop.is_set():
+                            break
                         self.read_dashboard_drilldown(page)
                         self.read_due_threatened(page)
                         due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
@@ -2204,7 +2277,7 @@ class App(DynamicColumns, TableLoading):
                                 retry_urls.discard(url)
                                 self.events.put(("snapshot", (url, incidents, revision, generation)))
                                 if new and hasattr(self, "alert_writer"):
-                                    self.alert_writer.submit(self.deliver_alerts)
+                                    self.submit_alert_delivery()
                                 elif new:
                                     self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)], revision, generation)))
                                 self.events.put(("read", (time.time(), filter_name)))
@@ -2385,7 +2458,7 @@ class App(DynamicColumns, TableLoading):
                             lambda incidents: self.prepare_threatened_alerts(incidents, request))
                         diagnostics.record('threatened_details_complete', records_read=len(details), row_count=arrivals)
                         if arrivals:
-                            self.alert_writer.submit(self.deliver_alerts)
+                            self.submit_alert_delivery()
                     except (OSError, ValueError, sqlite3.Error) as exc:
                         diagnostics.record('section_read_error', **error_facts(exc))
                 if saved is None:
@@ -2933,6 +3006,26 @@ class App(DynamicColumns, TableLoading):
             self.root.destroy()
 
 
+def _show_startup_problem(window, error):
+    from neto_incident_monitor.widgets import RoundedButton
+    window.title('Neto Incident Monitor — lokalne dane')
+    window.configure(background=BG)
+    window.resizable(False, False)
+    panel = ttk.Frame(window, padding=24)
+    panel.pack(fill='both', expand=True)
+    area = 'konfiguracji' if error.area == 'configuration' else 'historii i stanu filtrów'
+    reason = 'Nieprawidłowy format' if error.category == 'invalid' else 'Brak dostępu do plików'
+    ttk.Label(panel, text=f'{reason} {area}.', wraplength=480).pack(anchor='w')
+    ttk.Label(panel, text='Monitoring i powiadomienia nie zostały uruchomione. '
+              'Konfiguracja i historia pozostały bez zmian. Zamknij aplikację '
+              'i przywróć poprawne dane z kopii lub sprawdź dostęp do plików.',
+              wraplength=480).pack(anchor='w', pady=(12, 20))
+    RoundedButton(panel, text='Zamknij', command=window.destroy, background=BG).pack(side='right')
+    window.protocol('WM_DELETE_WINDOW', window.destroy)
+    window.bind('<Escape>', lambda _: window.destroy())
+    window.mainloop()
+
+
 def main(instance=None):
     from neto_incident_monitor.single_instance import SingleInstance
     from neto_incident_monitor.data_reset import DataReset, finish_with_retry
@@ -2952,6 +3045,16 @@ def main(instance=None):
             messagebox.showerror("Neto Incident Monitor", f"Błąd aplikacji: {error}", parent=window)
 
         window.report_callback_exception = callback_error
+        from neto_incident_monitor.data_validation import preflight, StartupDataError
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+        validation = LoginDiagnostics(source='configuration')
+        try:
+            preflight(CONFIG, DATA / 'history.json')
+        except StartupDataError as error:
+            validation.record('startup_validation', data_area=error.area, validation_result=error.category)
+            _show_startup_problem(window, error)
+            return False
+        validation.record('startup_validation', validation_result='accepted')
         from neto_incident_monitor.startup import reconcile_windows_startup
         try:
             startup_status = reconcile_windows_startup()

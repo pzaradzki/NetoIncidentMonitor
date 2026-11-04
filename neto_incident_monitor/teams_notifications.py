@@ -78,17 +78,20 @@ class NoRedirect(HTTPRedirectHandler):
 
 def message_chunks(title, message, links=None):
     """Bound the actual escaped payload, retaining every character."""
-    from neto_incident_monitor.notification_templates import slices
-    current = ''
-    for line in message.splitlines(keepends=True):
-        for part in slices(line, 1000):
-            candidate = current + part
-            if current and len(json.dumps(payload(title, candidate, links)).encode('utf-8')) > 25000:
-                yield current
-                current = ''
-            current += part
-    if current or not message:
-        yield current
+    from neto_incident_monitor.notification_templates import _message_atoms, _pack_message
+    from neto_incident_monitor.threatened import THREATENED_URL
+    def atoms():
+        for line in message.splitlines(keepends=True):
+            if line.rstrip('\r\n') == THREATENED_URL and (links or {}).get(THREATENED_URL) == THREATENED_URL:
+                yield line, True
+            else:
+                yield from _message_atoms(line)
+    fits = lambda text: len(json.dumps(payload(title, text, links)).encode('utf-8')) <= 25000
+    try:
+        chunks = _pack_message(atoms(), fits)
+    except ValueError:
+        raise DeliveryError('Nagłówek lub element wiadomości Teams nie mieści się w limicie. Skróć szablon lub nazwę filtra.') from None
+    yield from chunks
 
 
 class DeliveryError(RuntimeError):

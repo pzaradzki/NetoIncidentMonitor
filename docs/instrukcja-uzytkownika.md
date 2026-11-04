@@ -73,6 +73,8 @@ Obsługiwane listy to INC (`incident_list.do`), SCTASK (`sc_task_list.do`), REQ 
 2. Wybierz **Uruchom monitoring** i zaloguj się w otwartym oknie Chromium. Aplikacja automatycznie rozpoznaje zakończenie logowania.
 3. Korzystaj z przełączników przy filtrach, aby włączać lub wyłączać poszczególne listy, również podczas monitorowania.
 
+**Zmiana źródeł z 4 listopada 2026 i głównej paczki lokalnej `dist/Neto Incident Monitor`:** po zalogowaniu aktualizacja przebiega w kolejności **dashboard → incydenty zagrożone → filtry**. Przy wyłączonej automatycznej aktualizacji dashboardu start pomija dashboard. **Sprawdź teraz** dla całości używa nowej kolejności; przyciski poszczególnych sekcji nadal aktualizują wybrany zakres. Zagrożenia zachowują niezależny termin 60 s od końca poprzedniej próby, ale dashboard lub długi filtr mogą go opóźnić. Nie oznacza to zmiany już opublikowanego wydania.
+
 Każdy filtr ma własną listę bieżących incydentów i własną historię. Czerwone zaznaczenie w panelu filtrów określa zawartość obu zakładek. Ten sam numer incydentu może być niezależnie wykryty w kilku filtrach.
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
@@ -171,7 +173,7 @@ Starsze wersje aplikacji nie obsługują nowego formatu sekretów. Po migracji n
 
 Katalog danych zawiera ustawienia, historię, logi i profil przeglądarki. Wersja wykonywalna i wersja uruchamiana z kodu źródłowego korzystają z oddzielnych katalogów danych.
 
-W ustawieniach, w sekcji **Uruchamianie i okno aplikacji**, można włączyć automatyczny monitoring po uruchomieniu aplikacji, start aplikacji po zalogowaniu do Windows oraz uruchamianie ze zminimalizowanym oknem. Opcje są domyślnie wyłączone. Po jednoczesnym włączeniu **Uruchom aplikację zminimalizowaną** oraz **Minimalizacja do zasobnika** okno przy starcie trafia do zasobnika, również gdy ikona pojawi się z opóźnieniem. Przy błędzie zasobnika okno zostaje przywrócone. Automatyczny monitoring wymaga przynajmniej jednego włączonego filtra; logowanie do ServiceNow działa zgodnie z ustawieniami logowania. Autostart dotyczy bieżącego użytkownika i zapisuje ścieżkę do aplikacji, dlatego po przeniesieniu jej katalogu należy wyłączyć i ponownie włączyć tę opcję.
+W ustawieniach, w sekcji **Uruchamianie i okno aplikacji**, można włączyć automatyczny monitoring po uruchomieniu aplikacji oraz uruchamianie ze zminimalizowanym oknem. Opcje są domyślnie wyłączone. Po jednoczesnym włączeniu **Uruchom aplikację zminimalizowaną** oraz **Minimalizacja do zasobnika** okno przy starcie trafia do zasobnika, również gdy ikona pojawi się z opóźnieniem. Przy błędzie zasobnika okno zostaje przywrócone. Automatyczny monitoring wymaga przynajmniej jednego włączonego filtra; logowanie do ServiceNow działa zgodnie z ustawieniami logowania. Autostart Windows jest domyślnie wyłączony, a jego przełącznik jest ukryty w UI źródeł i głównej paczki lokalnej po zmianie z 4 listopada 2026. Mechanizm pozostaje zachowany; wcześniej istniejące wpisy nie są automatycznie usuwane.
 
 Dane użytkownika, w tym adres webhook i dane sesji przeglądarki, nie powinny być dodawane do repozytorium ani do pakietów dystrybucyjnych. Repozytorium zawiera kod źródłowy; pliki wykonywalne, Chromium i katalog `dist` są udostępniane jako pakiety wydań.
 
@@ -257,6 +259,6 @@ Opcja **Test powiadomienia** na dole menu kontekstowego wysyła powiadomienie z 
 
 W **Ustawienia → Dane aplikacji** wybierz **Usuń wszystkie dane aplikacji…**, a następnie **Usuń dane i zamknij**. Reset usuwa ustawienia, filtry, szablony, historię, oczekujące alerty, pamięć dashboardu, logi i profil Chromium monitora. Aplikacja się zamknie. Przy kolejnym uruchomieniu może być potrzebne ponowne logowanie. Jeśli plik jest zablokowany, można ponowić reset albo zamknąć aplikację. Kolejny start dokończy zapisane żądanie przed wczytaniem danych.
 
-Po przeniesieniu folderu aplikacji uruchom monitor ręcznie z nowej lokalizacji. Jeśli wpis autostartu istnieje, monitor zaktualizuje jego ścieżkę. Przełącznik pokazuje rejestrację wpisu, a Windows może dodatkowo wyłączyć jego uruchamianie w swoich ustawieniach. Reset danych usuwa wpis bieżącego wariantu aplikacji.
+Po przeniesieniu folderu aplikacji uruchom monitor ręcznie z nowej lokalizacji. Jeśli wpis autostartu istnieje, monitor zaktualizuje jego ścieżkę. Przełącznik autostartu Windows jest ukryty w UI; Windows może dodatkowo wyłączyć istniejący wpis w swoich ustawieniach. Reset danych usuwa wpis bieżącego wariantu aplikacji.
 
 Kafelki dashboardu rozróżniają kolorem priorytety, przekroczenia, Wstrzymane L1 i Wnioski L1. WJRUW jest wskaźnikiem obliczanym lokalnie. Po odświeżeniu kliknij aktywny kafelek albo wybierz go klawiszem Tab i naciśnij Enter lub Spację, aby otworzyć odpowiadającą listę w domyślnej przeglądarce. Kafelek SLA otwiera okres wyświetlanej wartości. Monitor ustala cel dopiero po kliknięciu. Jeśli lista się nie otworzy, możesz ponowić kliknięcie bez aktualizacji dashboardu. Wymagany jest działający monitoring.
