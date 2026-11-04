@@ -6,7 +6,7 @@ Stan kontraktu: 1 listopada 2026; lokalny build 1.8.0 z 2 listopada zawiera wdro
 | --- | --- | --- |
 | SLA | Liczba zgłoszeń; Zgłoszenia P1–P5; Przekroczone P1–P5 (11 liczb). WJRUW wyliczany z tego samego kompletu. | Wybrany miesiąc; wszystkie statusy, lokalizacje i osoby przypisane. |
 | Wstrzymane L1 | >14 dni i >7 dni (2 liczby). | Wszyscy agenci L1; stan bieżący, nie zakres miesiąca SLA. |
-| Wnioski L1 | Otwarte, >7 dni, >14 dni, nieprzypisane (4 liczby). | Wszyscy agenci L1; stan bieżący. |
+| Wnioski L1 | Otwarte, >7 dni, >14 dni, nieprzypisane i Wnioski Smartfon – start >3 dni (5 liczb). | Wszyscy agenci L1; stan bieżący. |
 | Zagrożenia | P1–P5 oraz Podjęcie (6 liczb). | Właściwa zakładka zagrożeń; progi 1/2/4 h, 1/2 dni i 5 min, także po terminie. |
 
 Każdy zaakceptowany zestaw musi pochodzić z właściwego dashboardu i zakładki, po zastosowaniu wymaganych ustawień, z jednoznacznych widżetów bez lokalnego ładowania. Wartości: pełne nieujemne liczby całkowite; zero nie jest brakiem danych. Krótka stabilność jest zabezpieczeniem dodatkowym, nie dowodem świeżości.
@@ -50,3 +50,47 @@ Próba sekcji korzysta z `BrowserRuntime.dashboard_read`. Przy ukryciu: potwierd
 `rendering_start/deferred/error/stop` zawierają stałą przyczynę, czas, `frame_count`, `ack_count`, `payload_bytes` (długość zakodowanych danych) i `cleanup_errors`, nigdy same dane ramek. `category_check_recovered/failed` opisują wynik obserwacji po dostarczonym zaznaczeniu. Niezaznaczona lub pośrednia kategoria nie jest uznawana za poprawną. Zasady: [007](../decyzje/007-ukryty-dashboard.md); [odbiór wdrożenia](../weryfikacja/odbior-ukrytego-dashboardu.md).
 
 Weryfikacja wspólnego timestampu (2 listopada 2026): 43 testy zakresowe zaliczone; po doprecyzowaniu testu starego/uszkodzonego znacznika ponowiono 7 testów snapshotów, także zaliczonych. Logi lokalne: `data/dashboard-single-timestamp-final-tests.log`, `data/dashboard-single-timestamp-cache-tests.log`. Nie testowano nowego EXE ani nie zmieniano interakcji ServiceNow.
+
+### Cele nawigacji kafelków
+
+W rzeczywistym ServiceNow kliknięcie kafelka smartfonów otworzyło listę zadań katalogowych w tej samej karcie. Adres nawigacji zawierał skrót `sysparm_tiny`. Próba kafelka nieprzypisanych wniosków także zakończyła się widokiem listy ze skrótem. Nie potwierdzono trwałego wzorca obejmującego filtry L1 ani zależność celu SLA od okresu. Dashboard aplikacji ma paletę sekcji i korzysta ze wspólnego komponentu kafelków. Na tym etapie akcje dashboardu czekały na zweryfikowane cele. WJRUW jest wskaźnikiem lokalnym.
+
+### Weryfikacja list L1 bez skrótów
+
+W osobnej karcie Codex kliknięto pięć kafelków Wniosków L1 i oba kafelki Wstrzymanych L1. Lista docelowa zawiera w ramce `gsft_main` tabelę klasyczną z atrybutami `glide_table`, `query` i `total_rows`. Wnioski prowadzą do `sc_task`, a Wstrzymane do `incident_metric`. Dla każdego z siedmiu kafelków bezpośrednia lista z zakodowanym `sysparm_query` zwróciła identyczne zapytanie i liczebność jak lista otwarta z kafelka. Liczby, identyfikatory agentów i treści rekordów pominięto w raporcie.
+
+Zapytania Wniosków zawierają identyfikatory agentów, których pola wyboru nie udostępniają w atrybutach HTML. Dalsza praca obejmuje bezpieczne pozyskanie zapytania z docelowej listy w izolowanym kontekście nawigacji i powiązanie go z migawką kafelka. Odbiór SLA nadal wymaga porównania dwóch okresów.
+
+### Podłączenie list L1 do migawek
+
+Poniższy opis oraz kolejne etapy odbioru automatycznego pozyskiwania wszystkich linków dokumentują wcześniejszą implementację. Zastąpiło ją opisane na końcu otwieranie list na żądanie; dawnych limitów sekcji ani wymogu nowego odczytu przed kliknięciem już nie stosujemy.
+
+Po przyjęciu wartości Wniosków L1 lub Wstrzymanych L1 monitor używa osobnej, tymczasowej karty tej samej sesji. Potwierdza zakładkę, stosuje wybór wszystkich agentów i porównuje wartość kafelka z przyjętą migawką przed kliknięciem. Z potwierdzonej listy odczytuje zapytanie i buduje bezpośredni adres. Pierwsza wersja próby pozyskania linków miała osobny limit 18 sekund na sekcję. Dostępność linku nie decyduje o poprawności liczby. Aplikacja zapisuje w diagnostyce wyłącznie liczby prób i wynik otwarcia według sekcji i indeksu kafelka.
+
+Linki są przechowywane tylko w pamięci. Błąd odświeżenia zachowuje poprzednią wartość i jej link. Kolejny poprawny odczyt zastępuje oba. Po restarcie wartości z cache można zobaczyć od razu, a akcje pojawiają się po uzyskaniu linków w nowym odczycie. Testy lokalne potwierdziły powiązanie linku z przyjętym wynikiem oraz brak zapisu zapytania do cache. Przebieg tej ścieżki z rzeczywistym ServiceNow oraz dwa okresy SLA pozostają do odbioru.
+
+### Weryfikacja celów SLA
+
+W osobnej karcie sprawdzono wszystkie jedenaście kafelków SLA dla listopada 2026. Każdy otworzył listę `task_sla`. Bezpośrednia lista z pełnym zapytaniem zwróciła zgodne zapytanie i liczebność we wszystkich jedenastu próbach. Dla kafelka Liczba zgłoszeń powtórzono porównanie dla września 2026, a po próbie przywrócono listopad. Zakres zapisany przez ServiceNow zawiera jawne daty pierwszego i ostatniego dnia miesiąca. Sprawdzony dodatkowo preset względny tworzy inne zapytanie i nie jest przyjmowany dla migawki miesiąca.
+
+Monitor korzysta ze wspólnego mechanizmu pozyskania linków dla wszystkich sekcji. Dla SLA ustawia w karcie pomocniczej miesiąc przyjętej migawki, zatwierdza trzy kategorie, a przed aktywacją kafelka wymaga jawnego warunku dat odpowiadającego temu miesiącowi. W obecnym kodzie próba pozyskania linków ma budżet 48 sekund dla SLA i 24 sekundy dla każdej sekcji L1. Test syntetyczny w Chromium przeszedł od ustawienia okresu przez kliknięcie i odczyt ramki po zwolnienie karty pomocniczej. Pełna próba z aplikacji na rzeczywistym ServiceNow pozostaje otwarta.
+
+### Odbiór workera w ukrytym Chromium
+
+Na rzeczywistym ServiceNow, w osobnym profilu testowym, uruchomiono pełny odczyt workera aplikacji dla listopada 2026. Pierwszy przebieg potwierdził 3/11 linków SLA, 2/2 Wstrzymanych i 3/5 Wniosków. Po skróceniu przygotowania właściwego kontekstu i zmianie limitów drugi przebieg potwierdził 5/11 SLA, 2/2 Wstrzymanych i 4/5 Wniosków, w tym smartfony. Wszystkie wartości sekcji były kompletne. W 662 próbkach drugiej próby okno pozostawało ukryte i bez fokusu, a karta pomocnicza została zamknięta. Pozostałe cele nie przeszły jeszcze odbioru workera. Kolejna zmiana wykorzystuje powrót w historii karty, jeśli przywraca właściwy dashboard, i wymaga ponownego pomiaru.
+
+Po wdrożeniu powrotu do dashboardu przez historię karty pełna próba workera dla listopada potwierdziła 11/11 linków SLA, 2/2 Wstrzymanych L1 i 5/5 Wniosków L1, w tym smartfony. Wszystkie linki spełniły walidację docelowej listy i okresu, gdy dotyczył SLA. W 539 próbkach Chromium pozostało ukryte i bez fokusu. Karta pomocnicza została zamknięta.
+
+Powtórka pełnego workera dla września 2026 również potwierdziła 11/11 SLA, 2/2 Wstrzymanych L1 i 5/5 Wniosków L1. Walidacja wszystkich jedenastu zapytań SLA potwierdziła granice września. W 591 próbkach okno pozostało ukryte i bez fokusu, a karta pomocnicza została zamknięta. Osobny test Tk potwierdza, że zmiana wyboru miesiąca bez nowego odczytu pozostawia link z poprzedniej, nadal wyświetlanej migawki.
+
+Przy jednym pierwszym odświeżeniu karta pomocnicza zgłosiła potrzebę uwierzytelnienia w każdej sekcji, choć główna karta kontynuowała odczyt. W takim przypadku monitor sprawdza sesję głównej karty. Jeśli jest nadal poprawna, ponawia nawigację dla bieżącego kafelka najwyżej raz, bez użycia historii karty i w tym samym budżecie sekcji. Sygnał utraty sesji głównej zatrzymuje pozyskiwanie linków. Diagnostyka odróżnia ponowienie od końcowego błędu.
+
+### Otwieranie list na żądanie
+
+Odświeżenie dashboardu pobiera wyłącznie wartości. Każdy kafelek z wynikiem poza WJRUW może zlecić otwarcie listy. Tk przekazuje pojedyncze żądanie do tego samego workera, który obsługuje odczyty, wraz z okresem wyświetlanej migawki SLA. Po kliknięciu monitor pokazuje „Otwieranie listy…” i próbuje uzyskać tylko jeden link, z budżetem 18 sekund od rozpoczęcia pracy w przeglądarce. Operacja wymaga działającego monitoringu. Nieudana próba umożliwia kolejne kliknięcie bez aktualizacji dashboardu. Po zatrzymaniu monitoringu oczekujące żądanie zostaje anulowane. Linki nie są zapisywane na dysku.
+
+Rzeczywista próba workera na osobnym profilu testowym (3 listopada, wieczorem) potwierdziła trzy osobne żądania: smartfony we Wnioskach L1, pierwszy kafelek Wstrzymanych L1 i pierwszy kafelek SLA. Diagnostyka każdego żądania zawiera `expected_count=1` i `ready_count=1`. Czasy wykonania wyniosły odpowiednio 5657, 4796 i 9688 ms. To odbiór trzech reprezentatywnych żądań nowej ścieżki; wcześniejsze porównania wszystkich 18 celów dotyczą wzorców list, a nie czasu nowej ścieżki.
+
+Testy lokalne obejmują kolejkę i obudzenie workera, brak pracy bez kliknięcia, korelację odpowiedzi, anulowanie i spóźniony wynik, ponowienie po błędzie, kliknięcie wyniku zero i wyniku z cache, zachowanie miesiąca migawki SLA, walidację adresu oraz brak celu WJRUW. W syntetycznym Chromium sprawdzany jest cały przebieg jednego kliknięcia i zamknięcie karty pomocniczej. Przebudowa EXE pozostaje osobnym krokiem.
+
+Końcowa regresja zakresowa: 107 testów w modułach dashboardu, jego okresu i migawek, Wniosków, kolejki otwarcia, monitoringu, harmonogramu odświeżeń, stanu filtrów, zagrożeń SLA i diagnostyki — wszystkie przeszły. Moduły korzystające z Tk uruchamiano również osobno. Kontrola odnośników dokumentacji i `diff --check` zakończyły się bez błędów.

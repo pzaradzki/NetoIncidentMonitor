@@ -24,11 +24,9 @@ from neto_incident_monitor.service_now_urls import effective_list_url, is_short_
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import Schedule, Health
 from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled, LargeListRejected
-from neto_incident_monitor.notifications import batch_text
 from playwright._impl._errors import TargetClosedError
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
-DATA.mkdir(parents=True, exist_ok=True)
 CONFIG = DATA / "config.json"
 STATE = DATA / "seen.json"
 INC = re.compile(r"\b(?:INC|SCTASK|REQ|RITM)\d{7,}\b", re.I)
@@ -67,10 +65,46 @@ def wait_for_browser_cycle(page, schedule, seconds, stop):
     return True
 
 
+def without_read_settings(settings):
+    from copy import copy
+
+    cleaned = copy(settings)
+    cleaned.pop("highlight_unread", None)
+    for key in ("visible_columns", "column_widths"):
+        value = cleaned.get(key)
+        if isinstance(value, list):
+            cleaned[key] = [column for column in value if column != "read"]
+        elif isinstance(value, dict):
+            cleaned[key] = {column: width for column, width in value.items() if column != "read"}
+    for key in ("filter_visible_columns", "filter_column_profiles"):
+        if isinstance(cleaned.get(key), dict):
+            cleaned[key] = {
+                url: ([column for column in profile if column != "read"] if isinstance(profile, list)
+                      else without_read_column(profile))
+                for url, profile in cleaned[key].items()
+            }
+    return cleaned
+
+
+def without_read_column(profile):
+    if not isinstance(profile, dict):
+        return profile
+    result = dict(profile)
+    for key in ("order", "visible"):
+        if isinstance(result.get(key), list):
+            result[key] = [column for column in result[key] if column != "read"]
+    if isinstance(result.get("schema"), list):
+        result["schema"] = [column for column in result["schema"]
+                            if not isinstance(column, dict) or column.get("key") != "read"]
+    if isinstance(result.get("widths"), dict):
+        result["widths"] = {column: width for column, width in result["widths"].items() if column != "read"}
+    return result
+
+
 def read_json(path, default):
     if path == CONFIG:
         from neto_incident_monitor.secret_config import load_config
-        return load_config(path, default)
+        return without_read_settings(load_config(path, default))
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
@@ -79,7 +113,7 @@ def read_json(path, default):
 def save_json(path, value):
     if path == CONFIG:
         from neto_incident_monitor.secret_config import save_config
-        return save_config(path, value)
+        return save_config(path, without_read_settings(value))
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
@@ -90,11 +124,35 @@ def normalize_url(url):
     return normalize_list_url(url)
 
 
+@diagnostic_read
 def validate_urls(text):
     urls = [line.strip() for line in text.splitlines() if line.strip()]
     if not urls:
         raise ValueError("Wklej przynajmniej jeden adres listy z filtrem.")
-    return list(dict.fromkeys(normalize_url(url) for url in urls))
+    from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+    try:
+        diagnostics = LoginDiagnostics(source='configuration')
+    except Exception:
+        diagnostics = None
+    def record(**facts):
+        try:
+            if diagnostics is not None:
+                diagnostics.record('filter_url_validation', **facts)
+        except Exception:
+            pass  # Validation must not depend on diagnostic storage.
+    result = []
+    for url in urls:
+        kind = ('short' if is_short_url(url) else 'wrapper' if
+                '/now/nav/ui/classic/params/target/' in url else 'direct')
+        try:
+            normalized = normalize_url(url)
+        except ValueError as error:
+            record(url_kind=kind, validation_result='rejected',
+                   validation_reason=getattr(error, 'reason', 'unsafe'))
+            raise
+        record(url_kind=kind, validation_result='accepted', validation_reason='none')
+        result.append(normalized)
+    return list(dict.fromkeys(result))
 
 
 def load_filters(settings, tolerate_invalid=False):
@@ -570,11 +628,12 @@ from neto_incident_monitor.table_loading import TableLoading
 
 
 class App(DynamicColumns, TableLoading):
-    def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True):
+    def __init__(self, root, history_path=None, enable_tray=True, instance=None, apply_startup=True, windows_startup="disabled"):
         self.root = root
         self.events = queue.Queue()
         self.filter_revisions = {}
         self.dashboard_requests = queue.Queue()
+        self.dashboard_drilldown_requests = queue.Queue(maxsize=1)
         self.threatened_requests = queue.Queue()
         from neto_incident_monitor.monitoring import RefreshControl
         self.refresh_control = RefreshControl()
@@ -584,9 +643,9 @@ class App(DynamicColumns, TableLoading):
         self.items = {}
         self.snapshots = {}
         self.updating_filter_url = None
-        self.new_numbers = set()
         self.next_check = None
         self.check_deadlines = {}
+        self.windows_startup = windows_startup
         self.history = History(history_path or DATA / "history.json")
         self.alert_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alerts")
         self.history_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="history")
@@ -630,7 +689,6 @@ class App(DynamicColumns, TableLoading):
             self.status.set(f'Wyłączono filtry z nieprawidłowym adresem: {invalid_count}. Popraw ich adresy w edycji filtra.')
         if getattr(settings, 'protection_errors', []):
             self.status.set(' '.join(dict.fromkeys(settings.protection_errors)))
-        self.highlight_unread.trace_add("write", self.change_unread_highlighting)
         self.teams_enabled.trace_add("write", self.change_teams)
         from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
         self.google_chat_enabled.trace_add("write", lambda *_: google_chat_changed(self))
@@ -671,7 +729,7 @@ class App(DynamicColumns, TableLoading):
         if enable_tray:
             try:
                 from neto_incident_monitor.tray import Tray
-                self.tray = Tray(self.events, self.unread_highlighting_enabled(),
+                self.tray = Tray(self.events,
                                  browser_visible=lambda: bool(self.browser_window and self.browser_window.visible))
                 self.tray.start()
             except Exception:
@@ -684,50 +742,42 @@ class App(DynamicColumns, TableLoading):
             return
         variable = getattr(self, key)
         enabled = variable.get()
+        if key == "start_with_windows":
+            from neto_incident_monitor.startup import set_windows_startup, windows_startup_status
+            try:
+                set_windows_startup(enabled)
+                status = "current" if enabled else "disabled"
+                LOG.info("Autostart Windows: wynik=%s.", status)
+            except OSError:
+                LOG.warning("Autostart Windows: wynik=write_failed.")
+                try:
+                    status = windows_startup_status()
+                except OSError:
+                    status = "unknown"
+                messagebox.showerror("Uruchamianie aplikacji",
+                                     "Nie udało się zmienić wpisu autostartu.", parent=self.settings_window)
+            self.saving_startup = True
+            try:
+                self.start_with_windows.set(status in ("current", "repaired"))
+                self.windows_startup = status
+                self.startup_status_text.set(self.windows_startup_description())
+            finally:
+                self.saving_startup = False
+            return
         try:
             settings = read_json(CONFIG, {})
-            if key == "start_with_windows":
-                from neto_incident_monitor.startup import set_windows_startup
-                set_windows_startup(enabled)
             settings[key] = enabled
             save_json(CONFIG, settings)
         except Exception as error:
             self.saving_startup = True
             variable.set(not enabled)
             self.saving_startup = False
-            if key == "start_with_windows":
-                try:
-                    set_windows_startup(not enabled)
-                except Exception:
-                    LOG.exception("Nie udało się przywrócić ustawienia autostartu")
             messagebox.showerror("Uruchamianie aplikacji", f"Nie udało się zapisać ustawienia: {error}", parent=self.settings_window)
 
-    def unread_highlighting_enabled(self):
-        preference = getattr(self, "highlight_unread", None)
-        return preference.get() if preference is not None else True
-
-    def change_unread_highlighting(self, *_):
-        try:
-            settings = read_json(CONFIG, {})
-            settings["highlight_unread"] = self.highlight_unread.get()
-            save_json(CONFIG, settings)
-        except (OSError, ValueError) as error:
-            self.highlight_unread.trace_remove("write", self.highlight_unread.trace_info()[0][1])
-            self.highlight_unread.set(not self.highlight_unread.get())
-            self.highlight_unread.trace_add("write", self.change_unread_highlighting)
-            messagebox.showerror("Ustawienia", f"Nie udało się zapisać ustawienia: {error}", parent=self.settings_window)
-            return
-        if self.highlight_unread.get():
-            self.mark_all_button.pack(side="right")
-        else:
-            self.mark_all_button.pack_forget()
-        menu = getattr(self, "incident_menu", None)
-        if menu is not None and menu.winfo_exists():
-            menu.destroy()
-        self.refresh_history()
-        self.refresh_current()
-        self.apply_visible_columns()
-        self.update_counts()
+    def windows_startup_description(self):
+        if self.windows_startup in ("stale", "unknown"):
+            return "Nie udało się potwierdzić poprawnego wpisu autostartu."
+        return "Uruchamiaj aplikację po zalogowaniu do Windows."
 
     def approve_large_list(self, url, name, count):
         if next((entry.get("allow_large_list", False) for entry in self.filters if entry["url"] == url), False):
@@ -833,15 +883,13 @@ class App(DynamicColumns, TableLoading):
         dialog.after_idle(lambda: dialog.geometry(geometry) if dialog.winfo_exists() else None)
 
     def make_table(self, parent, history):
-        columns = [("read", "Przeczytanie", 145),
-                   *[(key, label, width) for key, label, width in FIELDS if key not in ("read", "time")]]
+        columns = [(key, label, width) for key, label, width in FIELDS if key != "time"]
         if history:
             columns.insert(0, ("time", "Wykryto", 150))
         table = ttk.Treeview(parent, columns=[key for key, _, _ in columns], show="headings")
         table.history_view = history
         order = self.column_order(table)
         table.configure(displaycolumns=tuple(key for key in order if key in getattr(self, "visible_columns", DEFAULT)))
-        table.tag_configure("unread", background="#382c33", foreground="#ffdce1")
         table.tag_configure("alternate", background="#2b2f37")
         table.sort_column = None
         table.sort_descending = False
@@ -1007,8 +1055,7 @@ class App(DynamicColumns, TableLoading):
             ordered = sorted(present, key=key, reverse=table.sort_descending) + missing
         for index, item in enumerate(ordered):
             table.move(item, "", index)
-            if "unread" not in table.item(item, "tags"):
-                table.item(item, tags=("alternate",) if index % 2 else ())
+            table.item(item, tags=("alternate",) if index % 2 else ())
 
     def selected_filter_index(self):
         selected = self.filter_table.selection() if hasattr(self, "filter_table") else ()
@@ -1492,18 +1539,13 @@ class App(DynamicColumns, TableLoading):
     def update_counts(self):
         numbers = set(self.snapshots.get(self.selected_filter_index(), {}))
         self.current_count.set(str(len(numbers)))
-        self.new_count.set(str(len(self.new_numbers)))
-        unread = self.history.unread(self.selected_filter_url())
-        self.unread_count.set(str(unread))
         self.tabs.tab(1, text="Historia zgłoszeń")
         self.update_tray()
 
     def update_tray(self):
         if self.tray and self.tray_ready:
             try:
-                self.tray.update(self.history.unread() if self.unread_highlighting_enabled() else 0,
-                                 getattr(self, "monitoring_phase", "Gotowy do uruchomienia"),
-                                 unread_enabled=self.unread_highlighting_enabled())
+                self.tray.update(getattr(self, "monitoring_phase", "Gotowy do uruchomienia"))
             except Exception:
                 LOG.exception("Błąd aktualizacji zasobnika")
 
@@ -1527,10 +1569,9 @@ class App(DynamicColumns, TableLoading):
         records = self.history.snapshot(self.selected_filter_url())
         for position, (number, record) in enumerate(sorted(records.items(), key=lambda pair: pair[1]["detected"], reverse=True)):
             incident = record["incident"]
-            label = "Nieprzeczytany" if not record["read"] else "Przeczytany"
-            item = self.table.insert("", "end", values=self.table_values(self.table, incident, label,
+            item = self.table.insert("", "end", values=self.table_values(self.table, incident,
                 time.strftime("%d.%m.%Y %H:%M", time.localtime(record["detected"]))),
-                tags=("unread",) if self.unread_highlighting_enabled() and not record["read"] else ("alternate",) if position % 2 else ())
+                tags=("alternate",) if position % 2 else ())
             self.items[(self.table, item)] = incident["url"]
             self.row_numbers[(self.table, item)] = number
             if number in selected:
@@ -1545,7 +1586,6 @@ class App(DynamicColumns, TableLoading):
         self.cancel_table_load(self.current_table)
         self.current_table.load_dirty = False
         selected = {self.row_numbers.get((self.current_table, item)) for item in self.current_table.selection()}
-        records = self.history.snapshot(self.selected_filter_url())
         self.clear_table(self.current_table)
         combined = {}
         for index, snapshot in sorted(self.snapshots.items()):
@@ -1560,23 +1600,14 @@ class App(DynamicColumns, TableLoading):
                     entry["filters"].append(name)
         for position, (number, entry) in enumerate(sorted(combined.items(), key=lambda pair: int(re.sub(r"\D", "", pair[0]) or 0), reverse=True)):
             incident = entry["incident"]
-            unread = number in records and not records[number]["read"]
-            label = "Nieprzeczytany" if unread else "Przeczytany" if number in records else "—"
-            item = self.current_table.insert("", "end", values=self.table_values(self.current_table, incident, label),
-                tags=("unread",) if self.unread_highlighting_enabled() and unread else ("alternate",) if position % 2 else ())
+            item = self.current_table.insert("", "end", values=self.table_values(self.current_table, incident),
+                tags=("alternate",) if position % 2 else ())
             self.items[(self.current_table, item)] = incident.get("url", "")
             self.row_numbers[(self.current_table, item)] = number
             if number in selected:
                 self.current_table.selection_add(item)
         self.current_table.default_order = self.current_table.get_children()
         self.apply_sort(self.current_table)
-
-    def mark_selected(self):
-        table = self.current_table if self.tabs.index(self.tabs.select()) == 0 else self.table
-        self.mark_read([self.row_numbers[(table, item)] for item in table.selection()])
-
-    def mark_all(self):
-        self.mark_read(list(self.history.snapshot(self.selected_filter_url())))
 
     def clear_history(self):
         from neto_incident_monitor.widgets import confirm_dialog
@@ -1586,17 +1617,12 @@ class App(DynamicColumns, TableLoading):
         confirmed = confirm_dialog(
             self.root,
             "Wyczyść historię zgłoszeń",
-            "Czy usunąć historię wybranego filtra i jego oznaczenia przeczytania?\n\n"
+            "Czy usunąć historię wybranego filtra?\n\n"
             "Tej operacji nie można cofnąć. Bieżąca lista i pamięć wcześniej widzianych incydentów pozostaną zachowane.",
             )
         if not confirmed:
             return
         self.write_history("clear", self.selected_filter_url())
-
-    def mark_read(self, numbers):
-        if not numbers or not self.unread_highlighting_enabled():
-            return
-        self.write_history("mark_read", tuple(numbers), self.selected_filter_url())
 
     def write_history(self, operation, *args):
         if self.quitting:
@@ -1875,34 +1901,9 @@ class App(DynamicColumns, TableLoading):
             LOG.exception("Nie udało się otworzyć filmu instruktażowego Teams")
         messagebox.showerror("Instrukcja Teams", "Nie udało się otworzyć filmu w przeglądarce.", parent=parent)
 
-    def notify_batch(self, incidents):
-        records = self.history.snapshot(self.selected_filter_url())
-        unread = [incident for incident in incidents
-                  if incident["number"] in records and not records[incident["number"]]["read"]]
-        text = batch_text(unread)
-        if text is None:
-            return
-        title, message = text
-        if self.teams_enabled.get() and self.teams_webhook:
-            from neto_incident_monitor.teams_notifications import incident_text
-            teams_title, teams_message = incident_text(unread)
-            self.teams_sender.submit(self.teams_webhook, teams_title, teams_message)
-        if self.google_chat_enabled.get() and self.google_chat_webhook:
-            from neto_incident_monitor.teams_notifications import incident_text
-            chat_title, chat_message = incident_text(unread)
-            links = {item["number"]: item["url"] for item in unread if item.get("url")}
-            self.google_chat_sender.submit(self.google_chat_webhook, chat_title, chat_message, links=links)
-        if not self.notify.get():
-            return
-        try:
-            from plyer import notification
-            self.root.bell()
-            notification.notify(title=title, message=message, app_name="Neto Incident Monitor", timeout=10)
-        except Exception as exc:
-            LOG.exception("Błąd zbiorczego powiadomienia Windows")
-            self.status.set(f"Incydenty zapisano w historii. Błąd powiadomienia Windows: {exc}")
-
     def start(self):
+        if self.quitting:
+            return
         if self.worker and self.worker.is_alive():
             return
         try:
@@ -1936,7 +1937,6 @@ class App(DynamicColumns, TableLoading):
         self.schedule.consume()
         self.snapshots.clear()
         self.column_availability.clear()
-        self.new_numbers.clear()
         self.update_counts()
         self.last_read.set("Ostatnia aktualizacja: —")
         self.next_check = None
@@ -2082,6 +2082,7 @@ class App(DynamicColumns, TableLoading):
                         if scope in ('startup', 'all', 'dashboard', 'scheduled'):
                             self.threatened_delay_reason = 'dashboard'
                             self.read_dashboard_request(page)
+                        self.read_dashboard_drilldown(page)
                         self.read_due_threatened(page)
                         due = {kind for kind in intervals if force or time.monotonic() >= deadlines[kind]}
                         if scope in ('startup', 'all'):
@@ -2409,6 +2410,40 @@ class App(DynamicColumns, TableLoading):
                 except Exception as exc:
                     diagnostics.record('browser_cleanup_error', **error_facts(exc))
 
+    def request_dashboard_drilldown(self, request):
+        if self.quitting or self.stop.is_set() or not self.worker or not self.worker.is_alive():
+            return False
+        try:
+            self.dashboard_drilldown_requests.put_nowait(request)
+        except queue.Full:
+            return False
+        self.schedule.request()
+        return True
+
+    @diagnostic_read
+    def read_dashboard_drilldown(self, page):
+        from neto_incident_monitor.dashboard_drilldown import collect_drilldown
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+
+        if not hasattr(self, 'dashboard_drilldown_requests'):
+            return
+        try:
+            request = self.dashboard_drilldown_requests.get_nowait()
+        except queue.Empty:
+            return
+        token, section, title, period = request
+        diagnostics = LoginDiagnostics(source='dashboard', section=section)
+        url = None
+        try:
+            url = collect_drilldown(page, section, title, self.stop, diagnostics, period,
+                                    runtime=getattr(self, 'browser_runtime', None))
+        except Cancelled:
+            diagnostics.record('login_cancelled')
+        except Exception as error:
+            diagnostics.record('section_read_error', **error_facts(error))
+        finally:
+            self.events.put(('dashboard_drilldown_result', (token, url)))
+
     @diagnostic_read
     def read_dashboard_request(self, page):
         if not hasattr(self, 'dashboard_requests'):
@@ -2488,6 +2523,8 @@ class App(DynamicColumns, TableLoading):
                              'retrying' if restarting else 'finished')))
 
     def drain(self):
+        if getattr(self, "reset_data_on_exit", False) is True:
+            return
         if self.instance and self.instance.poll():
             self.show_window()
         try:
@@ -2542,6 +2579,12 @@ class App(DynamicColumns, TableLoading):
                     if not updating:
                         if getattr(self, 'activity_kind', None) == 'dashboard':
                             self.set_activity('Oczekiwanie na sprawdzenie filtrów', kind='phase')
+                    continue
+                if kind == 'dashboard_drilldown_result':
+                    if self.stop.is_set():
+                        self.dashboard_view.cancel_drilldown()
+                    else:
+                        self.dashboard_view.apply_drilldown(value)
                     continue
                 if kind == 'dashboard_result':
                     self.dashboard_view.apply_result(value)
@@ -2615,8 +2658,6 @@ class App(DynamicColumns, TableLoading):
                     url, incidents = value
                     if not self.stop.is_set() and not getattr(self, "quitting", False):
                         self.notify_filter(url, incidents)
-                elif kind == "batch_notification":
-                    self.notify_batch(value)
                 elif kind == "teams_result":
                     success, test, detail = value
                     if test:
@@ -2629,8 +2670,6 @@ class App(DynamicColumns, TableLoading):
                         (messagebox.showinfo if success else messagebox.showerror)("Test Google Chat", detail, parent=self.root)
                     elif not success:
                         self.status.set(detail)
-                elif kind == "mark_all":
-                    self.mark_all()
                 elif kind == "stop_monitor":
                     self.stop.set()
                 elif kind == "quit":
@@ -2677,6 +2716,12 @@ class App(DynamicColumns, TableLoading):
                     self.update_counts()
                 elif kind == "finished":
                     self.dashboard_view.cancel_request()
+                    if hasattr(self, "dashboard_drilldown_requests"):
+                        try:
+                            self.dashboard_drilldown_requests.get_nowait()
+                        except queue.Empty:
+                            pass
+                        self.dashboard_view.cancel_drilldown()
                     self.threatened_view.set_monitoring(False)
                     while not self.threatened_requests.empty():
                         try:
@@ -2709,19 +2754,6 @@ class App(DynamicColumns, TableLoading):
                     self.notify_check.configure(state="normal")
                     for button in self.filter_buttons:
                         button.configure(state="normal")
-                elif kind == "incident":
-                    name, incident, notify = value
-                    self.new_numbers.add(incident["number"])
-                    self.update_counts()
-                    # A confirmed clear can happen after the worker persisted
-                    # a record but before this queued event is processed.
-                    # Do not resurrect a record that the user just removed.
-                    if not self.history.contains(incident['number'], self.selected_filter_url()):
-                        continue
-                    self.refresh_history()
-                    self.refresh_current()
-                    if notify:
-                        self.notify_batch([incident])
         except queue.Empty:
             pass
         now = time.monotonic()
@@ -2760,8 +2792,8 @@ class App(DynamicColumns, TableLoading):
         if item:
             key = (event.widget, item)
             url = safe_record_url(self.items[key], self.row_numbers[key])
-            if url and webbrowser.open(url):
-                self.mark_read([self.row_numbers[key]])
+            if url:
+                webbrowser.open(url)
 
     def incident_context_menu(self, event):
         from neto_incident_monitor.service_now_urls import safe_record_url
@@ -2780,8 +2812,8 @@ class App(DynamicColumns, TableLoading):
         menu = IncidentMenu(self.root)
         self.incident_menu = menu
         def open_selected():
-            if url and webbrowser.open(url):
-                self.mark_read([number])
+            if url:
+                webbrowser.open(url)
         def copy(value):
             self.root.clipboard_clear()
             self.root.clipboard_append(value)
@@ -2791,9 +2823,6 @@ class App(DynamicColumns, TableLoading):
         menu.add_command(label="Kopiuj numer", command=lambda: copy(number))
         if url:
             menu.add_command(label="Kopiuj link", command=lambda: copy(url))
-        if self.unread_highlighting_enabled():
-            menu.add_separator()
-            menu.add_command(label="Oznacz jako przeczytany", command=lambda: self.mark_read([number]))
         menu.add_separator()
         menu.add_command(label="Test powiadomienia", command=lambda: self.test_record_notification(table, number, url))
         menu.show(event.x_root, event.y_root)
@@ -2821,16 +2850,49 @@ class App(DynamicColumns, TableLoading):
     def close(self):
         self.quit_app()
 
-    def quit_app(self):
+    def request_data_reset(self):
+        from neto_incident_monitor.data_reset import DataReset
+        from neto_incident_monitor.widgets import confirm_dialog
+
+        if self.quitting or not confirm_dialog(
+            self.root, "Usuń wszystkie dane aplikacji",
+            "Usunięte zostaną ustawienia, filtry i szablony, ustawienia kanałów, historia i stan wykryć, "
+            "oczekujące alerty, pamięć dashboardu, logi oraz profil Chromium z sesją logowania. "
+            "Operacja jest nieodwracalna. Aplikacja się zamknie, a przy następnym uruchomieniu "
+            "może być potrzebne ponowne logowanie.",
+            confirm_text="Usuń dane i zamknij",
+        ):
+            return
+        if self.quitting:
+            return
+        try:
+            DataReset().request()
+        except OSError:
+            LOG.warning("Nie można zapisać żądania resetu danych.")
+            messagebox.showerror("Reset danych", "Nie można rozpocząć resetu danych.", parent=self.root)
+            return
+        self.reset_started = time.monotonic()
+        LOG.info("Reset danych: rozpoczęto zamykanie aplikacji.")
+        self.quit_app(reset_data=True)
+
+    def quit_app(self, *, reset_data=False):
+        if self.quitting:
+            return
+        self.reset_data_on_exit = reset_data
         self.stop_table_loads()
         if self.window_save_timer is not None:
             self.root.after_cancel(self.window_save_timer)
             self.window_save_timer = None
-        self.save_window_layout()
+        if not reset_data:
+            self.save_window_layout()
         self.quitting = True
         self.stop.set()
         self.schedule.request()
         self.show_window()
+        if reset_data:
+            self.root.attributes("-disabled", True)
+            self.teams_sender.stop()
+            self.google_chat_sender.stop()
         self.set_phase("Zamykanie aplikacji")
         self.start_button.configure(state="disabled")
         for button in self.filter_buttons:
@@ -2851,6 +2913,12 @@ class App(DynamicColumns, TableLoading):
                 self.status.set("Zamykanie aplikacji. Oczekiwanie na zapis danych…")
                 self.root.after(100, self.finish_quit)
                 return
+            if getattr(self, "reset_data_on_exit", False) and any(
+                sender.thread.is_alive() for sender in (self.teams_sender, self.google_chat_sender)
+            ):
+                self.status.set("Reset danych. Oczekiwanie na zakończenie wysyłki…")
+                self.root.after(100, self.finish_quit)
+                return
             self.history_writer.shutdown(wait=False)
             self.alert_writer.shutdown(wait=False)
             if self.tray:
@@ -2858,17 +2926,25 @@ class App(DynamicColumns, TableLoading):
                     self.tray.stop()
                 except Exception:
                     LOG.exception("Błąd zamykania zasobnika")
+            if getattr(self, "reset_data_on_exit", False):
+                LOG.info("Reset danych: zakończono pracę monitora i zadania zapisu (%.2f s).",
+                         time.monotonic() - self.reset_started)
+                self.reset_data_ready = True
             self.root.destroy()
 
 
-def main():
+def main(instance=None):
     from neto_incident_monitor.single_instance import SingleInstance
-    instance = SingleInstance(DATA)
+    from neto_incident_monitor.data_reset import DataReset, finish_with_retry
+    owns_instance = instance is None
+    instance = instance or SingleInstance(DATA)
     window = None
     try:
         if not instance.primary:
             instance.request_show()
             return
+        if owns_instance and not finish_with_retry(DataReset()):
+            return False
         window = tk.Tk()
 
         def callback_error(error_type, error, traceback):
@@ -2876,15 +2952,29 @@ def main():
             messagebox.showerror("Neto Incident Monitor", f"Błąd aplikacji: {error}", parent=window)
 
         window.report_callback_exception = callback_error
-        App(window, instance=instance)
+        from neto_incident_monitor.startup import reconcile_windows_startup
+        try:
+            startup_status = reconcile_windows_startup()
+            LOG.info("Autostart Windows: wynik=%s.", startup_status)
+        except OSError:
+            startup_status = "unknown"
+            LOG.warning("Autostart Windows: wynik=check_failed.")
+        app = App(window, instance=instance, windows_startup=startup_status)
         window.mainloop()
+        reset_requested = getattr(app, "reset_data_ready", False)
+        if owns_instance and reset_requested:
+            from neto_incident_monitor.login_diagnostics import close_diagnostics
+            close_diagnostics()
+            finish_with_retry(DataReset())
+        return reset_requested
     except Exception as error:
         LOG.exception("Błąd aplikacji")
         messagebox.showerror("Neto Incident Monitor", str(error))
         if window is not None:
             window.destroy()
     finally:
-        instance.close()
+        if owns_instance:
+            instance.close()
 
 
 if __name__ == "__main__":

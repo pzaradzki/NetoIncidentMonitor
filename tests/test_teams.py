@@ -48,21 +48,6 @@ class TeamsTests(unittest.TestCase):
                                     'short_description': 'Problem\nz kasą'}])
         self.assertEqual(message, 'INC1234567 - STORE 003 - Problem z kasą')
 
-    def test_teams_is_independent_of_windows_toggle(self):
-        from neto_incident_monitor.app import App
-        app = Mock()
-        app.history.snapshot.return_value = {'INC1234567': {'read': False}}
-        app.teams_enabled.get.return_value = True
-        app.notify.get.return_value = False
-        app.teams_webhook = URL
-        with patch('plyer.notification.notify') as windows:
-            App.notify_batch(app, [{'number': 'INC1234567'}])
-            app.teams_sender.submit.assert_called_once()
-            windows.assert_not_called()
-            app.teams_enabled.get.return_value = False
-            App.notify_batch(app, [{'number': 'INC1234567'}])
-            app.teams_sender.submit.assert_called_once()
-
     def test_rejects_foreign_hosts_and_insecure_urls(self):
         self.assertEqual(validate_webhook(URL), URL)
         for url in (URL.replace('https:', 'http:'), URL.replace('.api.powerplatform.com', '.api.powerplatform.com.evil.com'), URL.split('?')[0]):

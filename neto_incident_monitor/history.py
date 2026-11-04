@@ -39,6 +39,7 @@ class History:
         for record in self.records.values():
             for url, name in record.get("filters", {}).items():
                 item = copy.deepcopy(record)
+                item.pop("read", None)
                 item["filters"] = {url: name}
                 migrated[url + "\n" + item["incident"]["number"]] = item
         self.records = migrated
@@ -163,7 +164,7 @@ class History:
             for number in arrivals:
                 records[url + '\n' + number] = {
                     "incident": copy.deepcopy(incidents[number]), "detected": detected,
-                    "read": False, "filters": {url: name},
+                    "filters": {url: name},
                 }
             updated = membership.copy()
             updated[url] = {"present": sorted(incidents),
@@ -190,24 +191,13 @@ class History:
                 if key not in records:
                     fresh.add(number)
                     records[key] = {'incident': incident, 'detected': time.time(),
-                                    'read': False, 'filters': {}}
+                                    'filters': {}}
                 records[key]['incident'] = copy.deepcopy(incident)
                 records[key]['filters'][filter_url] = filter_name
                 if reappeared:
-                    records[key]['read'] = False
                     records[key]['detected'] = time.time()
             self._commit(records)
             return fresh
-
-    def mark_read(self, numbers, filter_url=None):
-        with self.lock:
-            records = self.records.copy()
-            for key, record in self.records.items():
-                if (not record["read"] and record["incident"]["number"] in numbers
-                        and (filter_url is None or filter_url in record["filters"])):
-                    records[key] = {**record, "read": True}
-            if records != self.records:
-                self._commit(records)
 
     def clear(self, filter_url=None):
         with self.lock:
@@ -221,16 +211,6 @@ class History:
         return {record["incident"]["number"]: copy.deepcopy(record)
                 for record in records.values()
                 if filter_url is None or filter_url in record["filters"]}
-
-    def unread(self, filter_url=None):
-        # Writers publish a replacement dict only after a successful commit.
-        # Reading this reference never waits for an in-progress disk write.
-        records = self.records
-        return sum(not record['read'] for record in records.values()
-                   if filter_url is None or filter_url in record['filters'])
-
-    def contains(self, number, filter_url):
-        return filter_url + '\n' + number in self.records
 
     def record(self, number, filter_url):
         value = self.records.get(filter_url + '\n' + number)

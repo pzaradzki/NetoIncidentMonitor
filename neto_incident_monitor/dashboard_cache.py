@@ -49,6 +49,15 @@ def load_snapshot(path):
         sections = data['sections']
         if not sections or any(section not in SECTIONS for section in sections):
             return None
+        requests = sections.get('requests')
+        old_values = requests.get('values') if isinstance(requests, dict) else None
+        legacy_requests = (isinstance(old_values, dict)
+                           and set(old_values) == set(REQUEST_TITLES[:-1])
+                           and all(type(value) is int and value >= 0 for value in old_values.values()))
+        if legacy_requests:
+            sections = {name: snapshot for name, snapshot in sections.items() if name != 'requests'}
+            if not sections:
+                return None
         for section, snapshot in sections.items():
             if (not isinstance(snapshot, dict) or not valid_values(section, snapshot.get('values')) or
                     snapshot.get('complete') is not True or not valid_time(snapshot.get('read_at')) or
@@ -58,7 +67,7 @@ def load_snapshot(path):
                 return None
             if section == 'sla' and not valid_period(snapshot.get('year'), snapshot.get('month')):
                 return None
-        completed = data.get('last_complete_read_at')
+        completed = None if legacy_requests else data.get('last_complete_read_at')
         try:
             if not valid_time(completed):
                 completed = None

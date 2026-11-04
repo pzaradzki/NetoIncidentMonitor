@@ -4,7 +4,7 @@
 
 - Przed zmianą przeczytaj [architekturę](docs/architektura.md), powiązane [decyzje](docs/decyzje/README.md) i właściwy [plan](docs/plany/README.md). Czytaj materiały dotyczące zadania, nie całą historię.
 - Wykorzystuj lub rozszerzaj istniejące mechanizmy. Uzasadnij tworzenie alternatywy, szczególnie dla odczytu strony, ponowień, harmonogramu, diagnostyki, statusów i zapisu.
-- Weryfikuj dokumentację z kodem i rzeczywistą stroną; poprawiaj rozbieżności. Rozróżniaj stan wdrożony, plan i hipotezę. Dokumentacja nie stanowi zgody na wdrożenie.
+- Weryfikuj dokumentację z kodem. Rzeczywistą stronę ServiceNow sprawdzaj, gdy zadanie dotyczy zachowania integracji UI. Poprawiaj rozbieżności. Rozróżniaj stan wdrożony, plan i hipotezę. Dokumentacja nie stanowi zgody na wdrożenie.
 - Istotną zmianę kończ z odpowiednimi testami i aktualizacją dokumentacji: architektura opisuje stan, decyzja — wybór i powód, plan — pozostałe prace.
 - Zapisuj decyzje przekrojowe lub trudne do odtworzenia z kodu, nie drobiazgi. Format: status, decyzja, powód, realizacja i ograniczenia. Zmianę decyzji zapisz jako nową; poprzednią oznacz jako zastąpioną i połącz odnośnikami, zachowując uzasadnienie.
 

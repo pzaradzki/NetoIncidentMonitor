@@ -1,6 +1,6 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje lokalna wersja [1.8.1](wersje/v1.8.1.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.9.0](wersje/v1.9.0.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
 
 ## Przepływ i odpowiedzialności
 
@@ -12,9 +12,9 @@ Bieżący stan opisuje lokalna wersja [1.8.1](wersje/v1.8.1.md). Zakres wykonany
 | Harmonogram | [monitoring.py](../neto_incident_monitor/monitoring.py) | `Schedule` budzi worker; `RefreshControl` rezerwuje jedną aktualizację. Kolejność i terminy realizuje `App.monitor`. |
 | Logowanie i okno | `authentication.py`, `automatic_login.py`, `browser_actions.py`, [browser_policy.py](../neto_incident_monitor/browser_policy.py), `browser_window.py`, `browser_rendering.py` | Rozpoznanie sesji, automatyczne/ręczne logowanie, przerywalne operacje oraz widoczność i fokus. Polecenia okna przechodzą przez `BrowserRuntime`. |
 | Listy INC/SCTASK/REQ/RITM | `service_now_urls.py`, `app.py: collect`, [list_context.py](../neto_incident_monitor/list_context.py), [pagination.py](../neto_incident_monitor/pagination.py) | Normalizacja adresów, odczyt kolumn, powiązanie tabeli i pagera, walidacja kompletnego przejścia. |
-| Dashboard | [dashboard.py](../neto_incident_monitor/dashboard.py), `dashboard_ui.py`, `dashboard_progress.py`, `dashboard_cache.py` | SLA i WJRUW, Wstrzymane L1, Wnioski L1, statusy, postęp i cache. |
+| Dashboard | [dashboard.py](../neto_incident_monitor/dashboard.py), `dashboard_ui.py`, `dashboard_progress.py`, `dashboard_cache.py`, `dashboard_drilldown.py` | SLA i WJRUW, Wstrzymane L1, Wnioski L1, statusy, postęp, cache i otwieranie list na żądanie. |
 | Zagrożenia SLA | [threatened.py](../neto_incident_monitor/threatened.py), `threatened_ui.py`, `history.py` | Sześć liczników, zbiorcza lista i historia INC. Kompletna pojedyncza strona pozwala zapisać obecność i dodać alerty do wspólnej kolejki SQLite. [Odbiór jednej strony](plany/zakonczone/lista-zagrozonych-i-powiadomienia.md). |
-| Dane i powiadomienia | `history.py`, `filter_state.py`, `notification_templates.py`, `template_library.py`, `notifications.py`, `teams_notifications.py`, `google_chat_notifications.py` | Historia i stan filtrów, szablony oraz kanały Windows/Teams/Google Chat. Automatyczne alerty filtrów mają trwałą kolejkę SQLite. |
+| Dane i powiadomienia | `history.py`, `filter_state.py`, `notification_templates.py`, `template_library.py`, `teams_notifications.py`, `google_chat_notifications.py`, `data_reset.py` | Historia i stan filtrów, reset danych, szablony oraz kanały Windows/Teams/Google Chat. Automatyczne alerty filtrów mają trwałą kolejkę SQLite. |
 | Wspólne podstawy | `theme.py`, `widgets.py`, `themed_dialogs.py`, `runtime_paths.py`, `login_diagnostics.py`, `safe_logging.py` | Styl, kontrolki, dialogi, ścieżki oraz bezpieczna diagnostyka. Duże tabele UI obsługuje porcjami `table_loading.py`. |
 
 ## Zasady współpracy modułów
@@ -61,3 +61,19 @@ W źródłach z 3 listopada czytnik odrzuca rekord niewłaściwego typu dla list
 ### Stabilizacja filtrów w źródłach
 
 Czytnik porównuje warunki żądanego filtra z tabelą, oddziela sortowanie i końcowy znacznik EQ oraz odrzuca zły typ rekordu i niepotwierdzoną pustkę. Zmiana schematu uruchamia ponowienie z nowym buforem. Po pierwszym poprawnym zapisie historia i potwierdzona obecność używają wspólnej bazy [SQLite](decyzje/011-transakcyjny-stan-filtrow.md). Wyniki i kolumny są publikowane po transakcji i odrzucane po zmianie rewizji filtra lub generacji monitoringu. Automatyczne alerty filtrów trafiają do trwałej kolejki w tej samej transakcji. Po restarcie zadania oczekujące są wznawiane, a rozpoczęte bez zapisanego wyniku oznaczane jako niepewne. Zmiana rewizji konfiguracji powiadomień unieważnia wcześniejsze zadania. Zapisy historii z interfejsu wykonuje osobny wątek. Odbiór zakresowy opisuje [plan stabilizacji](plany/zakonczone/stabilizacja-odczytu-filtrow.md).
+
+W bieżących źródłach historia filtrów przechowuje zgłoszenia i daty wykrycia. Starsze znaczniki przeczytania są pomijane przy wczytywaniu. Ustawienia dawnych kolumn są oczyszczane przy zwykłym zapisie konfiguracji. [Decyzja 012](decyzje/012-usuniecie-stanu-przeczytania.md).
+
+Reset danych korzysta ze ścieżki zamykania i blokady pojedynczej instancji. Launcher wznawia przerwaną operację przed otwarciem logów, a w trybie źródłowym zakres ogranicza lista danych wykonawczych. [Decyzja 013](decyzje/013-reset-danych-aplikacji.md).
+
+Autostart Windows odczytuje wpis `Run` bieżącego wariantu pod blokadą głównej instancji. Jeśli wpis istnieje i wskazuje dawną ścieżkę, aplikacja nadpisuje tę samą wartość. Ustawienia systemowe wyłączające uruchamianie wpisu pozostają w gestii Windows.
+
+Sekcja Wnioski L1 obejmuje pięć kafelków. Starszy zapis czterech wartości jest pomijany dla tej sekcji. Poprawne migawki SLA i Wstrzymanych L1 pozostają dostępne, a wspólny czas pełnego odczytu jest czyszczony.
+
+Porównywanie warunków listy zachowuje strukturę OR/NQ i dopuszcza potwierdzony alias siedmiodniowej daty pola `sys_updated_on`. Nieznana różnica nadal odrzuca odczyt. Diagnostyka rozróżnia zgodność dokładną, zaakceptowany alias i niezgodność bez zapisu zapytania. [Decyzja 015](decyzje/015-rownowaznosc-dat-filtrow.md), [kontrakt list](kontrakty/kontrakt-odczytu-list.md).
+
+Otwieranie listy dashboardu jest zlecane dopiero po kliknięciu kafelka z wynikiem, także z cache. Odświeżenie wartości nie otwiera list pomocniczych. Istniejący worker przeglądarki korzysta z tymczasowej karty tej samej sesji i potwierdza pełne warunki listy. SLA używa jawnego zakresu dat wyświetlanej migawki. Link nie jest utrwalany. Błąd pozwala ponowić kliknięcie, a Stop anuluje otwarcie. WJRUW nie ma celu nawigacji. [Decyzja 014](decyzje/014-linki-dashboardu-na-zadanie.md), [kontrakt i wyniki odbioru](kontrakty/kontrakt-odczytu-dashboardu.md).
+
+Wspólny `AnimatedMetricTile.bind_content` ustawia tło wszystkich elementów od razu przy ich podłączeniu. Pierwszy poprawny wygląd kafelków nie zależy od najechania kursorem ani uruchomienia animacji.
+
+`normalize_list_url` rozpakowuje długie adresy list z ponownym kodowaniem parametrów i zachowaniem widoku. Nowe opakowane adresy stają się bezpośrednie, a zapis istniejących adresów bezpośrednich pozostaje bez zmian. Sprzeczne parametry są odrzucane przed zapisem. [Decyzja 016](decyzje/016-normalizacja-adresow-list.md).

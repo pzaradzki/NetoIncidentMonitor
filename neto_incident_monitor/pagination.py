@@ -146,7 +146,7 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
     from time import monotonic
     from playwright.sync_api import TimeoutError
     from neto_incident_monitor.browser_actions import checkpoint
-    from neto_incident_monitor.list_context import ListTarget, ListStateError, list_conditions
+    from neto_incident_monitor.list_context import ListTarget, ListStateError, compare_list_conditions
 
     def check(authenticate=True):
         checkpoint(stop)
@@ -179,6 +179,7 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
     requested_parameters = parse_qs(urlparse(url).query, keep_blank_values=True)
     requested_queries = requested_parameters.get("sysparm_query", [])
     requested_views = requested_parameters.get("sysparm_view", [])
+    comparisons_logged = set()
 
     def wait_page(index, first, total=None, size=None, identity=None, allow_restored=False):
         stage('read_rows', index)
@@ -199,9 +200,13 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
                     if len(requested_views) != 1 or observed_views != requested_views:
                         raise ListStateError("view_mismatch")
                 if requested_queries:
-                    observed_query = before.identity[2]
-                    if (len(requested_queries) != 1 or observed_query is None or
-                            observed_query != list_conditions(requested_queries[0])):
+                    comparison = (compare_list_conditions(requested_queries[0], before.query)
+                                  if len(requested_queries) == 1 else 'mismatch')
+                    if comparison not in comparisons_logged:
+                        emit('pagination_query_comparison', page_index=index, query_comparison=comparison,
+                             query_alias='last_7_days' if comparison == 'known_alias' else 'none')
+                        comparisons_logged.add(comparison)
+                    if comparison == 'mismatch':
                         raise ListStateError("query_mismatch" if identity is None else "list_changed")
                 if allow_restored and not before.busy and (
                         (before.first is not None and before.first > 1) or

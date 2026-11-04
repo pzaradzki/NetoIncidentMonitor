@@ -134,7 +134,10 @@ class FilterStateTests(unittest.TestCase):
             self.assertEqual(cycle(RuntimeError('first read failed'), {}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [settings["urls"][1]])
-            self.assertEqual(cycle(RuntimeError("read failed"), {"INC1": dict(incident)}), [])
+            from neto_incident_monitor.list_context import ListStateError
+            before = app.history.snapshot(settings['urls'][0])
+            self.assertEqual(cycle(ListStateError('query_mismatch'), {"INC1": dict(incident)}), [])
+            self.assertEqual(app.history.snapshot(settings['urls'][0]), before)
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [])
             self.assertEqual(cycle({}, {"INC1": dict(incident)}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [settings["urls"][0]])
@@ -190,19 +193,15 @@ class FilterStateTests(unittest.TestCase):
             state.commit("A", set())
             self.assertEqual(FilterState(path).arrivals("A", {"INC1"}), {"INC1"})
 
-    def test_history_and_read_status_are_scoped_and_survive_restart(self):
+    def test_history_is_scoped_and_survive_restart(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "history.json"
             history = History(path)
             incident = {"number": "INC1", "url": "https://adeo.service-now.com/incident"}
             history.add(incident, "Filter A", "A")
             history.add(incident, "Filter B", "B")
-            history.mark_read(["INC1"], "A")
             history = History(path)
-            self.assertTrue(history.snapshot("A")["INC1"]["read"])
-            self.assertFalse(history.snapshot("B")["INC1"]["read"])
             history.add(incident, "Filter A", "A", reappeared=True)
-            self.assertFalse(history.snapshot("A")["INC1"]["read"])
             history.clear("A")
             self.assertEqual(history.snapshot("A"), {})
             self.assertIn("INC1", History(path).snapshot("B"))
@@ -213,7 +212,5 @@ class FilterStateTests(unittest.TestCase):
             path.write_text(json.dumps({"INC1": {"incident": {"number": "INC1"},
                 "read": True, "detected": 123, "filters": {"A": "A", "B": "B"}}}))
             history = History(path)
-            history.mark_read([], "A")
             self.assertIn("INC1", History(path).snapshot("A"))
             history.clear("A")
-            self.assertTrue(history.snapshot("B")["INC1"]["read"])

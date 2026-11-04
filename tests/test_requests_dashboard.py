@@ -63,8 +63,8 @@ class RequestsDashboardTests(unittest.TestCase):
                 self.assertEqual(page.get_by_role('heading', name=REQUEST_TITLES[0], exact=True).count(), 0)
                 self.assertEqual(page.locator('.now-score-value').count(), 0)
                 result = read_requests_dashboard(page, threading.Event())
-                self.assertEqual(result, dict(zip(REQUEST_TITLES, range(4))))
-                self.assertEqual(page.evaluate('window.activated'), 4)
+                self.assertEqual(result, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
+                self.assertEqual(page.evaluate('window.activated'), len(REQUEST_TITLES))
             finally:
                 browser.close()
 
@@ -109,8 +109,8 @@ class RequestsDashboardTests(unittest.TestCase):
                 with diagnostic_steps(LoginDiagnostics()), self.assertLogs(_logger, level='INFO') as logs:
                     from neto_incident_monitor.section_runner import run_section
                     values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
-                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: len(v) == 4)
-                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(4))))
+                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
+                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
                 facts = _request_tile(page, REQUEST_TITLES[0])
                 self.assertEqual(facts['score_source'], 'widget_value')
                 self.assertFalse(facts['button_available'])
@@ -164,7 +164,7 @@ class RequestsDashboardTests(unittest.TestCase):
                 page.goto(DASHBOARD_URL)
                 page.evaluate('html => window.scores = html', tiles())
                 values = read_requests_dashboard(page, threading.Event())
-                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(4))))
+                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
                 self.assertEqual(page.evaluate('window.applied'), 1)
                 self.assertTrue(page.locator('#agents').is_checked())
                 self.assertFalse(page.locator('div[hidden] input').is_checked())
@@ -187,13 +187,13 @@ class RequestsDashboardTests(unittest.TestCase):
                         self.assertLogs(_logger, level='INFO') as logs, diagnostic_steps(LoginDiagnostics()):
                     from neto_incident_monitor.section_runner import run_section
                     values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
-                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: len(v) == 4)
-                self.assertEqual(len(values), 4)
+                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
+                self.assertEqual(len(values), len(REQUEST_TITLES))
                 self.assertEqual(len(loads), 4)
                 records = [json.loads(r.getMessage()) for r in logs.records]
                 self.assertEqual(sum(r['event'] == 'section_read_retry' for r in records), 1)
                 self.assertTrue(any(r['event'] == 'dashboard_tile_state' and
-                                    r.get('tile_index') == 3 and r.get('tile_state') == 'missing'
+                                    r.get('tile_index') == len(REQUEST_TITLES) - 1 and r.get('tile_state') == 'missing'
                                     for r in records))
             finally:
                 browser.close()
@@ -216,7 +216,7 @@ class RequestsDashboardTests(unittest.TestCase):
         from neto_incident_monitor.section_runner import run_section
         reader = Mock(return_value=dict.fromkeys(REQUEST_TITLES[:-1], 0))
         with self.assertRaises(ValueError):
-            run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), Mock(), Mock(), lambda v: len(v) == 4)
+            run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
         self.assertEqual(reader.call_count, 2)
 
     def test_cancel_and_session_expiry_are_not_retried_as_score_errors(self):

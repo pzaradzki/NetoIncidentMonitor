@@ -96,6 +96,7 @@ class GoogleChatTests(unittest.TestCase):
 
     def test_background_queue_is_bounded(self):
         sender = chat.Sender.__new__(chat.Sender)
+        sender.closed = chat.threading.Event()
         sender.events, sender.jobs = queue.Queue(), queue.Queue(maxsize=1)
         sender.submit(URL, 'Title', 'First')
         sender.submit(URL, 'Title', 'Second', test=True)
@@ -138,7 +139,6 @@ class GoogleChatTests(unittest.TestCase):
         app.snapshots = {1: {'INC123': {'short_description': 'Printer'}}}
         app.test_record_notification(app.current_table, 'INC123', 'https://adeo.service-now.com/inc')
         app.google_chat_sender.submit.assert_called_once()
-        app.history.mark_read.assert_not_called()
 
     def test_session_expiry_respects_google_chat_setting(self):
         app = self.make_app()

@@ -1,5 +1,5 @@
 """Bind classic list rows, navigation and metadata to one visible table."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 from urllib.parse import urlparse
@@ -10,15 +10,34 @@ ROW_INPUT = 'input.list2_page, input.list_row_number_input, input[data-type="lis
 PAGER = '[data-type^="list_nav"], input.list2_page, input.list_row_number_input, .list2_paging, button.list_nav'
 
 
-def list_conditions(query):
-    """Keep encoded conditions in order and drop observed trailing list directives."""
+def _ordered_conditions(query):
     if query is None:
         return None
     parts = query.split("^")
     while parts and (parts[-1] == "EQ" or
                      re.fullmatch(r"ORDERBY(?:DESC)?[a-zA-Z_][\w.]*", parts[-1])):
         parts.pop()
-    return "^".join(parts)
+    return parts
+
+
+# Only a complete comparison value can use the observed date alias.
+_DATE_ALIAS = re.compile(r'((?:OR|NQ)?(?:GOTO)?sys_updated_on(?:<=|>=|!=|=|<|>))'
+                         r'javascript:gs\.daysAgoStart\(7\)')
+
+
+def list_conditions(query):
+    """Preserve ordered logic, accepting only the observed seven-day date alias."""
+    parts = _ordered_conditions(query)
+    if parts is None:
+        return None
+    return '^'.join((match[1] + 'javascript:gs.beginningOfLast7Days()')
+                    if (match := _DATE_ALIAS.fullmatch(part)) else part for part in parts)
+
+
+def compare_list_conditions(requested, observed):
+    if observed is None or list_conditions(requested) != list_conditions(observed):
+        return 'mismatch'
+    return 'exact' if _ordered_conditions(requested) == _ordered_conditions(observed) else 'known_alias'
 
 
 class ListStateError(RuntimeError):
@@ -59,6 +78,7 @@ class ListState:
     next_disabled: bool | None
     first_disabled: bool | None
     has_pager: bool
+    query: str | None = field(default=None, compare=False)
 
     @property
     def ranged(self):
@@ -178,4 +198,4 @@ class ListTarget:
         _, cursor = self.cursor()
         return ListState((raw['id'], raw['list'], list_conditions(raw['query']), raw['sort'], raw['direction']),
             *(integer(key) for key in ('first', 'last', 'total', 'size')), raw['count'],
-            raw['busy'], cursor, next_disabled, first_disabled, has_pager)
+            raw['busy'], cursor, next_disabled, first_disabled, has_pager, query=raw['query'])

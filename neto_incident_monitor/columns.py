@@ -31,7 +31,7 @@ FIELDS = [
     ("number", "Numer", 125), ("short_description", "Krótki opis", 340),
     ("priority", "Priorytet", 150), ("location", "Lokalizacja", 200),
     ("created", "Utworzono", 165), ("updated", "Zaktualizowano", 165),
-    ("age_minutes", "Czas od utworzenia (min)", 185),
+    ("age_minutes", "Wiek (min)", 185),
     ("state", "Stan", 150), ("caller", "Zgłaszający", 180),
     ("assigned_to", "Przypisane do", 180), ("description", "Opis", 420),
     ("parent_incident", "Incydent nadrzędny", 160),
@@ -39,16 +39,16 @@ FIELDS = [
     ("assignment_group", "Grupa przypisania", 200),
     ("requested_for", "Wnioskowane dla", 180),
     ("opened_by", "Otwarte przez", 180),
-    ("read", "Przeczytanie", 145),
     ("time", "Wykryto (historia)", 150),
 ]
 DEFAULT = ["number", "state", "caller", "priority", "short_description", "location", "created"]
-DATA_FIELDS = [key for key, _, _ in FIELDS if key not in ("number", "read", "time", "age_minutes")]
-LOCAL = {"number", "read", "time"}
+DATA_FIELDS = [key for key, _, _ in FIELDS if key not in ("number", "time", "age_minutes")]
+LOCAL = {"number", "time"}
 
-LOCAL_FIELDS = [('read', 'Przeczytane', 145),
-                ('age_minutes', 'Czas od utworzenia (min)', 185),
-                ('time', 'Wykryto (historia)', 150)]
+LOCAL_FIELDS = [
+    ('age_minutes', 'Wiek (min)', 185),
+    ('time', 'Wykryto (historia)', 150),
+]
 
 
 class ColumnDiscovery(set):

@@ -86,10 +86,10 @@ class DashboardNavigationTests(unittest.TestCase):
         self.page.goto(DASHBOARD_URL)
         open_dashboard_tab(self.page, 'Wstrzymane L1', self.stop)
         open_dashboard_tab(self.page, 'Wnioski L1', self.stop)
-        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(4))))
+        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
         self.assertEqual(len(self.documents), 1)
 
     def test_unrelated_loader_does_not_block_current_scores(self):
         self.page.goto(DASHBOARD_URL)
-        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(4))))
+        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
         self.assertEqual(len(self.documents), 1)

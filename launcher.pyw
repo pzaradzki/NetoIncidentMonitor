@@ -34,7 +34,19 @@ def main():
     previous_stdout, previous_stderr = sys.stdout, sys.stderr
     previous_thread_hook = threading.excepthook
     handler = None
+    instance = None
+    reset_requested = False
+    smoke = "--smoke-test" in sys.argv
     try:
+        if not smoke:
+            from neto_incident_monitor.single_instance import SingleInstance
+            from neto_incident_monitor.data_reset import DataReset, finish_with_retry
+            instance = SingleInstance(DATA)
+            if not instance.primary:
+                instance.request_show()
+                return
+            if not finish_with_retry(DataReset()):
+                return
         data = DATA
         data.mkdir(parents=True, exist_ok=True)
         handler = RotatingFileHandler(data / "monitor.log", maxBytes=2_000_000,
@@ -48,12 +60,12 @@ def main():
         from neto_incident_monitor import __version__
         from neto_incident_monitor.login_diagnostics import RUN_ID
         logging.info("Uruchomienie aplikacji: wersja=%s run_id=%s", __version__, RUN_ID)
-        if "--smoke-test" in sys.argv:
+        if smoke:
             from tools.package_smoke import main as smoke_main
             smoke_main(Path(sys.argv[sys.argv.index("--smoke-test") + 1]))
         else:
             from neto_incident_monitor.app import main as app_main
-            app_main()
+            reset_requested = app_main(instance)
     except Exception as exc:
         logging.exception("Błąd uruchomienia aplikacji")
         import tkinter as tk
@@ -71,6 +83,14 @@ def main():
         if handler is not None:
             logging.getLogger().removeHandler(handler)
             handler.close()
+        try:
+            if reset_requested:
+                from neto_incident_monitor.login_diagnostics import close_diagnostics
+                close_diagnostics()
+                finish_with_retry(DataReset())
+        finally:
+            if instance is not None:
+                instance.close()
 
 
 if __name__ == "__main__":

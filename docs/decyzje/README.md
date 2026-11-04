@@ -15,6 +15,11 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [009](009-renderowanie-ukrytego-logowania.md) | Przyjęte i wdrożone ograniczone renderowanie 1×1 ukrytego logowania, z odrębną granicą zaufania i obsługą ręczną. |
 | [010](010-cykl-zycia-zadania-dashboardu.md) | Zamrożony okres i blokada kontrolek przez cały cykl żądania dashboardu; zakończenie i wyniki powiązane z ID. |
 | [011](011-transakcyjny-stan-filtrow.md) | Historia i obecność w jednej transakcji SQLite. |
+| [012](012-usuniecie-stanu-przeczytania.md) | Zgodność historii i konfiguracji po usunięciu lokalnego stanu przeczytania. |
+| [013](013-reset-danych-aplikacji.md) | Wznawialny reset lokalnych danych pod blokadą instancji. |
+| [014](014-linki-dashboardu-na-zadanie.md) | Pobieranie celu pojedynczego kafelka dopiero po kliknięciu, poza odświeżaniem wartości. |
+| [015](015-rownowaznosc-dat-filtrow.md) | Ścisłe porównywanie filtrów z potwierdzoną równoważnością siedmiodniowej daty. |
+| [016](016-normalizacja-adresow-list.md) | Rozpakowanie długich adresów list bez utraty kodowania i parametrów. |
 
 ## Format i utrzymanie
 

@@ -326,8 +326,6 @@ def build_ui(app, settings):
     ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
     app.current_count = tk.StringVar(value="0")
-    app.new_count = tk.StringVar(value="0")
-    app.unread_count = tk.StringVar(value="0")
 
     toolbar = ttk.Frame(main)
     toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 10))
@@ -350,9 +348,6 @@ def build_ui(app, settings):
     app.configure_filter_button.configure(state="disabled")
     app.configure_filter_button.pack(side="right", padx=(8, 0))
     app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
-    app.mark_all_button = RoundedButton(actions, text="Przeczytaj wszystkie", icon="checks", command=app.mark_all, background=BG)
-    if app.highlight_unread.get():
-        app.mark_all_button.pack(side="right")
     app.tabs = ttk.Notebook(main, style="Clean.TNotebook")
     app.tabs.grid(row=2, column=0, sticky="nsew")
     current = ttk.Frame(app.tabs, style="White.TFrame")

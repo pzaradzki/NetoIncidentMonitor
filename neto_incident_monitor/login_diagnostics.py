@@ -48,6 +48,11 @@ NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', '
     'filter_index', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size',
     'row_count', 'records_read', 'duration_ms', 'request_id', 'expected_count', 'ready_count', 'tile_index', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'context_confirmed', 'category_count', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'payload_bytes', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
 TEXT_FIELDS = {
+    'url_kind': {'direct', 'wrapper', 'short'},
+    'validation_result': {'accepted', 'rejected'},
+    'validation_reason': {'none', 'unsafe', 'unsupported_target', 'conflicting_parameters'},
+    'query_comparison': {'exact', 'known_alias', 'mismatch'},
+    'query_alias': {'none', 'last_7_days'},
     'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
                       'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
                       'stale_id', 'period_mismatch'},
@@ -62,19 +67,21 @@ TEXT_FIELDS = {
     'read_reason': {'rendering_unavailable', 'wrong_dashboard','wrong_tab','wrong_period','wrong_filter','ambiguous_period',
                     'ambiguous_widget','incomplete_widgets','definition_changed','timeout','document_changed',
                     'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected'},
+    'drilldown_result': {'ready', 'unavailable', 'not_ready', 'value_changed', 'button_unavailable',
+                         'list_unconfirmed', 'authentication', 'authentication_retry'},
     'cache_result': {'saved','failed','restored','invalid','skipped'},
     'delay_reason': {'filter','dashboard','login','browser','idle'},
     'outcome': {'returned', 'error', 'cancelled', 'authentication'},
     'wait_reason': {'loading', 'missing', 'invalid', 'unstable', 'ready', 'observation_failed'},
     'risk_tile': {'P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'},
-    'tile': {'Otwarte wnioski L1', 'Wnioski L1 >7 dni', 'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1'},
+    'tile': {'Otwarte wnioski L1', 'Wnioski L1 >7 dni', 'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1', 'Wnioski Smartfon – start >3 dni'},
     'tile_state': {'ready', 'missing', 'ambiguous', 'invalid', 'unavailable', 'loading'},
     'score_source': {'widget_value', 'button', 'none'},
     'activity': {'login', 'dashboard', 'filters'},
     'readiness_reason': {'covered', 'unstable', 'disabled', 'hidden', 'detached', 'outside_viewport', 'unavailable'},
     'origin': {'adeo_identity', 'servicenow', 'other'},
     'filter_outcome': {'success', 'error', 'cancelled', 'discarded', 'waiting_login', 'interrupted', 'rejected'},
-    'source': {'dashboard', 'monitor', 'pagination'},
+    'source': {'dashboard', 'monitor', 'pagination', 'configuration'},
     'pagination_stage': {'navigate', 'resolve_url', 'read_rows', 'first_page', 'list_total',
                          'next_page', 'verify_complete', 'retry', 'prepare', 'history_write'},
     'pagination_mode': {'ranged', 'unpaginated'},
@@ -106,9 +113,9 @@ TEXT_FIELDS = {
         'wybór konta nie spowodował przejścia do formularza',
         'nierozpoznany krok logowania wymaga obsługi użytkownika'},
 }
-EVENTS = set('''threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred category_check_recovered category_check_failed dashboard_context dashboard_refresh section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end dashboard_observation pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
+EVENTS = set('''dashboard_drilldown_start dashboard_drilldown_tile dashboard_drilldown_finish dashboard_drilldown_open threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred category_check_recovered category_check_failed dashboard_context dashboard_refresh section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end dashboard_observation pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
 filter_read_start filter_read_resumed filter_read_end filter_read_error filter_links_degraded filter_commit_start filter_commit_complete
-pagination_approval_wait pagination_action pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
+filter_url_validation pagination_query_comparison pagination_approval_wait pagination_action pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
 start blocked automatic_skipped awaiting_submission_result dashboard_widgets_retry
 waiting_password_fill waiting_remembered_form submit_unavailable submit_retry_cancelled
 submit_attempt submit_error submit_retry_scheduled submit_clicked account_selection_ambiguous
@@ -121,7 +128,8 @@ session_expired navigation document_response document_failed initial_navigation_
 authentication_popup dashboard_operation dashboard_navigation section_read_error browser_options_changed browser_activity visibility_deferred authentication_popup_closed session_confirmed browser_launch_attempt browser_launched monitor_error monitor_finished browser_restart_limited browser_restart_delay'''.split())
 
 
-NUMERIC_FIELDS.update({'active_request_id', 'expected_year', 'expected_month'})
+NUMERIC_FIELDS.update({
+    'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 
 
@@ -293,3 +301,10 @@ class LoginDiagnostics:
                 self.record('login_still_waiting')
         except Exception as error:
             self.record('inspection_error', **error_facts(error))
+
+
+def close_diagnostics():
+    with _lock:
+        for handler in list(_logger.handlers):
+            _logger.removeHandler(handler)
+            handler.close()

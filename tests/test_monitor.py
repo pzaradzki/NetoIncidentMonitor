@@ -10,7 +10,7 @@ URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue
 
 
 class MonitorTests(unittest.TestCase):
-    def test_double_click_marks_only_opened_incident_read(self):
+    def test_double_click_opens_without_history_write(self):
         for row, opened in (("row", True), ("row", False), ("", True)):
             with self.subTest(row=row, opened=opened):
                 monitor = Mock()
@@ -21,12 +21,11 @@ class MonitorTests(unittest.TestCase):
                 monitor.row_numbers = {(table, "row"): "INC1234567"}
                 with patch("neto_incident_monitor.app.webbrowser.open", return_value=opened) as browser:
                     App.open_incident(monitor, event)
-                if row and opened:
-                    monitor.mark_read.assert_called_once_with(["INC1234567"])
+                if row:
+                    browser.assert_called_once()
                 else:
-                    monitor.mark_read.assert_not_called()
-                if not row:
                     browser.assert_not_called()
+                monitor.write_history.assert_not_called()
 
     def test_history_survives_restart_and_deduplicates_filters(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
@@ -35,13 +34,9 @@ class MonitorTests(unittest.TestCase):
             incident = {"number": "INC0012345", "url": URL}
             self.assertTrue(history.add(incident, "Gdańsk", URL))
             self.assertTrue(history.add(incident, "Gdynia", URL + "&second=1"))
-            self.assertEqual(history.unread(), 2)
             history = History(path)
             self.assertEqual(len(history.snapshot(URL)["INC0012345"]["filters"]), 1)
-            history.mark_read(["INC0012345"])
-            self.assertEqual(History(path).unread(), 0)
             self.assertFalse(history.add(incident, "Gdańsk", URL))
-            self.assertEqual(history.unread(), 0)
             with patch.object(history, "_commit", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
                     history.add({"number": "INC0012346", "url": URL}, "Gdańsk", URL)
@@ -97,29 +92,21 @@ class MonitorTests(unittest.TestCase):
             monitor.history.add(incident, "Gdynia", URL + "&second=1")
             monitor.events.put(("snapshot", (1, {incident["number"]: incident})))
             monitor.events.put(("snapshot", (2, {incident["number"]: incident})))
-            monitor.events.put(("incident", ("Gdańsk", incident, False)))
-            monitor.events.put(("incident", ("Gdynia", incident, False)))
             monitor.events.put(("read", (time.time(), "Gdynia")))
             monitor.events.put(("waiting", (time.monotonic() + 60, False)))
             monitor.drain()
             self.assertEqual(monitor.current_count.get(), "1")
-            self.assertEqual(monitor.new_count.get(), "1")
             self.assertEqual(len(monitor.current_table.get_children()), 1)
             row = monitor.current_table.get_children()[0]
             values = list(monitor.current_table.item(row, "values"))
             age_index = list(monitor.current_table["columns"]).index("age_minutes")
             self.assertGreaterEqual(int(values.pop(age_index)), 0)
             self.assertEqual(tuple(values),
-                             ("Nieprzeczytany", "INC0012345", "Problem z kasą", "\u2003\u20022 — wysokie", "Gdańsk", "2026-10-07 10:00:00", *("—",) * 10))
-            self.assertEqual(monitor.unread_count.get(), "1")
+                             ("INC0012345", "Problem z kasą", "\u2003\u20022 — wysokie", "Gdańsk", "2026-10-07 10:00:00", *("—",) * 10))
             self.assertEqual(len(monitor.table.get_children()), 1)
-            self.assertIn("unread", monitor.current_table.item(row, "tags"))
             monitor.current_table.selection_set(row)
-            monitor.mark_selected()
             monitor.history_writer.submit(lambda: None).result(timeout=5)
             monitor.drain()
-            self.assertEqual(monitor.unread_count.get(), "0")
-            self.assertEqual(History(Path(temporary.name) / "history.json").unread(), 1)
             self.assertIn("Monitoring aktywny", monitor.phase.get())
             self.assertFalse(hasattr(monitor, "ready_button"))
             monitor.events.put(("check_deadlines", {"inc": time.monotonic() + 60, "task": time.monotonic() + 3600}))
@@ -157,7 +144,6 @@ class MonitorTests(unittest.TestCase):
                 self.assertIn("Nie udało się zapisać zmiany historii", monitor.status.get())
                 self.assertEqual(len(monitor.history.snapshot()), 1)
             # An incident queued before the clear must not restore the deleted history.
-            monitor.events.put(("incident", ("Gdańsk", incident, False)))
             with patch("neto_incident_monitor.widgets.confirm_dialog", return_value=True), patch("neto_incident_monitor.app.save_json") as state_write:
                 monitor.clear_history()
                 state_write.assert_not_called()
@@ -165,7 +151,6 @@ class MonitorTests(unittest.TestCase):
             monitor.drain()
             self.assertEqual(len(monitor.table.get_children()), 0)
             self.assertEqual(len(monitor.current_table.get_children()), 1)
-            self.assertEqual(monitor.unread_count.get(), "0")
             self.assertEqual(History(Path(temporary.name) / "history.json").snapshot(URL), {})
             monitor.auth_waiting = False
             monitor.check_now()
@@ -203,24 +188,19 @@ class MonitorTests(unittest.TestCase):
             root.destroy()
             temporary.cleanup()
 
-    def test_native_tray_lifecycle_and_badge(self):
+    def test_native_tray_lifecycle_and_status(self):
         import queue
         from neto_incident_monitor.tray import Tray
         events = queue.Queue()
         browser_visible = [False]
-        tray = Tray(events, unread_enabled=False, browser_visible=lambda: browser_visible[0])
+        tray = Tray(events, browser_visible=lambda: browser_visible[0])
         try:
-            self.assertFalse(tray.icon.menu.items[2].visible)
             tray.start()
             kind, _ = events.get(timeout=5)
             self.assertEqual(kind, "tray_ready")
             self.assertTrue(tray.icon.visible)
-            tray.update(3, "Monitoring aktywny")
-            self.assertTrue(tray.icon.menu.items[2].visible)
-            tray.update(0, "Monitoring aktywny", unread_enabled=False)
-            self.assertFalse(tray.icon.menu.items[2].visible)
-            tray.update(3, "Monitoring aktywny", unread_enabled=True)
-            self.assertIn("nieprzeczytane: 3", tray.icon.title)
+            tray.update("Monitoring aktywny")
+            self.assertEqual(tray.icon.title, "ServiceNow — Monitoring aktywny")
             # Exercise the menu dispatch without touching Tk from a tray thread.
             tray.icon.menu.items[0](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "show")
@@ -233,9 +213,7 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(events.get(timeout=2)[0], "hide_browser")
             browser_visible[0] = False
             self.assertEqual(tray.icon.menu.items[1].text, "Pokaż przeglądarkę")
-            tray.icon.menu.items[2](tray.icon)
-            self.assertEqual(events.get(timeout=2)[0], "mark_all")
-            tray.icon.menu.items[4](tray.icon)
+            tray.icon.menu.items[3](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "quit")
         finally:
             tray.stop()

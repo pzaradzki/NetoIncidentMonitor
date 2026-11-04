@@ -113,6 +113,40 @@ class FilterViewTests(unittest.TestCase):
         app.notify_filter('A', [incident])
         self.assertEqual(app.google_chat_sender.submit.call_count, count)
 
+    def test_legacy_read_settings_are_removed_on_config_roundtrip(self):
+        import json
+        from neto_incident_monitor.app import read_json, save_json
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            config = {
+                "notification_revision": "0123456789abcdef0123456789abcdef",
+                "highlight_unread": True,
+                "visible_columns": ["read", "number"],
+                "column_widths": {"read": 140, "number": 155},
+                "filter_visible_columns": {"A": ["number", "read"]},
+                "filter_column_profiles": {"A": {
+                    "schema": [{"key": "number"}, {"key": "read"}],
+                    "order": ["read", "number", "time"],
+                    "visible": ["number", "read"],
+                    "widths": {"read": 140, "number": 155},
+                }},
+            }
+            path.write_text(json.dumps(config), encoding="utf-8")
+            with patch("neto_incident_monitor.app.CONFIG", path):
+                loaded = read_json(path, {})
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8")), config)
+                save_json(path, loaded)
+                self.assertEqual(read_json(path, {}), loaded)
+            self.assertNotIn("highlight_unread", loaded)
+            self.assertEqual(loaded["visible_columns"], ["number"])
+            self.assertEqual(loaded["column_widths"], {"number": 155})
+            self.assertEqual(loaded["filter_visible_columns"], {"A": ["number"]})
+            self.assertEqual(loaded["filter_column_profiles"]["A"], {
+                "schema": [{"key": "number"}], "order": ["number", "time"],
+                "visible": ["number"], "widths": {"number": 155},
+            })
+
     def test_selection_scopes_both_tables_and_read_actions(self):
         root = tk.Tk()
         try:
@@ -162,26 +196,12 @@ class FilterViewTests(unittest.TestCase):
                 app.filter_selected()
                 self.assertNotIn("filter", app.current_table["columns"])
                 self.assertEqual(app.current_table.set(app.current_table.get_children()[0], "short_description"), "A")
-                app.mark_all()
-                self.assertFalse(app.history.snapshot(app.filters[1]["url"])["INC1"]["read"])
                 app.filter_table.selection_set("1")
                 self.assertEqual(app.current_table.set(app.current_table.get_children()[0], "short_description"), "B")
                 self.assertEqual(app.table.set(app.table.get_children()[0], "short_description"), "B")
-                self.assertEqual(app.unread_count.get(), "1")
-                with patch("neto_incident_monitor.app.save_json") as save:
-                    app.highlight_unread.set(False)
-                    self.assertNotIn("read", app.applicable_columns())
-                    self.assertFalse(save.call_args.args[1]["highlight_unread"])
-                    self.assertFalse(app.mark_all_button.winfo_manager())
-                    for table in (app.current_table, app.table):
-                        self.assertNotIn("read", table["displaycolumns"])
-                        self.assertNotIn("unread", table.item(table.get_children()[0], "tags"))
-                    app.mark_all()
-                    self.assertFalse(app.history.snapshot(app.filters[1]["url"])["INC1"]["read"])
-                    app.highlight_unread.set(True)
-                    self.assertIn("read", app.applicable_columns())
-                    self.assertEqual(app.mark_all_button.winfo_manager(), "pack")
-                    self.assertIn("unread", app.table.item(app.table.get_children()[0], "tags"))
+                for table in (app.current_table, app.table):
+                    self.assertNotIn("read", table["columns"])
+                    self.assertNotIn("unread", table.item(table.get_children()[0], "tags"))
                 with patch("neto_incident_monitor.app.save_json"):
                     app.notify.set(False)
                     app.teams_enabled.set(False)

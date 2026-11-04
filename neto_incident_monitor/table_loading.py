@@ -74,27 +74,25 @@ class TableLoading:
 
         def prepare():
             try:
-                records = self.history.snapshot(url)
                 if cancel.is_set():
                     return
                 if history:
+                    records = self.history.snapshot(url)
                     source = [(n, r['incident'], r) for n, r in sorted(
                         records.items(), key=lambda pair: pair[1]['detected'], reverse=True)]
                 else:
-                    source = [(n, incident, records.get(n)) for n, incident in sorted(
+                    source = [(n, incident, None) for n, incident in sorted(
                         snapshot.items(), key=lambda pair: int(re.sub(r'\D', '', pair[0]) or 0), reverse=True)]
                 rows = []
                 for index, (number, incident, record) in enumerate(source):
                     if cancel.is_set():
                         return
-                    unread = bool(record and not record['read'])
-                    read_label = ('Nieprzeczytany' if unread else 'Przeczytany') if record else '—'
                     detected = time.strftime('%d.%m.%Y %H:%M', time.localtime(record['detected'])) if history else ''
                     values = dict(incident)
                     values.update(incident.get('_values', {}))
-                    values.update(number=number, read=read_label, time=detected,
+                    values.update(number=number, time=detected,
                                   age_minutes=age_minutes(incident.get('created'), number))
-                    rows.append((index, number, incident, unread, read_label, detected, values.get(column) or '—'))
+                    rows.append((index, number, incident, detected, values.get(column) or '—'))
                 if column:
                     present = [r for r in rows if str(r[-1]).strip() not in ('', '—')]
                     missing = [r for r in rows if str(r[-1]).strip() in ('', '—')]
@@ -149,10 +147,9 @@ class TableLoading:
             rows = state['rows']
             if rows is not None:
                 while state['position'] < len(rows) and time.perf_counter() < deadline:
-                    order, number, incident, unread, read_label, detected, _ = rows[state['position']]
-                    tags = ('unread',) if unread and self.unread_highlighting_enabled() else (
-                        ('alternate',) if state['position'] % 2 else ())
-                    item = table.insert('', 'end', values=self.table_values(table, incident, read_label, detected), tags=tags)
+                    order, number, incident, detected, _ = rows[state['position']]
+                    tags = ('alternate',) if state['position'] % 2 else ()
+                    item = table.insert('', 'end', values=self.table_values(table, incident, detected), tags=tags)
                     state['ids'][order] = item
                     self.items[(table, item)] = incident.get('url', '')
                     self.row_numbers[(table, item)] = number

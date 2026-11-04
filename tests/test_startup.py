@@ -60,8 +60,8 @@ class StartupTests(unittest.TestCase):
 
     def test_registration_enable_disable_without_changing_real_registry(self):
         import winreg
-        with patch.object(winreg, "CreateKeyEx") as create, patch.object(winreg, "SetValueEx") as write, patch.object(winreg, "DeleteValue") as delete:
-            key = create.return_value.__enter__.return_value
+        with patch.object(winreg, "OpenKey") as open_key, patch.object(winreg, "CreateKeyEx"), patch.object(winreg, "SetValueEx") as write, patch.object(winreg, "DeleteValue") as delete:
+            key = open_key.return_value.__enter__.return_value
             set_windows_startup(True)
             self.assertEqual(write.call_args.args[1], "NetoIncidentMonitorSource")
             self.assertEqual(write.call_args.args[-1], startup_command())
@@ -69,3 +69,57 @@ class StartupTests(unittest.TestCase):
             delete.assert_called_once_with(key, "NetoIncidentMonitorSource")
             delete.side_effect = FileNotFoundError
             set_windows_startup(False)
+
+    def test_reconcile_existing_registration_only(self):
+        import winreg
+        from neto_incident_monitor.startup import reconcile_windows_startup
+
+        with patch.object(winreg, "OpenKey"), patch.object(winreg, "QueryValueEx") as query, \
+                patch.object(winreg, "CreateKeyEx"), patch.object(winreg, "SetValueEx") as write:
+            query.side_effect = FileNotFoundError
+            self.assertEqual(reconcile_windows_startup(), "disabled")
+            write.assert_not_called()
+            query.side_effect = None
+            query.return_value = (r'"C:\Old Folder\Monitor.exe"', winreg.REG_SZ)
+            self.assertEqual(reconcile_windows_startup(), "repaired")
+            self.assertEqual(write.call_args.args[1:], ("NetoIncidentMonitorSource", 0, winreg.REG_SZ, startup_command()))
+            query.return_value = (startup_command(), winreg.REG_SZ)
+            self.assertEqual(reconcile_windows_startup(), "current")
+            self.assertEqual(write.call_count, 1)
+
+    def test_reconcile_and_remove_on_isolated_windows_key(self):
+        import uuid
+        import winreg
+        from neto_incident_monitor.startup import reconcile_windows_startup, windows_startup_status
+
+        key_path = r"Software\NetoIncidentMonitorTests-" + uuid.uuid4().hex
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            winreg.SetValueEx(key, "NetoIncidentMonitorSource", 0, winreg.REG_SZ, '"C:\\Old Folder\\Monitor.exe"')
+            winreg.SetValueEx(key, "NetoIncidentMonitor", 0, winreg.REG_SZ, "other variant")
+        self.addCleanup(winreg.DeleteKey, winreg.HKEY_CURRENT_USER, key_path)
+        with patch("neto_incident_monitor.startup.RUN_KEY", key_path):
+            self.assertEqual(reconcile_windows_startup(), "repaired")
+            self.assertEqual(reconcile_windows_startup(), "current")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                self.assertEqual(winreg.QueryInfoKey(key)[1], 2)
+            set_windows_startup(False, packaged=False)
+            self.assertEqual(reconcile_windows_startup(), "disabled")
+            self.assertEqual(windows_startup_status(), "disabled")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                self.assertEqual(winreg.QueryValueEx(key, "NetoIncidentMonitor")[0], "other variant")
+
+    def test_failed_toggle_rereads_registration(self):
+        from neto_incident_monitor.app import App
+
+        app = App.__new__(App)
+        app.saving_startup = False
+        app.start_with_windows = Mock()
+        app.start_with_windows.get.return_value = False
+        app.startup_status_text = Mock()
+        app.settings_window = None
+        with patch("neto_incident_monitor.startup.set_windows_startup", side_effect=PermissionError), \
+                patch("neto_incident_monitor.startup.windows_startup_status", return_value="current") as read, \
+                patch("neto_incident_monitor.app.messagebox.showerror"):
+            app.save_startup_preference("start_with_windows")
+        read.assert_called_once()
+        app.start_with_windows.set.assert_called_once_with(True)

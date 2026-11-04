@@ -9,17 +9,14 @@ from neto_incident_monitor.browser_policy import BrowserRuntime, BrowserOptions
 
 
 class HistoryBatchTests(unittest.TestCase):
-    def test_bulk_arrivals_commit_once_and_keep_filter_specific_read_flags(self):
+    def test_bulk_arrivals_commit_once_and_keep_filter_specific_history(self):
         with tempfile.TemporaryDirectory() as folder:
             history = History(Path(folder) / 'history.json')
             rows = [dict(number=f'INC{i:07d}', summary='fixture') for i in range(528)]
             with patch.object(history, '_commit', wraps=history._commit) as commit:
                 self.assertEqual(len(history.add_many(rows, 'A', 'a', reappeared=True)), 528)
                 commit.assert_called_once()
-            history.mark_read([rows[0]['number']], 'a')
             history.add_many(rows[:1], 'B', 'b', reappeared=True)
-            self.assertTrue(history.snapshot('a')[rows[0]['number']]['read'])
-            self.assertFalse(history.snapshot('b')[rows[0]['number']]['read'])
             self.assertEqual(len(History(history.path).snapshot('a')), 528)
             with patch.object(history, '_commit', side_effect=OSError('fixture')):
                 with self.assertRaises(OSError):

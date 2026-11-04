@@ -27,6 +27,10 @@ def main(output):
             result["window_title"] = window.title()
             assert window.title() == f"Neto Incident Monitor v{__version__}"
             result["ui"] = "ok"
+            from neto_incident_monitor.theme import SURFACE
+            for tile in app.threatened_view.tiles:
+                assert all(widget.cget('background') == SURFACE for widget in (tile, *tile.labels))
+            result["metric_backgrounds"] = "ok"
             if app.tray:
                 app.tray.stop()
         window.destroy()

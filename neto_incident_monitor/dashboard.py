@@ -19,7 +19,8 @@ DASHBOARD_URL = ('https://adeo.service-now.com/now/platform-analytics-workspace/
 TITLES = ('Liczba zgłoszeń',) + tuple(f'Zgłoszenia P{i}' for i in range(1, 6)) + tuple(f'Przekroczone P{i}' for i in range(1, 6))
 HELD_TITLES = ('Wstrzymane L1 >14 dni', 'Wstrzymane L1 >7 dni')
 REQUEST_TITLES = ('Otwarte wnioski L1', 'Wnioski L1 >7 dni',
-                  'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1')
+                  'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1',
+                  'Wnioski Smartfon – start >3 dni')
 REQUEST_READ_TIMEOUT = 60
 _diagnostics = ContextVar('dashboard_diagnostics', default=None)
 TAB_IDS = {

@@ -12,7 +12,7 @@ Neto Incident Monitor to aplikacja desktopowa dla systemu Windows, która monito
 
 - Monitorowanie wielu filtrów z możliwością ich włączania i wyłączania podczas pracy.
 - Powiadomienia systemowe Windows oraz powiadomienia Microsoft Teams i Google Chat.
-- Oddzielna historia każdego filtra i lokalne oznaczanie incydentów jako przeczytanych.
+- Oddzielna historia każdego filtra.
 - Otwieranie incydentów oraz kopiowanie ich numerów i adresów z menu kontekstowego.
 - Konfigurowanie widoczności, kolejności i szerokości kolumn.
 - Zapamiętywanie układu interfejsu, rozmiaru okna i stanu maksymalizacji.
@@ -107,13 +107,15 @@ Podgląd aktualizuje się podczas edycji. **Wyślij test** wysyła dane przykła
 
 Dwukrotne kliknięcie wpisu na liście filtrów otwiera jego adres w domyślnej przeglądarce. Kliknięcie przełącznika aktywności nie otwiera przeglądarki.
 
+Przy dodawaniu filtra można wkleić bezpośredni adres listy, długi adres ServiceNow `/now/nav/ui/classic/params/target/…` albo skrót `__tinyId__`. Długi adres jest zapisywany jako bezpośredni, z zachowaniem warunków i widoku. Jeśli adres zawiera sprzeczne wartości tego samego parametru listy, zostanie odrzucony bez zapisu. Skrócenie długiego adresu do `__tinyId__` przez sam ServiceNow jest normalnym zachowaniem.
+
 Duże tabele (ponad 150 rekordów historii lub bieżącej listy) są przygotowywane poza wątkiem interfejsu i wczytywane krótkimi partiami. Ukryta duża tabela czeka na otwarcie swojej zakładki. Zmiana filtra lub zakładki przerywa poprzednie ładowanie; postęp jest widoczny nad tabelą. Małe zestawy pozostają wczytywane bezpośrednio. Nie ma limitu liczby zachowanych wpisów historii.
 
 Zakładka **Bieżące zgłoszenia** przedstawia wyniki ostatniego odczytu zaznaczonego filtra. Zakładka **Historia zgłoszeń** zawiera zapisane incydenty wykryte podczas monitorowania. Dane historyczne nie są na bieżąco aktualizowane i mogą różnić się od aktualnych danych w ServiceNow.
 
-Dwukrotne kliknięcie wiersza otwiera incydent w domyślnej przeglądarce i oznacza go jako przeczytany. Menu kontekstowe, dostępne po kliknięciu prawym przyciskiem myszy, umożliwia otwarcie incydentu, skopiowanie numeru lub adresu oraz oznaczenie go jako przeczytanego. Status przeczytania jest zapisywany lokalnie i nie zmienia danych w ServiceNow.
+Dwukrotne kliknięcie wiersza otwiera zgłoszenie w domyślnej przeglądarce. Menu kontekstowe umożliwia otwarcie zgłoszenia i skopiowanie jego numeru lub adresu.
 
-Przycisk **Przeczytaj wszystkie** oznacza historię wybranego filtra jako przeczytaną. **Wyczyść historię** usuwa wpisy tego filtra po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
+**Wyczyść historię** usuwa wpisy tego filtra po potwierdzeniu operacji. Aplikacja zachowuje informacje o wcześniej rozpoznanych numerach, aby nie traktować ich ponownie jako nowych incydentów.
 
 ### Kolumny i układ interfejsu
 
@@ -126,7 +128,7 @@ Przycisk **Kolumny** jest dostępny po pierwszym pełnym odczycie filtra. Aplika
 
 Widoczność, kolejność i szerokości kolumn są zapisywane osobno dla każdego filtra, wspólnie dla jego bieżącej listy i historii. Dodanie lub usunięcie kolumny w ServiceNow przywraca pełny zestaw i kolejność ze strony. Sama zmiana kolejności na stronie zachowuje własny układ użytkownika. Niepełny lub nieudany odczyt nie zmienia zapisanej konfiguracji.
 
-**Przywróć domyślne** wybiera wszystkie kolumny ServiceNow w ostatnio odczytanej kolejności. Kolumny lokalne znajdują się w osobnej sekcji **Kolumny dodatkowe** i domyślnie są wyłączone oraz umieszczone na końcu. Obejmują stan przeczytania, czas od utworzenia INC i datę wykrycia w historii. Po włączeniu można zmienić także ich położenie. Zmiany w konfiguratorze zatwierdza przycisk **Zapisz**.
+**Przywróć domyślne** wybiera wszystkie kolumny ServiceNow w ostatnio odczytanej kolejności. Kolumny lokalne znajdują się w osobnej sekcji **Kolumny dodatkowe** i domyślnie są wyłączone oraz umieszczone na końcu. Obejmują czas od utworzenia INC i datę wykrycia w historii. Po włączeniu można zmienić także ich położenie. Zmiany w konfiguratorze zatwierdza przycisk **Zapisz**.
 
 Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości panelu. Układ kolumn, szerokość panelu oraz rozmiar i stan maksymalizacji okna są zapamiętywane między uruchomieniami.
 
@@ -233,14 +235,11 @@ Kod aplikacji jest zorganizowany jako pakiet `neto_incident_monitor`. Narzędzia
 
 Katalogi `data`, `build` i `dist` oraz środowisko `.venv` są tworzone lokalnie i nie są częścią repozytorium.
 
-Opcja **Podświetlaj nieprzeczytane incydenty** znajduje się w sekcji **Lista incydentów** na końcu ustawień i jest domyślnie wyłączona. Zapisany wcześniej wybór użytkownika jest zachowywany. Jej wyłączenie usuwa wyróżnienie wierszy, ukrywa kolumnę przeczytania, przycisk **Przeczytaj wszystkie**, oznaczanie w menu kontekstowym oraz licznik na ikonie zasobnika. Otwieranie incydentu nie zmienia wtedy oznaczenia przeczytania. Wcześniejsze oznaczenia pozostają zachowane, a ustawienie jest zapamiętywane między uruchomieniami.
-
 ### Zadania katalogowe (SCTASK)
 
 Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_task_list.do`). Obsługiwane są zarówno adresy bezpośrednie, jak i linki nawigacyjne `/now/nav/ui/classic/params/target/`. Po dodaniu filtra zadania SCTASK są odczytywane ze wszystkich stron listy i korzystają z osobnej historii oraz ustawień powiadomień tego filtra.
 
 W wyborze kolumn dostępne są także **Wnioskowane dla** i **Otwarte przez**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.
-
 
 W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **SCTASK** (minimum 15 sekund). Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał SCTASK wynosi 3600 sekund (godzinę); wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty nadal odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
 
@@ -252,4 +251,12 @@ Zapamiętaną zgodę na duże odczyty można cofnąć w **Ustawieniach filtra**:
 
 W powiadomieniach Teams numery INC i SCTASK są hiperłączami do rekordów ServiceNow. Format INC: numer, lokalizacja, krótki opis. Format SCTASK: numer, krótki opis, wnioskowane dla. W powiadomieniach Windows numery pozostają zwykłym tekstem. Przepływ korzystający z `triggerBody()?['text']` otrzymuje gotową treść HTML z hiperłączami.
 
-Opcja **Test powiadomienia** na dole menu kontekstowego wysyła powiadomienie z klikniętym INC lub SCTASK, korzystając z danych bieżącej listy albo historii. Obowiązują globalne i indywidualne ustawienia kanałów powiadomień. Test nie zmienia oznaczenia przeczytania ani pamięci wykrytych zgłoszeń i działa także dla wyłączonego filtra.
+Opcja **Test powiadomienia** na dole menu kontekstowego wysyła powiadomienie z klikniętym INC lub SCTASK, korzystając z danych bieżącej listy albo historii. Obowiązują globalne i indywidualne ustawienia kanałów powiadomień. Test nie zmienia pamięci wykrytych zgłoszeń i działa także dla wyłączonego filtra.
+
+### Przywrócenie stanu pierwszego uruchomienia
+
+W **Ustawienia → Dane aplikacji** wybierz **Usuń wszystkie dane aplikacji…**, a następnie **Usuń dane i zamknij**. Reset usuwa ustawienia, filtry, szablony, historię, oczekujące alerty, pamięć dashboardu, logi i profil Chromium monitora. Aplikacja się zamknie. Przy kolejnym uruchomieniu może być potrzebne ponowne logowanie. Jeśli plik jest zablokowany, można ponowić reset albo zamknąć aplikację. Kolejny start dokończy zapisane żądanie przed wczytaniem danych.
+
+Po przeniesieniu folderu aplikacji uruchom monitor ręcznie z nowej lokalizacji. Jeśli wpis autostartu istnieje, monitor zaktualizuje jego ścieżkę. Przełącznik pokazuje rejestrację wpisu, a Windows może dodatkowo wyłączyć jego uruchamianie w swoich ustawieniach. Reset danych usuwa wpis bieżącego wariantu aplikacji.
+
+Kafelki dashboardu rozróżniają kolorem priorytety, przekroczenia, Wstrzymane L1 i Wnioski L1. WJRUW jest wskaźnikiem obliczanym lokalnie. Po odświeżeniu kliknij aktywny kafelek albo wybierz go klawiszem Tab i naciśnij Enter lub Spację, aby otworzyć odpowiadającą listę w domyślnej przeglądarce. Kafelek SLA otwiera okres wyświetlanej wartości. Monitor ustala cel dopiero po kliknięciu. Jeśli lista się nie otworzy, możesz ponowić kliknięcie bez aktualizacji dashboardu. Wymagany jest działający monitoring.

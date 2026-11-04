@@ -19,7 +19,9 @@ class FilterAtomicCommitTests(unittest.TestCase):
             legacy.commit('A', {'INC1'})
             history = History(path)
             history.add({'number': 'INC1'}, 'Filter', 'A')
-            history.mark_read({'INC1'}, 'A')
+            legacy_records = json.loads(path.read_text(encoding='utf-8'))
+            next(iter(legacy_records.values()))['read'] = True
+            path.write_text(json.dumps(legacy_records), encoding='utf-8')
             old_history, old_membership = path.read_bytes(), legacy_path.read_bytes()
             notifications = history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
             self.assertEqual(notifications, set())
@@ -28,9 +30,31 @@ class FilterAtomicCommitTests(unittest.TestCase):
             output = subprocess.check_output([sys.executable, '-c', script, str(path)], text=True)
             membership, records = json.loads(output)
             self.assertEqual(membership['A']['present'], ['INC1'])
-            self.assertTrue(records['INC1']['read'])
+            self.assertNotIn('read', records['INC1'])
             self.assertEqual(path.read_bytes(), old_history)
             self.assertEqual(legacy_path.read_bytes(), old_membership)
+
+    def test_legacy_sqlite_read_field_is_ignored_without_rewriting_database(self):
+        import sqlite3
+        from contextlib import closing
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'history.json'
+            history = History(path)
+            legacy = FilterState(path.with_name('seen.json'))
+            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
+            history.commit_filter(None, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, False, lambda: None,
+                                  lambda arrivals: [{'test_count': len(arrivals)}])
+            with closing(sqlite3.connect(history.store)) as db, db:
+                key = 'A\nINC1'
+                record = history.records[key]
+                db.execute('UPDATE history SET value = ? WHERE key = ?', (json.dumps({**record, 'read': True}), key))
+            before = history.store.read_bytes()
+            reopened = History(path)
+            self.assertEqual(reopened.records, history.records)
+            self.assertEqual(reopened.membership, history.membership)
+            self.assertEqual(reopened.pending_alerts(), history.pending_alerts())
+            self.assertEqual(history.store.read_bytes(), before)
 
     def test_stop_detected_inside_transaction_rolls_back_everything(self):
         from neto_incident_monitor.pagination import Cancelled

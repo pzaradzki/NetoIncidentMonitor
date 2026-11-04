@@ -1,11 +1,30 @@
 """Explicit tenant policy shared by filters, record links and notifications."""
 import re
-from urllib.parse import parse_qs, urlencode, urlparse, unquote
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlparse, unquote, quote
 
 # This deployment monitors one tenant. Do not infer trust from a pasted URL.
 TENANT_HOST = 'adeo.service-now.com'
 RECORD_TABLES = {'INC': 'incident', 'SCTASK': 'sc_task', 'REQ': 'sc_request', 'RITM': 'sc_req_item'}
 LIST_PATHS = tuple('/' + table + '_list.do' for table in RECORD_TABLES.values())
+
+
+class InvalidListURL(ValueError):
+    def __init__(self, reason, message):
+        self.reason = reason
+        super().__init__(message)
+
+
+def _list_parameters(query):
+    pairs = parse_qsl(query, keep_blank_values=True)
+    seen = {}
+    for key, value in pairs:
+        if any(ord(c) < 32 or ord(c) == 127 or c == '\\' for c in key + value):
+            raise InvalidListURL('unsafe', 'Adres zawiera niedozwolone znaki.')
+        if key.startswith('sysparm_') and key in seen and seen[key] != value:
+            raise InvalidListURL('conflicting_parameters',
+                                 'Adres zawiera sprzeczne wartości tego samego parametru listy.')
+        seen[key] = value
+    return pairs
 
 
 def trusted_url(value):
@@ -32,7 +51,7 @@ def is_short_url(value):
 def normalize_list_url(value, allow_short=True):
     message = 'Podaj adres listy INC, SCTASK, REQ lub RITM w https://adeo.service-now.com, bez danych logowania i fragmentu.'
     if not trusted_url(value):
-        raise ValueError(message)
+        raise InvalidListURL('unsafe', message)
     parsed = urlparse(value)
     if allow_short and is_short_url(value):
         return parsed._replace(netloc=TENANT_HOST).geturl()
@@ -41,10 +60,17 @@ def normalize_list_url(value, allow_short=True):
         target = urlparse(unquote(parsed.path[len(prefix):]))
         if (target.scheme or target.netloc or target.params or target.fragment
                 or '/' + target.path.lstrip('/') not in LIST_PATHS):
-            raise ValueError(message)
-        parsed = parsed._replace(path='/' + target.path.lstrip('/'), query=target.query)
+            raise InvalidListURL('unsupported_target', message)
+        # Decode the wrapper once, then parse and encode the inner query once.
+        # Do not leave decoded spaces in the resulting URL or lose outer params.
+        pairs = _list_parameters(target.query + ('&' + parsed.query if parsed.query else ''))
+        pairs = list(dict.fromkeys(pairs))
+        parsed = parsed._replace(path='/' + target.path.lstrip('/'), query=urlencode(pairs, safe='!', quote_via=quote))
+    else:
+        # Keep existing direct URLs byte-for-byte: they identify stored history.
+        _list_parameters(parsed.query)
     if parsed.path not in LIST_PATHS or not trusted_url(parsed.geturl()):
-        raise ValueError(message)
+        raise InvalidListURL('unsupported_target', message)
     return parsed._replace(netloc=TENANT_HOST).geturl()
 
 

@@ -7,9 +7,8 @@ import tkinter as tk
 import webbrowser
 from urllib.parse import urlencode
 from tkinter import ttk
-from time import monotonic
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED
-from neto_incident_monitor.widgets import IncidentMenu, StatusPill, PriorityDots, RoundedButton
+from neto_incident_monitor.widgets import IncidentMenu, StatusPill, PriorityDots, RoundedButton, AnimatedMetricTile
 from neto_incident_monitor.service_now_urls import safe_record_url
 
 CATEGORIES = (
@@ -38,86 +37,18 @@ TILE_URLS['Podjęcie'] = 'https://adeo.service-now.com/task_sla_list.do?' + urle
     + '^task.ref_incident.parent_incidentISEMPTY'})
 
 
-class RiskTile(tk.Frame):
+class RiskTile(AnimatedMetricTile):
     def __init__(self, parent, title, description, accent):
-        super().__init__(parent, bg=SURFACE, highlightthickness=1, highlightbackground='#3c424d', cursor='hand2')
-        self.accent = accent
         self.url = TILE_URLS[title]
-        self.hovered = self.pressed = False
-        self.timer = None
-        self.current_color = SURFACE
-        self.color_from = SURFACE
-        self.color_to = SURFACE
-        self.labels = []
+        super().__init__(parent, accent, command=lambda: webbrowser.open(self.url))
         heading = tk.Label(self, text=f'●  {title}', fg=accent, font=('Segoe UI', 12, 'bold'), anchor='w')
         heading.pack(fill='x', padx=20, pady=(18, 0))
         self.value_label = tk.Label(self, text='—', fg=TEXT, font=('Segoe UI', 34), anchor='w')
         self.value_label.pack(fill='x', padx=20, pady=(18, 10))
         self.description = tk.Label(self, text=description, fg=MUTED, font=('Segoe UI', 10), anchor='w', justify='left')
         self.description.pack(fill='x', padx=20, pady=(0, 18))
-        self.labels = [heading, self.value_label, self.description]
-        for widget in (self, *self.labels):
-            widget.configure(bg=SURFACE, cursor='hand2')
-            widget.bind('<Enter>', self.enter)
-            widget.bind('<Leave>', self.leave)
-            widget.bind('<ButtonPress-1>', self.press)
-            widget.bind('<ButtonRelease-1>', self.release)
-        self.configure(takefocus=True)
-        self.bind('<FocusIn>', self.enter)
-        self.bind('<FocusOut>', lambda event: self.set_state(False, False))
-        self.bind('<KeyPress-space>', self.press)
-        self.bind('<KeyRelease-space>', self.release)
-        self.bind('<KeyPress-Return>', self.press)
-        self.bind('<KeyRelease-Return>', self.release)
+        self.bind_content(heading, self.value_label, self.description)
         self.bind('<Configure>', lambda event: self.description.configure(wraplength=max(80, event.width - 40)))
-        self.bind('<Destroy>', self.close, add='+')
-
-    def enter(self, event=None):
-        self.set_state(True, self.pressed)
-
-    def leave(self, event):
-        # Moving from the tile to a child label is still inside the same tile.
-        if not (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
-                and self.winfo_rooty() <= event.y_root < self.winfo_rooty() + self.winfo_height()):
-            self.set_state(False, False)
-
-    def press(self, event=None):
-        self.focus_set()
-        self.set_state(True, True)
-
-    def release(self, event=None):
-        activate = self.pressed and self.hovered
-        self.set_state(self.hovered, False)
-        if activate:
-            webbrowser.open(self.url)
-
-    def set_state(self, hovered, pressed):
-        self.hovered, self.pressed = hovered, pressed
-        target = '#424b5b' if pressed else '#303947' if hovered else SURFACE
-        self.configure(highlightbackground=self.accent if hovered or pressed else '#3c424d')
-        self.color_from, self.color_to = self.current_color, target
-        self.started = monotonic()
-        if self.timer is not None:
-            self.after_cancel(self.timer)
-            self.timer = None
-        self.animate()
-
-    def animate(self):
-        self.timer = None
-        fraction = min(1, (monotonic() - self.started) / 0.14)
-        start = self.winfo_rgb(self.color_from)
-        end = self.winfo_rgb(self.color_to)
-        color = '#' + ''.join(f'{round((a + (b - a) * fraction) / 257):02x}' for a, b in zip(start, end))
-        self.current_color = color
-        for widget in (self, *self.labels):
-            widget.configure(bg=color)
-        if fraction < 1:
-            self.timer = self.after(16, self.animate)
-
-    def close(self, event):
-        if event.widget is self and self.timer is not None:
-            self.after_cancel(self.timer)
-            self.timer = None
 
 
 def remaining_seconds(value):

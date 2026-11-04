@@ -68,7 +68,8 @@ def build_settings(app, settings):
                   font=("Segoe UI", 10, "bold"), wraplength=440,
                   justify='left').grid(row=0, column=0, sticky="w")
         if description:
-            ttk.Label(container, text=description, style="WhiteMuted.TLabel",
+            label = {"textvariable": description} if isinstance(description, tk.StringVar) else {"text": description}
+            ttk.Label(container, **label, style="WhiteMuted.TLabel",
                       font=("Segoe UI", 9), wraplength=440, justify="left").grid(row=1, column=0, sticky="w", pady=(3, 0))
         controls = ttk.Frame(container, style="White.TFrame")
         controls.grid(row=0, column=1, rowspan=2 if description else 1, sticky="e", padx=(20, 0))
@@ -112,8 +113,11 @@ def build_settings(app, settings):
     Toggle(controls, app.notify_threatened).pack(side="right")
 
     startup = section("URUCHAMIANIE I OKNO APLIKACJI")
+    app.start_with_windows = tk.BooleanVar(value=app.windows_startup in ("current", "repaired"))
+    app.startup_status_text = tk.StringVar(value=app.windows_startup_description())
+    controls = row(startup, "Uruchom aplikację przy starcie systemu", app.startup_status_text)
+    Toggle(controls, app.start_with_windows).pack(side="right")
     for key, title, description in (
-        ("start_with_windows", "Uruchom aplikację przy starcie systemu", "Uruchamiaj aplikację po zalogowaniu do Windows."),
         ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Wymaga włączonego filtra; może wymagać zalogowania do ServiceNow."),
         ("start_minimized", "Uruchom aplikację zminimalizowaną", "Rozpoczynaj pracę ze zminimalizowanym oknem."),
     ):
@@ -140,7 +144,7 @@ def build_settings(app, settings):
     app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
     Toggle(controls, app.hide_browser).pack(side="right")
 
-    display = section("LISTA INCYDENTÓW")
-    controls = row(display, "Podświetlaj nieprzeczytane incydenty", "")
-    app.highlight_unread = tk.BooleanVar(value=settings.get("highlight_unread", False))
-    Toggle(controls, app.highlight_unread).pack(side="right")
+    data = section("DANE APLIKACJI")
+    controls = row(data, "Przywrócenie stanu początkowego",
+                   "Usuń lokalne dane monitora i zamknij aplikację.")
+    RoundedButton(controls, text="Usuń wszystkie dane aplikacji…", command=app.request_data_reset).pack(side="right")

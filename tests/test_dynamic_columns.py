@@ -63,7 +63,7 @@ class ProfileTests(unittest.TestCase):
     def test_changed_set_resets_but_source_reordering_preserves_preferences(self):
         profile = update_profile(None, SCHEMA)
         self.assertEqual(profile['visible'], ['number', 'sn:u_custom', 'state'])
-        self.assertEqual(profile['order'][-3:], LOCAL_KEYS)
+        self.assertEqual(profile['order'][-len(LOCAL_KEYS):], LOCAL_KEYS)
         profile['visible'] = ['state', 'time']
         profile['order'].reverse()
         profile['widths'] = {'state': 211}
@@ -73,7 +73,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(reordered['widths'], profile['widths'])
         changed = update_profile(profile, SCHEMA[:2])
         self.assertEqual(changed['visible'], ['number', 'sn:u_custom'])
-        self.assertEqual(changed['order'][-3:], LOCAL_KEYS)
+        self.assertEqual(changed['order'][-len(LOCAL_KEYS):], LOCAL_KEYS)
         self.assertEqual(changed['widths'], {})
         added = update_profile(profile, SCHEMA + [{'key': 'sn:added', 'label': 'Nowa'}])
         self.assertEqual(added['visible'], [c['key'] for c in added['schema']])

@@ -1,5 +1,6 @@
 """Small keyboard-accessible controls matching the application palette."""
 import tkinter as tk
+from time import monotonic
 from PIL import Image, ImageDraw, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
@@ -125,7 +126,7 @@ class PriorityDots:
                     self.dots.append(dot)
                 dot = self.dots[used]
                 tags = table.item(item, "tags")
-                background = "#382c33" if "unread" in tags else "#2b2f37" if "alternate" in tags else SURFACE
+                background = "#2b2f37" if "alternate" in tags else SURFACE
                 if item in selected:
                     from tkinter import ttk
                     background = ttk.Style(table).lookup("Treeview", "background", ("selected",)) or background
@@ -347,12 +348,8 @@ class RoundedButton(tk.Canvas):
         elif self.icon == "refresh":
             draw.arc(box(2, 2, 14, 14), start=35, end=320, fill=color, width=6)
             line([(10, 1), (14, 3), (13, 7)])
-        elif self.icon in ("check", "checks"):
-            if self.icon == "checks":
-                line([(0, 8), (3, 11), (8, 5)])
-                line([(8, 8), (11, 11), (16, 5)])
-            else:
-                line([(2, 8), (6, 12), (13, 4)])
+        elif self.icon == "check":
+            line([(2, 8), (6, 12), (13, 4)])
         elif self.icon == "trash":
             line([(2, 4), (14, 4)])
             line([(6, 4), (6, 2), (10, 2), (10, 4)])
@@ -454,12 +451,110 @@ class ThreatenedIncidentsButton(RoundedButton):
         self.tag_lower(background, label)
 
 
+class AnimatedMetricTile(tk.Frame):
+    """Shared mouse, keyboard and color transitions for metric cards."""
+
+    def __init__(self, parent, accent, command=None, **options):
+        super().__init__(parent, bg=SURFACE, highlightthickness=1,
+                         highlightbackground='#3c424d', **options)
+        self.accent, self.command = accent, command
+        self.hovered = self.pressed = False
+        self.timer = None
+        self.current_color = self.color_from = self.color_to = SURFACE
+        self.labels = []
+
+    def bind_content(self, *widgets):
+        self.labels = widgets
+        for widget in (self, *widgets):
+            widget.configure(bg=self.current_color)
+            widget.bind('<Enter>', self.enter)
+            widget.bind('<Leave>', self.leave)
+            widget.bind('<ButtonPress-1>', self.press)
+            widget.bind('<ButtonRelease-1>', self.release)
+        self.bind('<FocusIn>', self.enter)
+        self.bind('<FocusOut>', lambda event: self.set_state(False, False) if self.command else None)
+        self.bind('<KeyPress-space>', self.press)
+        self.bind('<KeyRelease-space>', self.release)
+        self.bind('<KeyPress-Return>', self.press)
+        self.bind('<KeyRelease-Return>', self.release)
+        self.bind('<Destroy>', self.close, add='+')
+
+        self.set_command(self.command)
+
+    def set_command(self, command):
+        self.command = command
+        self.configure(takefocus=bool(command))
+        for widget in (self, *self.labels):
+            widget.configure(cursor='hand2' if command else '')
+        if command is None and (self.hovered or self.pressed):
+            self.set_state(False, False)
+
+    def enter(self, event=None):
+        if self.command is None:
+            return
+        self.set_state(True, self.pressed)
+
+    def leave(self, event):
+        # Moving from the tile to a child label is still inside the same tile.
+        if self.command and not (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
+                and self.winfo_rooty() <= event.y_root < self.winfo_rooty() + self.winfo_height()):
+            self.set_state(False, False)
+
+    def press(self, event=None):
+        if self.command is None:
+            return
+        self.focus_set()
+        self.set_state(True, True)
+
+    def release(self, event=None):
+        if self.command is None:
+            return
+        inside = (event is None or event.num != 1 or
+                  (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
+                   and self.winfo_rooty() <= event.y_root < self.winfo_rooty() + self.winfo_height()))
+        activate = self.pressed and self.hovered and inside
+        self.set_state(self.hovered, False)
+        if activate:
+            self.command()
+
+    def set_state(self, hovered, pressed):
+        self.hovered, self.pressed = hovered, pressed
+        target = '#424b5b' if pressed else '#303947' if hovered else SURFACE
+        self.configure(highlightbackground=self.accent if hovered or pressed else '#3c424d')
+        self.color_from, self.color_to = self.current_color, target
+        self.started = monotonic()
+        if self.timer is not None:
+            self.after_cancel(self.timer)
+            self.timer = None
+        self.animate()
+
+    def animate(self):
+        self.timer = None
+        fraction = min(1, (monotonic() - self.started) / 0.14)
+        start = self.winfo_rgb(self.color_from)
+        end = self.winfo_rgb(self.color_to)
+        color = '#' + ''.join(f'{round((a + (b - a) * fraction) / 257):02x}' for a, b in zip(start, end))
+        self.current_color = color
+        for widget in (self, *self.labels):
+            widget.configure(bg=color)
+        if fraction < 1:
+            self.timer = self.after(16, self.animate)
+
+    def close(self, event):
+        if event.widget is self and self.timer is not None:
+            self.after_cancel(self.timer)
+            self.timer = None
+
+
 class DashboardButton(RoundedButton):
     """Sidebar dashboard navigation with a monitoring-style activity badge."""
     def __init__(self, parent):
         self.updating = False
         self.selected = False
         super().__init__(parent, text="DASHBOARD", command=lambda: None)
+        from tkinter.font import Font
+        self.label_font = Font(self, font=("Segoe UI", 10, "bold"))
+        self.label_width = self.label_font.measure(self.text)
         self.button_height = 60
         self.configure(height=self.button_height)
 
@@ -469,30 +564,33 @@ class DashboardButton(RoundedButton):
         picture = Image.new("RGB", (width * 4, height * 4), self.cget("background"))
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=32,
-                               fill=("#58303a" if self.hover else "#402c35") if self.selected else
-                                    ("#3d353e" if self.hover else "#302c34"),
-                               outline=ACCENT if self.selected else
-                                       ("#606875" if str(self.tk.call('focus')) == str(self) else "#48424d"), width=4)
-        draw.rounded_rectangle((12 * 4, 14 * 4, 44 * 4, 46 * 4), radius=28, fill="#513039")
+                               fill=("#34485F" if self.hover else "#2D3948") if self.selected else
+                                    ("#333C48" if self.hover else "#292E36"),
+                               outline="#8DB7E8" if self.selected else
+                                       ("#606875" if str(self.tk.call('focus')) == str(self) else "#414B58"), width=4)
+        draw.rounded_rectangle((12 * 4, 14 * 4, 44 * 4, 46 * 4), radius=28, fill="#2D3D50")
         for left, top, right, bottom in ((21, 23, 27, 29), (30, 23, 36, 26),
                                          (21, 32, 27, 37), (30, 29, 36, 37)):
             draw.rounded_rectangle((left * 4, top * 4, right * 4, bottom * 4),
-                                   radius=3, outline="#ff6b7d", width=5)
+                                   radius=3, outline="#8DB7E8", width=5)
         draw.line(((width - 20) * 4, 26 * 4, (width - 16) * 4, 30 * 4,
-                   (width - 20) * 4, 34 * 4), fill="#d6a6ae", width=6, joint="curve")
-        compact_badge = self.updating and width < 260
+                   (width - 20) * 4, 34 * 4), fill="#A9BDDA", width=6, joint="curve")
+        label_x = width / 2
+        badge_y = height / 2
         if self.updating:
-            badge_left = 56 if compact_badge else width - 111
-            badge_y = 42 if compact_badge else height / 2
+            badge_width, gap = 77, 8
+            group_width = self.label_width + gap + badge_width
+            left = max(48, (width - group_width) / 2)
+            label_x = left + self.label_width / 2
+            badge_left = left + self.label_width + gap
             draw.rounded_rectangle((badge_left * 4, (badge_y - 11) * 4,
-                                    (badge_left + 77) * 4, (badge_y + 11) * 4),
+                                    (badge_left + badge_width) * 4, (badge_y + 11) * 4),
                                    radius=44, fill="#244b37")
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         self.create_image(0, 0, image=self.picture, anchor="nw")
-        self.create_text(56, 19 if compact_badge else height / 2, text=self.text, anchor="w", fill=TEXT,
-                         font=("Segoe UI", 10, "bold"))
+        self.create_text(label_x, badge_y, text=self.text, fill=TEXT, font=self.label_font)
         if self.updating:
-            self.create_text(badge_left + 38, badge_y, text="Aktualizuje",
+            self.create_text(badge_left + badge_width / 2, badge_y, text="Aktualizuje",
                              fill="#8ee2ac", font=("Segoe UI", 8))
 
 
@@ -672,10 +770,9 @@ class FilterList(tk.Canvas):
         self.pictures.clear()
 
 
-def confirm_dialog(parent, title, message):
+def confirm_dialog(parent, title, message, *, confirm_text="Tak, wyczyść", cancel_text="Anuluj"):
     """Application-styled modal confirmation, with cancellation as the default."""
-    from tkinter import ttk
-    from neto_incident_monitor.theme import BG, MUTED
+    from neto_incident_monitor.theme import BG, MUTED, TEXT
     dialog = tk.Toplevel(parent)
     dialog.title(title)
     from neto_incident_monitor.window_style import apply_window_style
@@ -683,11 +780,12 @@ def confirm_dialog(parent, title, message):
     dialog.configure(background=BG)
     dialog.transient(parent)
     dialog.resizable(False, False)
-    content = ttk.Frame(dialog, padding=24)
+    content = tk.Frame(dialog, background=BG, padx=24, pady=24)
     content.pack(fill="both", expand=True)
-    ttk.Label(content, text=title, font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 14))
-    ttk.Label(content, text=message, wraplength=430, justify="left", foreground=MUTED).pack(anchor="w")
-    actions = ttk.Frame(content)
+    tk.Label(content, text=title, background=BG, foreground=TEXT, font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 14))
+    tk.Label(content, text=message, background=BG, foreground=MUTED,
+             font=("Segoe UI", 10), wraplength=430, justify="left").pack(anchor="w")
+    actions = tk.Frame(content, background=BG)
     actions.pack(fill="x", pady=(22, 0))
     result = False
 
@@ -696,15 +794,19 @@ def confirm_dialog(parent, title, message):
         result = value
         dialog.destroy()
 
-    RoundedButton(actions, text="Tak, wyczyść", command=lambda: finish(True),
+    RoundedButton(actions, text=confirm_text, command=lambda: finish(True),
                   primary=True, background=BG).pack(side="right")
-    cancel = RoundedButton(actions, text="Anuluj", command=finish, background=BG)
+    cancel = RoundedButton(actions, text=cancel_text, command=finish, background=BG)
     cancel.pack(side="right", padx=(0, 8))
     dialog.protocol("WM_DELETE_WINDOW", finish)
     dialog.bind("<Escape>", lambda _: finish())
     dialog.update_idletasks()
-    x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_reqwidth()) // 2
-    y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_reqheight()) // 2
+    if parent.winfo_viewable():
+        x = parent.winfo_rootx() + (parent.winfo_width() - dialog.winfo_reqwidth()) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - dialog.winfo_reqheight()) // 2
+    else:
+        x = (dialog.winfo_screenwidth() - dialog.winfo_reqwidth()) // 2
+        y = (dialog.winfo_screenheight() - dialog.winfo_reqheight()) // 2
     dialog.geometry(f"+{max(0, x)}+{max(0, y)}")
     dialog.grab_set()
     cancel.focus_set()

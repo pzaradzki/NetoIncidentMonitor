@@ -8,6 +8,7 @@ from neto_incident_monitor.browser_actions import ACTION_TICK,ready_control
 from neto_incident_monitor.dashboard import DASHBOARD_URL
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics
 from neto_incident_monitor.pagination import Cancelled
+from playwright._impl._errors import TargetClosedError
 
 @unittest.skipUnless(sys.platform=='win32','Windows integration')
 class NativeHiddenRuntimeTests(unittest.TestCase):
@@ -47,7 +48,9 @@ class NativeHiddenRuntimeTests(unittest.TestCase):
       finally:ACTION_TICK.reset(token)
     self.assertIsNone(runtime.rendering.client)
    finally:
-    runtime.close();context.close()
+    runtime.close()
+    try:context.close()
+    except TargetClosedError:pass  # Closing the last persistent page can close its context.
 
  def test_closing_real_page_detaches_active_rendering(self):
   with tempfile.TemporaryDirectory(prefix='neto-runtime-fixture-') as profile,sync_playwright() as p:
@@ -65,4 +68,6 @@ class NativeHiddenRuntimeTests(unittest.TestCase):
      self.assertIsNone(runtime.rendering.client)
     self.assertIsNone(runtime.rendering.client)
    finally:
-    runtime.close();context.close()
+    runtime.close()
+    try:context.close()
+    except TargetClosedError:pass  # The test deliberately closed the last page above.

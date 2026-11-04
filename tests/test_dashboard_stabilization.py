@@ -35,7 +35,7 @@ class StabilizationTests(unittest.TestCase):
         sla = read_dashboard(self.page, 2026, 9, self.stop)
         self.assertEqual(sla, dict(zip(TITLES, range(11))))
         self.assertEqual(read_held_dashboard(self.page, self.stop), dict(zip(HELD_TITLES, range(2))))
-        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(4))))
+        self.assertEqual(read_requests_dashboard(self.page, self.stop), dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
         self.assertEqual(read_threatened_dashboard(self.page, self.stop), dict(zip(KEYS, range(6))))
 
     def test_wrong_tab_period_and_pending_filter_are_rejected(self):

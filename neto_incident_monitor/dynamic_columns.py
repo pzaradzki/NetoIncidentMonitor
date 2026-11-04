@@ -23,7 +23,7 @@ def normalize_schema(schema):
             continue
         key = item.get('key')
         if (not isinstance(key, str) or not key or len(key) > 512 or key in seen
-                or key in LOCAL_KEYS or key.startswith('#') or any(ord(c) < 32 for c in key)):
+                or key == "read" or key in LOCAL_KEYS or key.startswith('#') or any(ord(c) < 32 for c in key)):
             continue
         seen.add(key)
         result.append({'key': key, 'label': ' '.join(str(item.get('label') or key).split())[:160]})
@@ -99,7 +99,7 @@ class DynamicColumns:
         self.columns_button.configure(state='normal' if profile else 'disabled')
         schema = profile['schema'] if profile else []
         for table in (self.current_table, self.table):
-            base = [('read', 'Przeczytane', 145)] + [c for c in FIELDS if c[0] not in ('read', 'time')]
+            base = [c for c in FIELDS if c[0] != 'time']
             if table.history_view:
                 base.insert(0, ('time', 'Wykryto (historia)', 150))
             keys = [c[0] for c in base]
@@ -125,14 +125,13 @@ class DynamicColumns:
                 table.column(key, width=max(70, int(widths.get(key, width))), minwidth=70, stretch=False)
             table.definition_signature = signature
 
-    def table_values(self, table, incident, read_label, detected=''):
+    def table_values(self, table, incident, detected=''):
         values = dict(incident)
         values.update(incident.get('_values', {}))
         values['number'] = incident['number']
         priority = str(values.get('priority') or '').strip()
         if priority[:1] in PriorityDots.COLORS:
             values['priority'] = '\u2003\u2002' + priority
-        values['read'] = read_label
         values['time'] = detected
         values['age_minutes'] = age_minutes(incident.get('created'), incident['number'])
         return [values.get(key) or '—' for key in table['columns']]
@@ -148,8 +147,6 @@ class DynamicColumns:
     def applicable_columns(self):
         profile = self.column_profile()
         keys = [c['key'] for c in profile['schema']] if profile else []
-        if self.unread_highlighting_enabled():
-            keys.append('read')
         if effective_list_url(self.selected_filter_url(), self.filters).split('?', 1)[0].endswith('/incident_list.do'):
             keys.append('age_minutes')
         return keys + ['time']

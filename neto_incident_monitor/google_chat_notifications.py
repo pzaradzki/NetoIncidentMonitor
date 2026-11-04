@@ -83,9 +83,20 @@ class Sender:
         self.events = events
         self.jobs = queue.Queue(maxsize=20)
         self.next_send = 0
-        threading.Thread(target=self.run, daemon=True).start()
+        self.closed = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.closed.set()
+        try:
+            self.jobs.put_nowait(None)
+        except queue.Full:
+            pass
 
     def submit(self, webhook, title, message, test=False, links=None, allow_send=None):
+        if self.closed.is_set():
+            return False
         try:
             self.jobs.put_nowait((webhook, title, message, test, links, allow_send))
             return True
@@ -119,5 +130,7 @@ class Sender:
         self.events.put(('google_chat_result', result))
 
     def run(self):
-        while True:
-            self.deliver(self.jobs.get())
+        while not self.closed.is_set():
+            job = self.jobs.get()
+            if job is not None and not self.closed.is_set():
+                self.deliver(job)

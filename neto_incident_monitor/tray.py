@@ -3,36 +3,27 @@ import logging
 
 
 class Tray:
-    def __init__(self, events, unread_enabled=True, browser_visible=None):
+    def __init__(self, events, browser_visible=None):
         import pystray
         self.events = events
-        self.count = 0
         self.phase = "Gotowy"
-        self.unread_enabled = unread_enabled
         browser_visible = browser_visible or (lambda: False)
         menu = pystray.Menu(
             pystray.MenuItem("Pokaż aplikację", lambda icon, item: events.put(("show", None)), default=True),
             pystray.MenuItem(lambda item: "Ukryj przeglądarkę" if browser_visible() else "Pokaż przeglądarkę",
                              lambda icon, item: events.put(("hide_browser" if browser_visible() else "show_browser", None))),
-            pystray.MenuItem("Oznacz wszystkie jako przeczytane", lambda icon, item: events.put(("mark_all", None)),
-                             visible=lambda item: self.unread_enabled),
             pystray.MenuItem("Zatrzymaj monitoring", lambda icon, item: events.put(("stop_monitor", None))),
             pystray.MenuItem("Zakończ aplikację", lambda icon, item: events.put(("quit", None))),
             pystray.MenuItem("Sprawdź teraz", lambda icon, item: events.put(("check_now", None))),
         )
-        self.icon = pystray.Icon("servicenow_monitor", self.image(0), "Neto Incident Monitor", menu)
+        self.icon = pystray.Icon("servicenow_monitor", self.image(), "Neto Incident Monitor", menu)
 
     @staticmethod
-    def image(count):
-        from PIL import Image, ImageDraw
+    def image():
+        from PIL import Image
         from neto_incident_monitor.runtime_paths import ROOT
         with Image.open(ROOT / "assets" / "netology-icon.png") as source:
             image = source.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
-        draw = ImageDraw.Draw(image)
-        if count:
-            draw.ellipse((30, 0, 63, 33), fill="#b42318")
-            label = str(count) if count < 100 else "99+"
-            draw.text((47, 16), label, fill="white", anchor="mm", font_size=15)
         return image
 
     def start(self):
@@ -45,14 +36,9 @@ class Tray:
                 self.events.put(("tray_failed", None))
         self.icon.run_detached(setup)
 
-    def update(self, count, phase, unread_enabled=True):
-        if self.unread_enabled != unread_enabled:
-            self.unread_enabled = unread_enabled
-            self.icon.update_menu()
-        if count != self.count:
-            self.icon.icon = self.image(count)
-        self.count, self.phase = count, phase
-        self.icon.title = f"ServiceNow — nieprzeczytane: {count} — {phase}"[:127]
+    def update(self, phase):
+        self.phase = phase
+        self.icon.title = f"ServiceNow — {phase}"[:127]
 
     def stop(self):
         self.icon.visible = False

@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED
-from neto_incident_monitor.widgets import RoundedButton, PriorityDots, StatusPill
+from neto_incident_monitor.widgets import RoundedButton, PriorityDots, StatusPill, AnimatedMetricTile
 
 
 def bind_dashboard_wheel(widget, callback):
@@ -51,6 +51,8 @@ def build_dashboard(parent, app, cache_path=None):
     panel.data_period = None
     panel.snapshot_values = {}
     panel.section_snapshots = {}
+    cards = {}
+    title_labels = {}
     panel.cache_error = False
     panel.restored_snapshot = False
     panel.request_id = 0
@@ -104,7 +106,11 @@ def build_dashboard(parent, app, cache_path=None):
               "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień")
     panel.month.set(months[date.today().month - 1])
     panel.last_read_text = '—'
+    pending_drilldown = None
+
     def set_message(description):
+        if pending_drilldown is not None:
+            description = 'Otwieranie listy…'
         year, month = panel.data_period or (int(panel.year.get()), months.index(panel.month.get()) + 1)
         panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year}. • '
                           f'Ostatnio odczytano: {panel.last_read_text} • {description}')
@@ -237,9 +243,19 @@ def build_dashboard(parent, app, cache_path=None):
         metrics.columnconfigure(column, weight=4, uniform="metrics")
 
     def tile(title, column, row, rowspan=1, total=False, dot=None, title_wrap=0, columns=6):
-        color = "#30272f" if total else SURFACE
-        card = tk.Frame(metrics, bg=color, highlightthickness=1,
-                        highlightbackground="#73414c" if total else "#3c424c", padx=12, pady=16)
+        color = SURFACE
+        accent = '#8db7e8'
+        if title == 'WJRUW':
+            accent = MUTED
+        elif dot:
+            accent = dot
+        elif title.startswith('Przekroczone'):
+            accent = '#e2b669'
+        elif title.startswith('Wstrzymane'):
+            accent = '#c8a7ec'
+        elif title.startswith(('Wnioski', 'Otwarte wnioski', 'Nieprzypisane')):
+            accent = '#83c9b9'
+        card = cards[title] = AnimatedMetricTile(metrics, accent, padx=12, pady=16)
         card.grid(row=row, column=column, rowspan=rowspan, sticky="nsew",
                   padx=(0 if column == 0 else 6, 0 if column == columns - 1 else 6),
                   pady=(0 if row == 0 else 6, 0 if row == 1 else 6))
@@ -247,13 +263,15 @@ def build_dashboard(parent, app, cache_path=None):
         label.pack(anchor="w")
         if dot:
             tk.Label(label, text="●", fg=dot, bg=color, font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
-        tk.Label(label, text=title, bg=color, fg=MUTED, font=("Segoe UI", 9),
-                 wraplength=title_wrap, justify='left').pack(side="left")
+        title_labels[title] = tk.Label(label, text=title, bg=color, fg=accent, font=("Segoe UI", 9),
+                                     wraplength=title_wrap, justify='left')
+        title_labels[title].pack(side="left")
         variable = panel.values[title] = tk.StringVar(panel, value="—")
         value_label = panel.value_labels[title] = tk.Label(
             card, textvariable=variable, bg=color, fg=TEXT if row == 0 or total else MUTED,
             font=("Segoe UI", 28))
         value_label.pack(anchor="w", expand=True, pady=(18, 0))
+        card.bind_content(label, *label.winfo_children(), value_label)
     tile("Liczba zgłoszeń", 0, 0, total=True)
     tile("WJRUW", 0, 1, total=True)
     for priority in range(1, 6):
@@ -269,16 +287,71 @@ def build_dashboard(parent, app, cache_path=None):
     section_header(content, 'Wnioski L1').grid(row=4, column=0, sticky='w', pady=(24, 14))
     metrics = tk.Frame(content, bg=BG)
     metrics.grid(row=5, column=0, sticky='ew')
-    for column in range(4):
-        metrics.columnconfigure(column, weight=1, uniform='requests')
     from neto_incident_monitor.dashboard import REQUEST_TITLES
+    columns = len(REQUEST_TITLES)
     for column, title in enumerate(REQUEST_TITLES):
-        tile(title, column, 0, title_wrap=140, columns=4)
+        metrics.columnconfigure(column, weight=1, uniform='requests')
+        tile(title, column, 0, title_wrap=112, columns=columns)
+    def request_drilldown(alias, index, title):
+        nonlocal pending_drilldown
+        if pending_drilldown is not None:
+            return
+        snapshot = panel.section_snapshots[alias]
+        period = (snapshot['year'], snapshot['month']) if alias == 'sla' else None
+        token = object()
+        enqueue = getattr(app, 'request_dashboard_drilldown', None)
+        if enqueue is None or not enqueue((token, alias, title, period)):
+            set_message('Aby otworzyć listę, uruchom monitoring i zaloguj się w ServiceNow.')
+            return
+        pending_drilldown = (token, alias, index, period)
+        title_labels[title].configure(text='Otwieranie listy…')
+        set_message('Otwieranie listy…')
+
+    def apply_drilldown(result):
+        from neto_incident_monitor.dashboard_drilldown import valid_drilldown
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+
+        nonlocal pending_drilldown
+        token, url = result
+        if pending_drilldown is None or token is not pending_drilldown[0]:
+            return
+        _, alias, index, period = pending_drilldown
+        cancel_drilldown()
+        if not valid_drilldown(url, alias, period):
+            set_message('Nie udało się potwierdzić listy ServiceNow. Kliknij kafelek ponownie.')
+            return
+        diagnostics = LoginDiagnostics(source='dashboard', section=alias)
+        try:
+            opened = webbrowser.open(url)
+        except Exception:
+            opened = False
+        diagnostics.record('dashboard_drilldown_open', tile_index=index,
+                           outcome='returned' if opened else 'error')
+        set_message('Otwarto listę w przeglądarce.' if opened else
+                    'Nie udało się otworzyć listy w przeglądarce. Kliknij kafelek ponownie.')
+
+    def cancel_drilldown():
+        nonlocal pending_drilldown
+        if pending_drilldown is not None:
+            from neto_incident_monitor.dashboard_cache import SECTIONS
+            _, alias, index, _ = pending_drilldown
+            title = SECTIONS[alias][index]
+            title_labels[title].configure(text=title)
+        pending_drilldown = None
+
+    panel.apply_drilldown = apply_drilldown
+    panel.cancel_drilldown = cancel_drilldown
+
     def render_snapshots():
         from datetime import datetime
         panel.snapshot_values = {}
+        from neto_incident_monitor.dashboard_cache import SECTIONS
         for alias, snapshot in panel.section_snapshots.items():
             panel.snapshot_values.update(snapshot['values'])
+            for index, title in enumerate(SECTIONS[alias]):
+                if title in snapshot['values']:
+                    cards[title].set_command(
+                        lambda alias=alias, index=index, title=title: request_drilldown(alias, index, title))
             if alias == 'sla':
                 panel.data_period = (snapshot['year'], snapshot['month'])
         panel.last_read_text = (datetime.fromisoformat(panel.last_complete_read_at).strftime('%d.%m.%Y %H:%M:%S')

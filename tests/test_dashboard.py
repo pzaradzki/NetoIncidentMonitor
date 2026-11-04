@@ -20,7 +20,7 @@ class DashboardTests(unittest.TestCase):
             try:
                 page = browser.new_page()
                 page.route('**/*', lambda r: r.fulfill(body=workspace(delay=1200), content_type='text/html; charset=utf-8'))
-                self.assertEqual(read_requests_dashboard(page, threading.Event()), dict(zip(REQUEST_TITLES, range(4))))
+                self.assertEqual(read_requests_dashboard(page, threading.Event()), dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
             finally:
                 browser.close()
 

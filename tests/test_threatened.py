@@ -111,6 +111,25 @@ class ThreatenedReaderTests(unittest.TestCase):
 
 
 class ThreatenedPresentationTests(unittest.TestCase):
+    def test_tiles_have_dark_content_before_first_hover_and_after_remapping(self):
+        from neto_incident_monitor.threatened_ui import RiskTile, CATEGORIES
+        from neto_incident_monitor.theme import SURFACE
+        root = tk.Tk()
+        self.addCleanup(root.destroy)
+        # A light Tk default must never leak through a newly constructed card.
+        root.option_add('*Label.background', '#f0f0f0')
+        for title, description, accent in CATEGORIES:
+            tile = RiskTile(root, title, description, accent)
+            tile.pack()
+            tile.value_label.configure(text='0')
+            root.update_idletasks()
+            tile.pack_forget()
+            tile.pack()
+            root.update_idletasks()
+            self.assertIsNone(tile.timer)
+            for child in (tile, *tile.labels):
+                self.assertEqual(child.cget('background'), SURFACE)
+
     def test_simulated_incident_does_not_cancel_pending_read_and_real_result_replaces_it(self):
         root = tk.Tk()
         try:
