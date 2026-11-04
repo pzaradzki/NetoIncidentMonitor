@@ -22,6 +22,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.9.0](zakonczone/wydanie-1.9.0.md) | 465 testów (463 zaliczone, 2 pominięte), kontrola ZIP i rozpakowanego EXE, publikacja i zgodność pobranej paczki. |
 | [Obsługa długich adresów list](zakonczone/obsluga-dlugich-adresow-list.md) | 66 testów, rzeczywiste dodanie filtra, zapis i odczyty po restarcie przebudowanego EXE na osobnych danych. |
 | [Naprawa filtra „Dyżur 1L”](zakonczone/naprawa-filtra-dyzur-1l.md) | Potwierdzony alias daty, 75 testów i rzeczywisty odbiór źródeł oraz przebudowanego EXE na osobnych danych. |
 | [Diagnostyka przed wydaniem 1.8.1](zakonczone/diagnostyka-przed-wydaniem-1.8.1.md) | Cztery poprawki testów, pełna regresja i publikacja ZIP-a |
