@@ -5,7 +5,7 @@ Bieżąca wersja to [1.9.1](../wersje/v1.9.1.md).
 ## Pozostałe tematy
 
 
-- [Etap napraw audytu](zakonczone/naprawy-audytu.md) zamknięto za zgodą użytkownika 4 listopada 2026 po testach automatycznych, offline i wstępnych testach użytkowych bez zgłoszonych problemów. Kolejne funkcjonalności można planować niezależnie. Pozostają decyzje o retencji outbox i lokalizacji logów źródłowych oraz pomiary opóźnień Tk. Nowych paczek audytowych nie opublikowano.
+- [Etap napraw audytu](zakonczone/naprawy-audytu.md) zamknięto za zgodą użytkownika 4 listopada 2026 po testach automatycznych, offline i wstępnych testach użytkowych bez zgłoszonych problemów. Kolejne funkcjonalności można planować niezależnie. Pozostają decyzje o retencji outbox i lokalizacji logów źródłowych oraz pomiary opóźnień Tk. Naprawy włączono następnie do [wydania 1.9.1](zakonczone/wydanie-1.9.1.md) na osobne zlecenie.
 
 
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu.
@@ -25,7 +25,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
-| [Wydanie 1.9.1](zakonczone/wydanie-1.9.1.md) | Przygotowanie publikacji: poprawki audytu, kolejność aktualizacji i ukryty autostart Windows. |
+| [Wydanie 1.9.1](zakonczone/wydanie-1.9.1.md) | Opublikowano: 495 testów (2 pominięcia), build i offline smoke, zgodność tagu oraz SHA-256 pobranego ZIP-a. |
 | [Ukrycie autostartu Windows](zakonczone/ukrycie-autostartu-windows.md) | Przełącznik ukryty; mechanizm zachowany, domyślnie wyłączony; lokalny build i smoke OK. |
 | [Kolejność aktualizacji](zakonczone/kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; 493 testy (2 pominięcia), lokalny build i offline smoke; główna paczka zaktualizowana, bez publikacji. |
 | [Naprawy audytu technicznego](zakonczone/naprawy-audytu.md) | A01–A06/A09 naprawione, A10 częściowo; końcowe 486 testów (2 pominięcia), pięć osobnych buildów i prób offline, bez publikacji. |

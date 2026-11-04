@@ -1,6 +1,6 @@
 # Wydanie 1.9.1
 
-Status: przygotowanie, 4 listopada 2026. Publikacja zatwierdzona przez użytkownika.
+Status: publikacja zakończona, 4 listopada 2026. Publikacja zatwierdzona przez użytkownika.
 
 - [x] Potwierdzić najnowsze wydanie 1.9.0 i brak tagu v1.9.1.
 - [x] Ustawić numer 1.9.1 i opisać zatwierdzone zmiany po 1.9.0 oraz ograniczenia.
@@ -8,8 +8,8 @@ Status: przygotowanie, 4 listopada 2026. Publikacja zatwierdzona przez użytkown
 - [x] Kontrola składni, pip check i diff: OK. Commit obejmuje kontrolowane pliki bez prywatnych notatek i danych.
 - [x] Build głównej paczki istniejącym PyInstallerem 6.22.3; zgodność 55 modułów, launchera i 4 zasobów ze źródłami przygotowanymi do commita.
 - [x] Nowy ZIP: 1441 plików, kontrola CRC i porównanie wszystkich plików po rozpakowaniu. Brak konfiguracji, historii, logów i profilu użytkownika. Offline smoke UI/Chromium i walidacji startu na osobnych danych: OK, wersja 1.9.1 (`build/release-1.9.1-smoke.json`).
-- [ ] Publikacja commita, tagu i wydania z ZIP-em na wzór 1.9.0.
-- [ ] Ponowne pobranie załącznika, zgodność SHA-256 i potwierdzenie latest.
+- [x] Opublikowano commit `27193f07077dc26085a7b7c64d2d40654eae3545`, tag `v1.9.1` i [wydanie](https://github.com/pzaradzki/NetoIncidentMonitor/releases/tag/v1.9.1) z załącznikiem `Neto.Incident.Monitor.zip`, na wzór 1.9.0. Kod EXE porównano również bezpośrednio ze źródłami tagu.
+- [x] Ponownie pobrano cały publiczny załącznik: 269206217 bajtów, SHA-256 zgodne z lokalną paczką i digest GitHub. API potwierdziło latest, docelowy commit oraz zgodność opisu UTF-8.
 
 Opis zmian: [1.9.1](../../wersje/v1.9.1.md). Bez zmian schematów i zależności. Bez nowego odbioru rzeczywistego ServiceNow/SSO. Retencja outbox i lokalizacja logów źródłowych wymagają osobnej decyzji; optymalizacje wydajności odłożono do pomiarów.
 
