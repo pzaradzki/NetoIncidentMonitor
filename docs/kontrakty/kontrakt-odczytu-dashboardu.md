@@ -13,7 +13,7 @@ Każdy zaakceptowany zestaw musi pochodzić z właściwego dashboardu i zakładk
 
 Wszystkie cztery sekcje używają `read_tile/read_scores`. Nie ma fallbacku do odczytu globalnego. Kategorie są osobno zatwierdzane; brak obserwowalnego potwierdzenia odświeżenia powoduje odtworzenie dokumentu i ustawień. Kontrolki i karty mogą powstać dopiero po przewinięciu. Odczyt nie wymaga zmiany samej liczby.
 
-Najwyżej dwie próby we wspólnym aktywnym budżecie 60 s; pierwsza do 39 s. Oczekiwanie na ręczne logowanie jest rozliczane osobno. Brak pewności po kliknięciu nie powoduje jego ponownego dostarczenia w tej samej próbie. Budżet jest kooperacyjny i nie stanowi gwarancji zakończenia zablokowanego procesu Chromium.
+Zgodnie z [decyzją 019](../decyzje/019-odzyskiwanie-sesji-sekcji.md): jedno ponowienie błędu odczytu i jedno niezależne odzyskanie logowania, najwyżej trzy odczyty we wspólnym aktywnym budżecie 60 s; pierwsza próba do 39 s. Oczekiwanie na ręczne logowanie jest rozliczane osobno. Brak pewności po kliknięciu nie powoduje jego ponownego dostarczenia w tej samej próbie. Budżet jest kooperacyjny i nie stanowi gwarancji zakończenia zablokowanego procesu Chromium.
 
 Cache schematu 2 przechowuje niezależne, kompletne zestawy trzech sekcji dashboardu. Każdy ma własny czas sukcesu, ostatnią próbę i kontekst. Migracja dawnego cache nie przypisuje sekcjom wymyślonych dat. Błąd nie odmładza wyniku ani nie wygasza alarmu zagrożeń. Szczegóły: [decyzja 006](../decyzje/006-odczyt-sekcji-dashboardu.md).
 

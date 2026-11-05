@@ -1,6 +1,6 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje wersja [1.9.1](wersje/v1.9.1.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.9.2](wersje/v1.9.2.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
 
 ## Przepływ i odpowiedzialności
 
@@ -37,7 +37,7 @@ Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wyd
 - Historia, stan obecności filtrów i cache dashboardu mają różne role. Nie zastępujemy jednego drugim ani nie dołączamy danych użytkownika do wydania.
 - Paginacja zwraca kompletny, zweryfikowany wynik albo błąd. Odbiór źródeł i wydania 1.9.0 opisuje kontrakt list. Paczki po audycie mają odbiór offline, bez ponownego odczytu rzeczywistego ServiceNow.
 - Dashboard i zagrożenia używają wspólnego `read_tile/read_scores`; liczy się lokalny stan konkretnego widżetu, nie ładowanie obcego wykresu. `dashboard_context.py` potwierdza dashboard, zakładkę i kontrolkę daty; kategorie są stosowane osobno.
-- `section_runner.py` jest jedynym właścicielem ponowień sekcji: aktywny budżet 60 s, najwyżej jedno odzyskanie, osobne oczekiwanie na logowanie. `read_budget.py` ogranicza podrzędne oczekiwania. Szczegóły i granice: [decyzja 006](decyzje/006-odczyt-sekcji-dashboardu.md).
+- `section_runner.py` jest jedynym właścicielem ponowień sekcji: aktywny budżet 60 s, najwyżej jedno ponowienie błędu odczytu oraz jedno niezależne odzyskanie logowania (łącznie najwyżej trzy odczyty); pierwsza próba najwyżej 39 s, czas logowania rozliczany osobno. Wznowienie zachowuje żądanie i blokady; wyczerpany budżet nie pozwala na kolejny odczyt. [Decyzja 019](decyzje/019-odzyskiwanie-sesji-sekcji.md) zastępuje dawny limit dwóch prób. `read_budget.py` ogranicza podrzędne oczekiwania. Szczegóły i granice: [decyzja 006](decyzje/006-odczyt-sekcji-dashboardu.md).
 - Cache schematu 2 przechowuje kompletne wyniki i czasy poszczególnych sekcji. Błąd nie zmienia daty sukcesu ani nie miesza kafelków z różnych prób; WJRUW używa jednego kompletu SLA. Migrowany stary cache ma niepotwierdzone czasy sekcji.
 - W wersji 1.8.1 aplikacja zamraża okres dashboardu od kolejkowania do końca żądania. Tk blokuje obie listy, a zdarzenia workera mają ID/okres; restart nie zwalnia blokady, stary koniec nie zamyka nowej transakcji. Wyniki sprawdzają również okres i zakończenie żądania. [010](decyzje/010-cykl-zycia-zadania-dashboardu.md).
 

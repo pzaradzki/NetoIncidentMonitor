@@ -66,7 +66,8 @@ TEXT_FIELDS = {
     'refresh_mode': {'observed','document_fallback'},
     'read_reason': {'rendering_unavailable', 'wrong_dashboard','wrong_tab','wrong_period','wrong_filter','ambiguous_period',
                     'ambiguous_widget','incomplete_widgets','definition_changed','timeout','document_changed',
-                    'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected'},
+                    'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected',
+                    'authentication_required'},
     'drilldown_result': {'ready', 'unavailable', 'not_ready', 'value_changed', 'button_unavailable',
                          'list_unconfirmed', 'authentication', 'authentication_retry'},
     'cache_result': {'saved','failed','restored','invalid','skipped'},
@@ -133,6 +134,7 @@ NUMERIC_FIELDS.update({
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 EVENTS.add('alert_delivery')
 EVENTS.add('startup_validation')
+EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}
 TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})
 NUMERIC_FIELDS.add('accepted_parts')

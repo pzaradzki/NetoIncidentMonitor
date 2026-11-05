@@ -23,6 +23,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [017](017-odpornosc-lokalnego-io.md) | Odporne logowanie, obserwowana kolejka alertów, kompletny podział wiadomości i walidacja przed startem. |
 | [018](018-kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; zachowany niezależny harmonogram zagrożeń. |
 
+| [019](019-odzyskiwanie-sesji-sekcji.md) | Niezależne ponowienie odczytu i odzyskanie logowania, wspólny budżet 60 s. |
+
 ## Format i utrzymanie
 
 Nowy plik: kolejny numer i krótka nazwa. Wystarczą: **data/status → decyzja → powód → realizacja i ograniczenia**. Kilkanaście wierszy zwykle wystarczy.

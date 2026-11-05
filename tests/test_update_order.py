@@ -42,6 +42,13 @@ class UpdateOrderTests(unittest.TestCase):
                 order.append('dashboard')
                 self.assertTrue(app.refresh_coordinator().busy)
                 clock[0] += 130
+                if mode == 'recovery':
+                    from playwright.sync_api import TimeoutError
+                    from neto_incident_monitor.pagination import AuthenticationRequired
+                    if order.count('dashboard') == 1:
+                        raise TimeoutError('Synthetic document timeout')
+                    if order.count('dashboard') == 2:
+                        raise AuthenticationRequired()
                 if mode == 'stop':
                     app.stop.set()
                 if mode == 'error':
@@ -85,6 +92,13 @@ class UpdateOrderTests(unittest.TestCase):
     def test_dashboard_section_error_does_not_block_other_work(self):
         order, _ = self.run_cycle(mode='error')
         self.assertEqual(order, ['dashboard', 'threatened', 'filter'])
+
+    def test_dashboard_login_recovery_finishes_before_threats_and_filters(self):
+        order, records = self.run_cycle(mode='recovery')
+        self.assertEqual(order, ['dashboard', 'dashboard', 'dashboard', 'threatened', 'filter'])
+        recovery = [r for r in records if r['event'] == 'section_login_recovery_end']
+        self.assertEqual(len(recovery), 1)
+        self.assertEqual(recovery[0]['outcome'], 'returned')
 
     def test_stop_in_dashboard_prevents_threats_and_filters(self):
         order, _ = self.run_cycle(mode='stop')
