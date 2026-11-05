@@ -95,7 +95,7 @@ TEXT_FIELDS = {
         'timeout', 'element_unavailable', 'network_connection'},
     'section': {'sla', 'held', 'requests', 'threatened'},
     'category': {'status', 'location', 'assigned', 'agent', 'other'},
-    'operation': {'document_ready', 'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'commit_period', 'refresh_cards', 'category_select', 'category_apply', 'prepare_widgets', 'read_scores'},
+    'operation': {'document_ready', 'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'period_ready', 'commit_period', 'period_confirm', 'refresh_cards', 'category_select', 'category_apply', 'category_confirm', 'prepare_widgets', 'read_scores'},
     'network_error': {'aborted', 'timeout', 'dns', 'connection', 'certificate', 'other'},
     'error_category': {'timeout', 'browser_closed', 'profile_locked', 'browser_missing',
         'access_denied', 'network_dns', 'network_connection', 'network_tls',

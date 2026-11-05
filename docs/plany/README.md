@@ -1,8 +1,9 @@
 # Plany i pozostałe prace
 
-Bieżąca wersja to [1.9.3](../wersje/v1.9.3.md).
+Bieżąca wersja to [1.9.4](../wersje/v1.9.4.md).
 
 ## Pozostałe tematy
+
 
 
 
@@ -26,6 +27,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Zatwierdzanie okresu i filtrów](zakonczone/zatwierdzanie-kontekstu-dashboardu.md) | Lokalne EXE 1.9.3: 523 testy, 2 pominięcia, build i oba smoke OK; poprzednia paczka zachowana, bez publikacji. |
 | [Wydanie 1.9.3](zakonczone/wydanie-1.9.3.md) | Opublikowano: 514 testów (2 pominięcia), build i offline smoke; zgodność tagu oraz SHA-256 pobranego ZIP-a. |
 | [Synchronizacja statusów](zakonczone/synchronizacja-statusow-dashboardu.md) | Lokalne EXE 1.9.2: 514 testów (2 pominięcia), build i oba smoke OK; bez publikacji. |
 | [Wydanie 1.9.2](zakonczone/wydanie-1.9.2.md) | Opublikowano: 505 testów (2 pominięcia), build i offline smoke, zgodność tagu oraz pobranego ZIP-a; bez odrzuconego eksperymentu. |
@@ -48,7 +50,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 | [Ukryty dashboard](zakonczone/odczyt-dashboardu-w-ukrytym-chromium.md) | Badania A–C i wdrożenie D1–D5; [raport](../weryfikacja/odbior-ukrytego-dashboardu.md) |
 | [Logowanie i ukryte SSO](zakonczone/stabilizacja-logowania.md) | A–F; [raport](../weryfikacja/odbior-stabilizacji-logowania.md), z jawnymi ograniczeniami realnego SSO |
 
-Bieżące zachowanie: [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). Wydanie: [1.9.3](../wersje/v1.9.3.md).
+Bieżące zachowanie: [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). Wydanie: [1.9.4](../wersje/v1.9.4.md).
 
 Zakończono zmianę otwierania list dashboardu: wartości odświeżają się bez pozyskiwania linków, a pojedynczy cel jest potwierdzany po kliknięciu. Kafelki z cache również mają akcję, SLA zachowuje okres wyświetlonej migawki, a błąd pozwala ponowić kliknięcie. [Decyzja i ograniczenia](../decyzje/014-linki-dashboardu-na-zadanie.md), [lokalne i rzeczywiste próby](../kontrakty/kontrakt-odczytu-dashboardu.md). Funkcja jest częścią EXE 1.9.0.
 

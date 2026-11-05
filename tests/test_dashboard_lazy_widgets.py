@@ -38,13 +38,14 @@ class DashboardLazyWidgetTests(unittest.TestCase):
             try:
                 page = browser.new_page(viewport={'width': 900, 'height': 600})
                 controls = '''<button id="period" aria-label="Filtr Okres otwarcia z typem daterange">Okres</button>
-                    <input id="start" aria-label="Data rozpoczęcia">
+                    <now-popover-panel><input id="start" aria-label="Data rozpoczęcia">
                     <input id="end" aria-label="Data zakończenia">
                     <button onclick="document.getElementById('period').setAttribute('aria-label',
                     'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: ' +
-                    document.getElementById('start').value + ' - ' + document.getElementById('end').value)">Zastosuj</button>'''
+                    document.getElementById('start').value + ' - ' + document.getElementById('end').value);
+                    document.querySelector('now-popover-panel').hidden=true">Zastosuj</button></now-popover-panel>'''
                 page.route('**/*', lambda route: route.fulfill(
-                    body='<button role="tab" aria-selected="true">Dasboard SLA</button><now-popover-panel>'+controls+'</now-popover-panel>'+''.join('<sn-component-filter><h3>'+c+'</h3><label><input type="checkbox" checked>Wybierz wszystko</label><button>Zastosuj</button></sn-component-filter>' for c in ('Status zgłoszenia','Lokalizacja','Przypisany do')) + lazy_cards(TITLES), content_type='text/html; charset=utf-8'))
+                    body='<button role="tab" aria-selected="true">Dasboard SLA</button>'+controls+''.join('<sn-component-filter><h3>'+c+'</h3><label><input type="checkbox" checked>Wybierz wszystko</label><button>Zastosuj</button></sn-component-filter>' for c in ('Status zgłoszenia','Lokalizacja','Przypisany do')) + lazy_cards(TITLES), content_type='text/html; charset=utf-8'))
                 page.goto(DASHBOARD_URL)
                 self.assertEqual(page.get_by_role('heading', name=TITLES[0], exact=True).count(), 0)
                 def categories(*args):

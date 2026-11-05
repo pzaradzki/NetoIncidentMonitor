@@ -338,11 +338,12 @@ def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokaliz
             check_category(checkbox, page, stop)
         operation('category_apply', category_code)
         click_control(container.get_by_role('button', name='Zastosuj', exact=True), page, stop)
-        read_control(checkbox, stop, lambda: expect(checkbox).to_be_checked(timeout=300),
-                     assertion=True, check=lambda: check_session(page))
-        if checkbox.evaluate('(element) => !!element.indeterminate', timeout=300):
-            from neto_incident_monitor.dashboard_context import DashboardReadError
-            raise DashboardReadError('wrong_filter')
+        operation('category_confirm', category_code)
+        def confirmed():
+            if not checkbox.evaluate('(element) => element.checked && !element.indeterminate', timeout=300):
+                raise AssertionError('Category selection not confirmed')
+        read_control(checkbox, stop, confirmed, assertion=True,
+                     check=lambda: check_session(page))
         completed_step(category_code)
 
 
@@ -442,19 +443,30 @@ def set_period(page, year, month, stop):
         ready_control(field, stop, editable=True, check=lambda: check_session(page))
         field.fill(value, timeout=1000)
         field.press('Tab', timeout=1000, no_wait_after=True)
-        if field.input_value(timeout=300) != value:
-            raise DashboardReadError('wrong_period')
+        def confirmed_field():
+            expect(field).to_have_value(value, timeout=300)
+            if field.get_attribute('aria-invalid', timeout=300) == 'true':
+                raise DashboardReadError('wrong_period', retryable=False)
+        read_control(field, stop, confirmed_field, assertion=True,
+                     check=lambda: check_session(page))
         completed_step(step)
-    operation('commit_period')
-    apply = panel.get_by_role('button', name='Zastosuj', exact=True).filter(visible=True)
-    if apply.count() != 1:
-        raise DashboardReadError('ambiguous_period', retryable=False)
-    if apply.is_enabled(timeout=300):
-        click_control(apply, page, stop)
-    else:
-        click_control(panel.get_by_role('button', name='Anuluj', exact=True), page, stop)
     selected = page.get_by_role('button', name=f'Filtr Okres otwarcia z typem daterange. Wybrane wartości to: {start} - {end}', exact=True)
+    operation('period_ready')
+    apply = panel.get_by_role('button', name='Zastosuj', exact=True).filter(visible=True)
+    if apply.count() != 1 or selected.count() > 1:
+        raise DashboardReadError('ambiguous_period', retryable=False)
+    if selected.count() == 1:
+        operation('commit_period')
+        click_control(panel.get_by_role('button', name='Anuluj', exact=True), page, stop)
+    else:
+        ready_control(apply, stop, timeout=15000, check=lambda: check_session(page))
+        operation('commit_period')
+        # One delivered action only; all subsequent retries observe its result.
+        from neto_incident_monitor.read_budget import remaining_ms
+        apply.click(timeout=remaining_ms(5000), no_wait_after=True)
+    operation('period_confirm')
     wait_control(selected, stop, timeout=15000, check=lambda: check_session(page))
+    wait_control(panel, stop, state='hidden', timeout=15000, check=lambda: check_session(page))
     completed_step('commit_period')
 
 

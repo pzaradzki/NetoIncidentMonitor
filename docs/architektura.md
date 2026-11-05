@@ -1,6 +1,6 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje wersja [1.9.3](wersje/v1.9.3.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.9.4](wersje/v1.9.4.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
 
 ## Przepływ i odpowiedzialności
 
@@ -85,5 +85,7 @@ Wspólny `AnimatedMetricTile.bind_content` ustawia tło wszystkich elementów od
 `normalize_list_url` rozpakowuje długie adresy list z ponownym kodowaniem parametrów i zachowaniem widoku. Nowe opakowane adresy stają się bezpośrednie, a zapis istniejących adresów bezpośrednich pozostaje bez zmian. Sprzeczne parametry są odrzucane przed zapisem. [Decyzja 016](decyzje/016-normalizacja-adresow-list.md).
 
 ## Lokalna synchronizacja statusów — 5 listopada 2026
+
+Lokalna poprawka czytnika po publikacji 1.9.3 oczekuje na aktywację Zastosuj dla zmienionego okresu, zamiast anulować przy chwilowo wyłączonym przycisku. Po pojedynczym kliknięciu potwierdza okres i zamknięcie panelu; niezmieniony zatwierdzony okres pozwala anulować panel. Końcowa kontrola kategorii obserwuje łącznie zaznaczenie i brak stanu pośredniego, ponawiając wyłącznie odczyty w istniejącym budżecie. Diagnostyka rozdziela gotowość, wysłanie i potwierdzenie. [Decyzja 021](decyzje/021-zatwierdzanie-kontekstu-dashboardu.md), [wyniki i granice odbioru](plany/zakonczone/zatwierdzanie-kontekstu-dashboardu.md).
 
 Przy aktywnym żądaniu dashboardu panel mapuje stany sekcji na wspólny opis aktywności i stopkę, w tym ponawianie po logowaniu. Stare lub zakończone żądania nie zmieniają statusów; wynik końcowy chroni opis końcowy. Główna pigułka zmienia się przez set_activity bez modyfikowania faz monitoringu i przycisków. Dane, daty, cache, czytnik i harmonogram pozostają bez zmian. Poprawkę najpierw sprawdzono lokalnie jako 1.9.2; późniejszą publikację opisuje [wydanie 1.9.3](plany/zakonczone/wydanie-1.9.3.md). [Decyzja 020](decyzje/020-spojne-statusy-dashboardu.md), [wyniki](plany/zakonczone/synchronizacja-statusow-dashboardu.md).

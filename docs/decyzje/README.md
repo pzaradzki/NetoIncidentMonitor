@@ -29,6 +29,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[021 — Gotowość i potwierdzenie kontekstu dashboardu](021-zatwierdzanie-kontekstu-dashboardu.md): oczekiwanie na Zastosuj i wspólna obserwacja stanu kategorii bez ponawiania kliknięć.
+
 Nowy plik: kolejny numer i krótka nazwa. Wystarczą: **data/status → decyzja → powód → realizacja i ograniczenia**. Kilkanaście wierszy zwykle wystarczy.
 
 Statusy: **proponowana**, **przyjęta**, **zastąpiona**. Przyjęta zasada może być wdrożona częściowo — zawsze wskazuj zakres realizacji. Nie wpisuj propozycji z planu jako obowiązującego zachowania kodu.
