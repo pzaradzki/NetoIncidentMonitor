@@ -26,7 +26,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
-| [Wydanie 1.9.2](zakonczone/wydanie-1.9.2.md) | Przygotowanie stabilnej publikacji; bez odrzuconej optymalizacji. |
+| [Wydanie 1.9.2](zakonczone/wydanie-1.9.2.md) | Opublikowano: 505 testów (2 pominięcia), build i offline smoke, zgodność tagu oraz pobranego ZIP-a; bez odrzuconego eksperymentu. |
 | [Odzyskiwanie dashboardu](zakonczone/odzyskiwanie-dashboardu-po-utracie-sesji.md) | 505 testów (2 pominięcia), kandydat i główne EXE 1.9.1 sprawdzone offline; bez nowej publikacji. |
 | [Wydanie 1.9.1](zakonczone/wydanie-1.9.1.md) | Opublikowano: 495 testów (2 pominięcia), build i offline smoke, zgodność tagu oraz SHA-256 pobranego ZIP-a. |
 | [Ukrycie autostartu Windows](zakonczone/ukrycie-autostartu-windows.md) | Przełącznik ukryty; mechanizm zachowany, domyślnie wyłączony; lokalny build i smoke OK. |
