@@ -11,3 +11,5 @@ Status: zakończone w źródłach i głównej lokalnej paczce EXE 1.9.3, 5 listo
 - Przed podmianą potwierdzono brak procesu monitora. Poprzednią kompletną paczkę zachowano w build/dashboard-commit-previous/Neto Incident Monitor. Główna paczka dist/Neto Incident Monitor ma EXE zgodne z kandydatem: SHA-256 c55a6ea621c2415972eeee98197bbe92f73f94ae62b7da0e3d5b8c4df1abd153. EXE obecne po końcowym smoke. Powrót wymaga zamknięcia monitora i przywrócenia całego poprzedniego folderu, nie samego EXE.
 
 Nie ustalono dokładnego przebiegu historycznej awarii. Nie zmieniono numeru 1.9.3, tagów ani ZIP-a wydania (SHA-256 f1a8b6852abdcbe8a88aa208e76f3c7b8e0b26d093f291a22dc65053b9845d60). Dwie prywatne notatki pozostawiono bez zmian. [Decyzja 021](../../decyzje/021-zatwierdzanie-kontekstu-dashboardu.md).
+
+Późniejszą, osobno zleconą publikację tej poprawki opisuje [wydanie 1.9.4](wydanie-1.9.4.md). Brak publikacji powyżej dotyczy pierwotnego etapu lokalnego.

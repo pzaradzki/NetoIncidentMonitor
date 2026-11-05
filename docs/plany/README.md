@@ -27,6 +27,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.9.4](zakonczone/wydanie-1.9.4.md) | Opublikowano: 523 testy (2 pominięcia), build i offline smoke, zgodność tagu i SHA-256 ponownie pobranego ZIP-a. |
 | [Zatwierdzanie okresu i filtrów](zakonczone/zatwierdzanie-kontekstu-dashboardu.md) | Lokalne EXE 1.9.3: 523 testy, 2 pominięcia, build i oba smoke OK; poprzednia paczka zachowana, bez publikacji. |
 | [Wydanie 1.9.3](zakonczone/wydanie-1.9.3.md) | Opublikowano: 514 testów (2 pominięcia), build i offline smoke; zgodność tagu oraz SHA-256 pobranego ZIP-a. |
 | [Synchronizacja statusów](zakonczone/synchronizacja-statusow-dashboardu.md) | Lokalne EXE 1.9.2: 514 testów (2 pominięcia), build i oba smoke OK; bez publikacji. |
