@@ -1,6 +1,6 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje wersja [1.9.2](wersje/v1.9.2.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.9.3](wersje/v1.9.3.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
 
 ## Przepływ i odpowiedzialności
 
@@ -83,3 +83,7 @@ Otwieranie listy dashboardu jest zlecane dopiero po kliknięciu kafelka z wyniki
 Wspólny `AnimatedMetricTile.bind_content` ustawia tło wszystkich elementów od razu przy ich podłączeniu. Pierwszy poprawny wygląd kafelków nie zależy od najechania kursorem ani uruchomienia animacji.
 
 `normalize_list_url` rozpakowuje długie adresy list z ponownym kodowaniem parametrów i zachowaniem widoku. Nowe opakowane adresy stają się bezpośrednie, a zapis istniejących adresów bezpośrednich pozostaje bez zmian. Sprzeczne parametry są odrzucane przed zapisem. [Decyzja 016](decyzje/016-normalizacja-adresow-list.md).
+
+## Lokalna synchronizacja statusów — 5 listopada 2026
+
+Przy aktywnym żądaniu dashboardu panel mapuje stany sekcji na wspólny opis aktywności i stopkę, w tym ponawianie po logowaniu. Stare lub zakończone żądania nie zmieniają statusów; wynik końcowy chroni opis końcowy. Główna pigułka zmienia się przez set_activity bez modyfikowania faz monitoringu i przycisków. Dane, daty, cache, czytnik i harmonogram pozostają bez zmian. Poprawkę najpierw sprawdzono lokalnie jako 1.9.2; późniejszą publikację opisuje [wydanie 1.9.3](plany/zakonczone/wydanie-1.9.3.md). [Decyzja 020](decyzje/020-spojne-statusy-dashboardu.md), [wyniki](plany/zakonczone/synchronizacja-statusow-dashboardu.md).

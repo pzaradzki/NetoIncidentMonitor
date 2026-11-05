@@ -134,6 +134,8 @@ NUMERIC_FIELDS.update({
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 EVENTS.add('alert_delivery')
 EVENTS.add('startup_validation')
+EVENTS.add('dashboard_ui_state')
+TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}
 EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}
 TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})

@@ -25,6 +25,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 | [019](019-odzyskiwanie-sesji-sekcji.md) | Niezależne ponowienie odczytu i odzyskanie logowania, wspólny budżet 60 s. |
 
+| [020](020-spojne-statusy-dashboardu.md) | Spójna aktywność sekcji, nagłówka i stopki dashboardu, chroniona cyklem żądania. |
+
 ## Format i utrzymanie
 
 Nowy plik: kolejny numer i krótka nazwa. Wystarczą: **data/status → decyzja → powód → realizacja i ograniczenia**. Kilkanaście wierszy zwykle wystarczy.

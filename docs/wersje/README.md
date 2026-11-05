@@ -1,6 +1,7 @@
 # Opisy wersji
 
-- [1.9.2](v1.9.2.md) — bieżące wydanie: niezależne odzyskiwanie logowania po błędzie odczytu dashboardu.
+- [1.9.3](v1.9.3.md) — bieżące wydanie: spójne statusy aplikacji, sekcji i opisu dashboardu.
+- [1.9.2](v1.9.2.md) — poprzednie wydanie: niezależne odzyskiwanie logowania po błędzie odczytu dashboardu.
 - [1.9.1](v1.9.1.md) — poprzednie wydanie: odporność IO, kompletność powiadomień, kolejność odświeżania i ukryty autostart Windows.
 - [1.9.0](v1.9.0.md) — poprzednie wydanie: dane aplikacji, autostart, dashboard i poprawki filtrów.
 - [1.8.1](v1.8.1.md) — poprzednie wydanie i historia lokalnych przebudów przed 1.9.0.

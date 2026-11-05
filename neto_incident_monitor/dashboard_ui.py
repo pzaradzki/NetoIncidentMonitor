@@ -62,6 +62,9 @@ def build_dashboard(parent, app, cache_path=None):
     panel.request_diagnostics = None
     panel.request_sections = set()
     panel.last_complete_read_at = None
+    panel.final_result_received = False
+    panel.request_error = False
+    panel.ui_activity_state = None
     def record(event, **facts):
         try:
             if panel.request_diagnostics is None:
@@ -88,6 +91,35 @@ def build_dashboard(parent, app, cache_path=None):
             panel.section_states[section] = state
             panel.section_pills[section].set_status(state)
     panel.set_section_state = set_section_state
+
+    def set_section_activity(request_id, section, state):
+        # Only queued worker activity needs the active-transaction guard. Internal
+        # finish_pending/result rendering may still update the section pills.
+        if (panel.active_request is None or panel.active_request[0] != request_id or
+                panel.request_id != request_id or panel.final_result_received or
+                section not in panel.section_pills):
+            return None
+        states = {
+            'W trakcie aktualizacji': ('Pobieranie danych', 'working', 'dashboard', 'reading'),
+            'Ponawianie odczytu': ('Ponawianie odczytu', 'waiting', 'dashboard', 'retrying'),
+            'Oczekuje': ('Oczekiwanie na logowanie', 'waiting', 'dashboard', 'waiting_login'),
+            'Błąd odczytu': ('Błąd odczytu', 'error', 'dashboard_error', 'error'),
+        }
+        if state not in states and state not in ('Zaktualizowany', 'Dane nieaktualne'):
+            return None
+        set_section_state(request_id, section, state)
+        if state not in states:
+            return None
+        description, tone, kind, code = states[state]
+        text = f'{description}: {section}'
+        set_message(text)
+        current = (request_id, section, state)
+        if panel.ui_activity_state != current:
+            panel.ui_activity_state = current
+            alias = next(alias for alias, name in NAMES.items() if name == section)
+            record('dashboard_ui_state', request_id=request_id, section=alias, ui_state=code)
+        return text, tone, kind
+    panel.set_section_activity = set_section_activity
 
     def finish_pending():
         for section, state in panel.section_states.items():
@@ -171,6 +203,9 @@ def build_dashboard(parent, app, cache_path=None):
             for combo in panel.period_controls:
                 combo.configure(state='readonly')
             panel.finish_pending()
+            if not panel.final_result_received:
+                set_message('Aktualizacja dashboardu została przerwana. Kafelki zachowują ostatni wynik.'
+                            if state == 'cancelled' else 'Odczyt dashboardu nie został zakończony w całości.')
             record('dashboard_period_state', request_id=request_id, year=year, month=month,
                    request_state='unlocked')
         return True
@@ -194,6 +229,9 @@ def build_dashboard(parent, app, cache_path=None):
         panel.active_request = (panel.request_id, year, month)
         panel.request_period = (year, month)
         panel.request_sections.clear()
+        panel.final_result_received = False
+        panel.request_error = False
+        panel.ui_activity_state = None
         panel.request_diagnostics = None
         for combo in panel.period_controls:
             combo.configure(state='disabled')
@@ -382,7 +420,10 @@ def build_dashboard(parent, app, cache_path=None):
             return
         message = extra[0] if extra else ''
         metadata = extra[1] if len(extra) > 1 else None
+        if error or metadata is None:
+            panel.final_result_received = True
         if error:
+            panel.request_error = True
             set_message('Nie udało się odczytać danych. Zachowano ostatnie poprawne wyniki i ich daty.')
             return
         if metadata:

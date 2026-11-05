@@ -2636,11 +2636,9 @@ class App(DynamicColumns, TableLoading):
                         self.dashboard_progress.apply(*value)
                     continue
                 if kind == 'dashboard_section_status':
-                    self.dashboard_view.set_section_state(*value)
-                    if value[0] == self.dashboard_view.request_id and value[2] == 'W trakcie aktualizacji':
-                        self.set_activity(f'Pobieranie danych: {value[1]}', 'working', 'dashboard')
-                    elif value[0] == self.dashboard_view.request_id and value[2] == 'Błąd odczytu':
-                        self.set_activity(f'Błąd odczytu: {value[1]}', 'error', 'dashboard_error')
+                    activity = self.dashboard_view.set_section_activity(*value)
+                    if activity is not None:
+                        self.set_activity(*activity)
                     continue
                 if kind == 'dashboard_updating':
                     if not self.dashboard_view.set_updating(*value):
@@ -2650,8 +2648,17 @@ class App(DynamicColumns, TableLoading):
                     self.dashboard_button.redraw()
                     self.update_refresh_controls()
                     if not updating:
-                        if getattr(self, 'activity_kind', None) == 'dashboard':
-                            self.set_activity('Oczekiwanie na sprawdzenie filtrów', kind='phase')
+                        failures = [section for section, state in self.dashboard_view.section_states.items()
+                                    if state == 'Błąd odczytu']
+                        if failures or self.dashboard_view.request_error:
+                            if getattr(self, 'activity_kind', None) != 'dashboard_error':
+                                detail = ', '.join(failures) or 'Dashboard'
+                                self.set_activity(f'Błąd odczytu: {detail}', 'error', 'dashboard_error')
+                        elif getattr(self, 'activity_kind', None) == 'dashboard':
+                            if self.dashboard_view.final_result_received:
+                                self.set_activity('Aktualizacja dashboardu zakończona', 'success')
+                            else:
+                                self.set_activity('Odczyt dashboardu nie został zakończony w całości', 'waiting')
                     continue
                 if kind == 'dashboard_drilldown_result':
                     if self.stop.is_set():
