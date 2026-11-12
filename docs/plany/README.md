@@ -29,6 +29,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.10.0](zakonczone/wydanie-1.10.0.md) | Opublikowano. Regresja 585 testów, 2 pominięcia. Potwierdzono zgodność EXE ze źródłami i SHA-256 pobranego ZIP-a. |
 | [Import ulubionych ServiceNow](zakonczone/import-ulubionych-servicenow.md) | Wdrożone w źródłach: 555 testów, 2 pominięcia, bez błędów; DOM sprawdzony na ServiceNow. Pełny rzeczywisty odbiór użytkowy pozostaje osobny; bez nowego EXE. |
 | [Wydanie 1.9.4](zakonczone/wydanie-1.9.4.md) | Opublikowano: 523 testy (2 pominięcia), build i offline smoke, zgodność tagu i SHA-256 ponownie pobranego ZIP-a. |
 | [Zatwierdzanie okresu i filtrów](zakonczone/zatwierdzanie-kontekstu-dashboardu.md) | Lokalne EXE 1.9.3: 523 testy, 2 pominięcia, build i oba smoke OK; poprzednia paczka zachowana, bez publikacji. |

@@ -106,6 +106,7 @@ Po każdym kroku zaktualizuj ten plik przed następnym krokiem. Zaznacz `[x]` po
   - [x] Zaktualizuj architekturę, instrukcję i decyzje o sesji, kolejce oraz imporcie. Powiąż zastąpione decyzje z nową.
     - Zaktualizowano instrukcję i architekturę. Decyzja 025 dokumentuje wspólną sesję i zastępuje zasady osobnego importu z 022 oraz osobnej karty z 023.
   - [ ] Po pełnym odbiorze przenieś plan do zakończonych i popraw indeks. Przebudowa EXE i publikacja wymagają odrębnego zlecenia.
+    - Wydanie 1.10.0 zbudowano i opublikowano na odrębne zlecenie. Wyniki buildu i publikacji opisuje [raport wydania](zakonczone/wydanie-1.10.0.md). Pozostałe próby rzeczywistego logowania są nadal w zakresie odbioru.
 
 ### Regresja odczytu dashboardu zgłoszona podczas odbioru
 
