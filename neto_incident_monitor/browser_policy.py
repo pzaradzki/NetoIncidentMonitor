@@ -49,6 +49,7 @@ class BrowserRuntime:
         self.visibility_failure = False
         self.visible_login = False
         self.session_visibility = False
+        self.restore_main_focus = False
 
     def record(self, event, **facts):
         try:
@@ -238,6 +239,15 @@ class BrowserRuntime:
 
     def complete_login(self):
         from neto_incident_monitor.authentication import finish_authentication
+        if self.session_visibility:
+            from neto_incident_monitor.login_observation import owned_pages
+            try:
+                if self.window and self.window.is_foreground():
+                    self.restore_main_focus = True
+            except OSError:
+                pass
+            for owned in reversed(owned_pages(self.page)):
+                owned.close()
         finish_authentication(self.page)
         self.manual_required = False
         self.override = None

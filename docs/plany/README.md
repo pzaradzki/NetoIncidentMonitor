@@ -4,6 +4,7 @@ Bieżąca wersja to [1.10.0](../wersje/v1.10.0.md).
 
 ## Pozostałe tematy
 
+- [Odzyskanie zmian po wydaniu 1.10.0](odzyskanie-zmian-po-v1.10.0.md) — inwentarz utraconych plików, poprawki z czatu i kroki odzyskania.
 - [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](wspolna-sesja-servicenow.md) — plan wdrożenia i bieżący stan prac.
 
 

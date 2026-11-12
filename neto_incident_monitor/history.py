@@ -155,28 +155,37 @@ class History:
                        ((key, json.dumps(value, ensure_ascii=False)) for key, value in current.items()
                         if value is not previous.get(key) and value != previous.get(key)))
 
-    def commit_filter(self, legacy, url, name, incidents, first_only, checkpoint, prepare_alerts=None):
+    def commit_filter(self, legacy, url, name, incidents, first_only, checkpoint, prepare_alerts=None,
+                      *, filter_instance=None):
         with self.lock:
             checkpoint()
             membership = self.membership if self.membership is not None else legacy.filters
             previous = membership.get(url, {})
+            new_instance = filter_instance is not None and previous.get('instance') != filter_instance
+            baseline = url not in membership or new_instance
             arrivals = set(incidents) - set(previous.get("present", []))
             new = set(incidents) - set(previous.get("ever" if first_only else "present", []))
             records = self.records.copy()
             detected = time.time()
-            for number in arrivals:
-                records[url + '\n' + number] = {
+            observed = set(incidents) if new_instance else arrivals
+            for number in observed:
+                key = url + '\n' + number
+                if new_instance and key in records:
+                    continue
+                records[key] = {
                     "incident": copy.deepcopy(incidents[number]), "detected": detected,
                     "filters": {url: name},
                 }
             updated = membership.copy()
             updated[url] = {"present": sorted(incidents),
                             "ever": sorted(set(previous.get("ever", [])) | set(incidents))}
+            if filter_instance is not None:
+                updated[url]['instance'] = filter_instance
             checkpoint()
             if self.membership is None or updated != membership:
-                alerts = prepare_alerts(new) if prepare_alerts and new and url in membership else ()
+                alerts = prepare_alerts(new) if prepare_alerts and new and not baseline else ()
                 self._commit(records, updated, checkpoint, tuple(alerts))
-            return new if url in membership else set()
+            return set() if baseline else new
 
     def add(self, incident, filter_name, filter_url, reappeared=False):
         return incident['number'] in self.add_many([incident], filter_name, filter_url, reappeared)

@@ -244,7 +244,6 @@ def build_ui(app, settings):
     import_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
     if not getattr(app, 'session', None):
         app.filter_buttons.append(import_button)
-    app.refresh_filters()
     app.settings_window = tk.Toplevel(root)
     app.settings_window.withdraw()
     app.settings_window.title("Ustawienia")
@@ -254,6 +253,7 @@ def build_ui(app, settings):
     app.settings_window.protocol("WM_DELETE_WINDOW", app.settings_window.withdraw)
     app.settings_window.bind("<Escape>", lambda event: app.settings_window.withdraw())
     build_settings(app, settings)
+    app.refresh_filters()
 
     content_host = ttk.Frame(body)
     content_host.grid(row=0, column=2, sticky="nsew")

@@ -34,6 +34,8 @@ def validate_filters(entries):
     _require(isinstance(entries, list))
     for entry in entries:
         _require(isinstance(entry, dict) and all(isinstance(entry.get(k), str) for k in ('name', 'url')))
+        if 'filter_instance' in entry:
+            _require(isinstance(entry['filter_instance'], str) and bool(entry['filter_instance']))
         if 'notification_templates' in entry:
             _require(isinstance(entry['notification_templates'], dict))
             for template in entry['notification_templates'].values():
@@ -46,6 +48,8 @@ def validate_config(settings):
         validate_filters(settings['filters'])
     if 'urls' in settings:
         _require(isinstance(settings['urls'], list) and all(isinstance(v, str) for v in settings['urls']))
+    if 'filter_notification_revisions' in settings:
+        _require(_string_map(settings['filter_notification_revisions']))
     for key in ('window_layout', 'column_widths', 'filter_visible_columns'):
         if key in settings:
             _require(isinstance(settings[key], dict))

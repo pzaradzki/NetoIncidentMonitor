@@ -9,6 +9,72 @@ from neto_incident_monitor.widgets import Toggle
 
 
 class FilterViewTests(unittest.TestCase):
+    def test_filter_list_icons_follow_global_and_saved_filter_settings(self):
+        from tkinter import ttk
+        from neto_incident_monitor.widgets import RoundedButton
+
+        settings = {'notify': True, 'google_chat_enabled': True, 'teams_enabled': True,
+                    'filters': [{'name': 'Lista A', 'url': 'https://adeo.service-now.com/incident_list.do',
+                                 'notify_windows': False, 'notify_teams': False},
+                                {'name': 'Lista wyłączona', 'url': 'https://adeo.service-now.com/sc_task_list.do',
+                                 'enabled': False, 'notify_google_chat': False}]}
+        root = tk.Tk()
+        try:
+            with tempfile.TemporaryDirectory() as directory, \
+                    patch('neto_incident_monitor.app.read_json', return_value=settings), \
+                    patch('neto_incident_monitor.app.save_json'):
+                app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
+                root.update()
+                table = app.filter_table
+
+                def images():
+                    return [table.itemcget(item, 'image') for item in table.find_withtag('notification_icon')]
+
+                def image(channel, active):
+                    return str(table.notification_icon(channel, active))
+
+                windows_gray, windows_color = image('windows', False), image('windows', True)
+                chat_color, chat_gray = image('google_chat', True), image('google_chat', False)
+                teams_gray, teams_color = image('teams', False), image('teams', True)
+                self.assertEqual(images(), [windows_gray, chat_color, teams_gray, windows_color, chat_gray, teams_color])
+
+                table.updating_item = '0'
+                app.splitter.event_generate('<ButtonPress-1>', x=1, y=5)
+                app.splitter.event_generate('<ButtonRelease-1>', x=-160, y=5)
+                root.update()
+                self.assertEqual(app.sidebar_canvas.winfo_width(), 235)
+                icon = table.find_withtag('notification_icon')[0]
+                status = next(item for item in table.find_all()
+                              if table.type(item) == 'text' and table.itemcget(item, 'text') == 'Aktualizuje')
+                name = next(item for item in table.find_all()
+                            if table.type(item) == 'text' and table.itemcget(item, 'text') == 'Lista A')
+                self.assertLess(table.bbox(icon)[3], table.bbox(status)[1])
+                self.assertLess(table.bbox(name)[3], table.bbox(status)[1])
+
+                app.google_chat_enabled.set(False)
+                self.assertEqual(images(), [windows_gray, teams_gray, windows_color, teams_color])
+
+                app.configure_filter_notifications('0')
+                dialog = next(widget for widget in root.winfo_children()
+                              if isinstance(widget, tk.Toplevel) and widget.title() == 'Ustawienia filtra')
+                panel = dialog.winfo_children()[0]
+                windows_row = next(row for row in panel.winfo_children() if any(
+                    isinstance(label, ttk.Label) and label.cget('text') == 'Powiadomienia Windows'
+                    for label in row.winfo_children()))
+                next(widget for widget in windows_row.winfo_children() if isinstance(widget, Toggle)).toggle()
+                self.assertEqual(images()[0], windows_gray)
+                next(widget for row in panel.winfo_children() for widget in row.winfo_children()
+                     if isinstance(widget, RoundedButton) and widget.text == 'Zapisz').invoke()
+                self.assertEqual(images(), [windows_color, teams_gray, windows_color, teams_color])
+
+                app.notify.set(False)
+                app.teams_enabled.set(False)
+                self.assertEqual(images(), [])
+        finally:
+            for timer in root.tk.call('after', 'info'):
+                root.after_cancel(timer)
+            root.destroy()
+
     def test_filter_webhook_inputs_validate_save_and_clear(self):
         from neto_incident_monitor.filter_settings import show_filter_settings
         from neto_incident_monitor.widgets import RoundedButton
@@ -26,10 +92,12 @@ class FilterViewTests(unittest.TestCase):
                     yield from descendants(child)
             def button(widget, text):
                 return next(w for w in descendants(widget) if isinstance(w, RoundedButton) and w.text == text)
-            def open_channel(dialog, index):
+            def open_channel(dialog, channel):
                 gears = [w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.icon == 'gear']
                 self.assertEqual(len(gears), 2)
-                gear = gears[index]
+                gear = next(w for w in gears if any(
+                    isinstance(label, ttk.Label) and label.cget('text') == f'Powiadomienia {channel}'
+                    for label in w.master.winfo_children()))
                 self.assertEqual(int(gear.grid_info()['column']), 1)
                 self.assertEqual(int(gear.cget('width')), 36)
                 gear.invoke()
@@ -41,7 +109,7 @@ class FilterViewTests(unittest.TestCase):
             root.update()
             dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
             self.assertFalse(any(isinstance(w, ttk.Entry) for w in descendants(dialog)))
-            child, field = open_channel(dialog, 0)
+            child, field = open_channel(dialog, 'Microsoft Teams')
             field.insert(0, 'http://invalid.example')
             with patch('neto_incident_monitor.filter_settings.messagebox.showerror') as error:
                 button(child, 'Zastosuj').invoke()
@@ -51,8 +119,8 @@ class FilterViewTests(unittest.TestCase):
             self.assertIs(root.grab_current(), dialog)
             teams = 'https://test.api.powerplatform.com/invoke?sig=dummy'
             chat = 'https://chat.googleapis.com/v1/spaces/test/messages?key=dummy&token=dummy'
-            for index, value in enumerate([teams, chat]):
-                child, field = open_channel(dialog, index)
+            for channel, value in [('Microsoft Teams', teams), ('Google Chat', chat)]:
+                child, field = open_channel(dialog, channel)
                 field.insert(0, value)
                 button(child, 'Zastosuj').invoke()
             self.assertEqual(app.filters[0]['teams_webhook'], teams)
@@ -72,14 +140,14 @@ class FilterViewTests(unittest.TestCase):
             show_filter_settings(app, 0)
             dialog = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel))
             # Cancelling the nested editor preserves its previous value.
-            child, field = open_channel(dialog, 0)
+            child, field = open_channel(dialog, 'Microsoft Teams')
             field.delete(0, 'end')
             button(child, 'Anuluj').invoke()
-            child, field = open_channel(dialog, 0)
+            child, field = open_channel(dialog, 'Microsoft Teams')
             self.assertEqual(field.get(), teams)
             button(child, 'Anuluj').invoke()
-            for index in range(2):
-                child, field = open_channel(dialog, index)
+            for channel in ('Microsoft Teams', 'Google Chat'):
+                child, field = open_channel(dialog, channel)
                 field.delete(0, 'end')
                 button(child, 'Zastosuj').invoke()
             button(dialog, 'Zapisz').invoke()

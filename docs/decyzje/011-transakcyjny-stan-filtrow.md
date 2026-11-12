@@ -2,6 +2,8 @@
 
 3 listopada 2026. **Status: przyjęta, wdrożona w źródłach dla historii, obecności i automatycznych alertów filtrów.**
 
+Rewizję alertów uzupełniono o rewizje poszczególnych filtrów, aby zmiana jednego filtra zachowywała ważność oczekujących alertów pozostałych. [Decyzja 027](027-zmiany-filtrow-podczas-monitoringu.md).
+
 **Decyzja.** Używamy lokalnej bazy SQLite z osobnymi tabelami historii i obecności w jednej transakcji. Zachowujemy fasadę History i nie zapisujemy po przełączeniu równoległych kopii JSON.
 
 **Powód.** Na 20 000 syntetycznych wpisów zapis po oznaczeniu jednego wpisu jako przeczytanego trwał 311 ms w prototypie JSON i 12 ms w SQLite. Pierwszy zapis w SQLite trwał 211 ms, niezmieniony odczyt 18 ms. Są to pojedyncze pomiary lokalne.

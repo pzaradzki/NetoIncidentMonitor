@@ -14,6 +14,80 @@ from neto_incident_monitor.shared_session import SharedSession
 
 
 class ReadQueueTests(unittest.TestCase):
+    def test_full_refresh_after_filter_change_uses_new_scope(self):
+        queue = ReadQueue()
+        dashboard, threats = ReadPart('dashboard', (2026, 11)), ReadPart('threatened')
+        removed, remaining, added = (ReadPart('filter', (name, None)) for name in ('A', 'B', 'C'))
+        first, _ = queue.submit('all', [dashboard, threats, removed, remaining])
+        queue.discard_pending_filters({removed})
+        parts = [dashboard, threats, remaining, added]
+        self.assertFalse(queue.has_full_read(parts))
+        second, merged = queue.submit('all', parts)
+        self.assertNotEqual(second, first)
+        self.assertFalse(merged)
+        self.assertEqual(list(queue.take().parts), [dashboard, threats, remaining])
+        self.assertTrue(queue.has_full_read(parts))
+
+    def test_filter_added_to_running_batch_waits_for_next_deadline(self):
+        from neto_incident_monitor.shared_session import MonitorCycle
+
+        first, second, added = (ReadPart('filter', (name, None), {'kind': 'inc'}) for name in ('A', 'B', 'C'))
+        cycle = MonitorCycle([], {'inc': 30, 'task': 90})
+        with patch('neto_incident_monitor.shared_session.monotonic', return_value=10) as clock:
+            self.assertEqual(cycle.next_filter((first, second)), first)
+            cycle.filters.popleft()
+            self.assertEqual(cycle.next_filter((first, second, added)), second)
+            cycle.filters.popleft()
+            cycle.finish_filter_batch()
+            clock.return_value = 39
+            self.assertIsNone(cycle.next_filter((first, second, added)))
+            clock.return_value = 40
+            cycle.next_filter((first, second, added))
+            self.assertEqual(list(cycle.filters), [first, second, added])
+
+    def test_deleting_active_filter_cancels_its_login_wait_and_runs_next_filter(self):
+        app = Mock(threatened_next_read=None)
+        session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        page = Mock()
+        page.is_closed.return_value = False
+        old = ReadPart('filter', ('A', None), {'scheduled': True})
+        other = ReadPart('filter', ('B', None), {'scheduled': True})
+        session.update_filters({'A': old, 'B': other})
+        session.work.submit('filter', [old])
+        session.work.submit('filter', [other])
+        waiting = threading.Event()
+        advanced = threading.Event()
+
+        def authenticate(_page, stop):
+            if not waiting.is_set():
+                waiting.set()
+                deadline = time.monotonic() + 2
+                while not stop.is_set() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                return not stop.is_set()
+            return True
+
+        def read(_page, part, _stop, _source):
+            self.assertEqual(part, other)
+            advanced.set()
+            session.closed.set()
+            return True
+
+        session.authenticate = authenticate
+        app.execute_session_part.side_effect = read
+        worker = threading.Thread(target=session.serve, args=(page,), daemon=True)
+        worker.start()
+        try:
+            self.assertTrue(waiting.wait(2))
+            session.update_filters({'B': other})
+            self.assertTrue(advanced.wait(3))
+        finally:
+            session.shutdown()
+            worker.join(3)
+        self.assertFalse(worker.is_alive())
+        app.execute_session_part.assert_called_once()
+
     def test_queue_diagnostics_keep_request_id_and_do_not_log_filter_target(self):
         from neto_incident_monitor.login_diagnostics import _logger
         session = SharedSession(Mock(), Path('unused'))
@@ -172,6 +246,97 @@ class PasswordSaveWaitTests(unittest.TestCase):
 
 
 class SharedApplicationTests(unittest.TestCase):
+    def test_filter_buttons_work_during_monitoring_and_only_saved_changes_invalidate_work(self):
+        from neto_incident_monitor.app import save_json
+        from neto_incident_monitor.filter_state import FilterState
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+        from neto_incident_monitor.widgets import RoundedButton
+        from tkinter import ttk
+
+        first = 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue'
+        second = 'https://adeo.service-now.com/sc_task_list.do'
+        replacement = 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dfalse'
+        added = 'https://adeo.service-now.com/sc_request_list.do'
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            config = folder / 'config.json'
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                with patch('neto_incident_monitor.app.CONFIG', config), \
+                        patch('neto_incident_monitor.app.DATA', folder), \
+                        patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+                    save_json(config, {'filters': [{'name': 'A', 'url': first}, {'name': 'B', 'url': second}]})
+                    app = App(root, history_path=folder / 'history.json', enable_tray=False,
+                              apply_startup=False, shared_session=True)
+                    app.session.ready_once = True
+                    app.handle_session_event('session_ready', None)
+                    app.start_session_cycle()
+                    self.assertTrue(app.cycle_active)
+                    self.assertTrue(all(button.enabled for button in app.filter_buttons))
+
+                    def save_dialog(edit, name, url):
+                        app.filter_buttons[int(edit)].invoke()
+                        title = 'Edytuj filtr' if edit else 'Dodaj filtr'
+                        dialog = next(widget for widget in root.winfo_children()
+                                      if isinstance(widget, tk.Toplevel) and widget.title() == title)
+                        label = next(widget for widget in dialog.winfo_children() if isinstance(widget, ttk.Entry))
+                        address = next(widget for widget in dialog.winfo_children() if isinstance(widget, tk.Text))
+                        label.delete(0, 'end')
+                        label.insert(0, name)
+                        address.delete('1.0', 'end')
+                        address.insert('1.0', url)
+                        next(widget for widget in dialog.winfo_children()
+                             if isinstance(widget, RoundedButton) and widget.text == 'Zapisz').invoke()
+                        self.assertFalse(dialog.winfo_exists())
+
+                    part = app.session.manual_filter_parts[app.selected_filter_url()]
+                    app.session.submit('filter', [part])
+                    save_dialog(True, 'Nowa nazwa', first)
+                    self.assertEqual(app.session.manual_filter_parts[app.selected_filter_url()], part)
+                    self.assertIn(part, app.session.work.pending_refreshes()[1])
+                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('synthetic')), \
+                            patch('neto_incident_monitor.app.messagebox.showerror') as error:
+                        app.filter_buttons[2].invoke()
+                    error.assert_called_once()
+                    self.assertIn(part, app.session.work.pending_refreshes()[1])
+                    self.assertEqual(app.filters[0]['name'], 'Nowa nazwa')
+
+                    saved_snapshot = {'SCTASK1': {'number': 'SCTASK1', 'url': ''}}
+                    app.snapshots[2] = saved_snapshot
+                    save_dialog(True, 'Inny adres', replacement)
+                    self.assertNotIn(part, app.session.work.pending_refreshes()[1])
+                    self.assertTrue(app.request_refresh('filter'))
+                    active_url = app.selected_filter_url()
+                    active = app.session.manual_filter_parts[active_url]
+                    record = LoginDiagnostics.record
+
+                    def delete_before_history(diagnostics, event, **facts):
+                        if event == 'filter_commit_start':
+                            app.filter_buttons[2].invoke()
+                        record(diagnostics, event, **facts)
+
+                    page = Mock()
+                    page.is_closed.return_value = False
+                    with patch('neto_incident_monitor.app.read_all', return_value=({'INC1': {'number': 'INC1'}}, 1)), \
+                            patch.object(LoginDiagnostics, 'record', autospec=True, side_effect=delete_before_history):
+                        result = app.read_filter(page, active_url, 'Inny adres', 1, {},
+                                                 FilterState(folder / 'seen.json'), app.session.health,
+                                                 {}, set(), {}, app.monitor_generation, threading.Event(), part=active)
+                    self.assertEqual(result, 'discarded')
+                    self.assertEqual(app.history.snapshot(active_url), {})
+                    self.assertIsNone(app.session.work.next_scope())
+                    self.assertEqual(app.snapshots, {1: saved_snapshot})
+                    save_dialog(False, 'Nowy filtr', added)
+                    self.assertEqual([item['name'] for item in app.filters], ['B', 'Nowy filtr'])
+                    app.filter_buttons[2].invoke()
+                    app.filter_buttons[2].invoke()
+                    self.assertEqual(app.session.filter_parts, ())
+                    self.assertTrue(app.cycle_active)
+                    self.assertFalse(app.session.cycle.stop.is_set())
+            finally:
+                root.destroy()
+
     @unittest.skipUnless(sys.platform == 'win32', 'Native Chromium visibility is Windows-specific')
     def test_password_save_prompt_gates_start_and_reauthentication(self):
         import ctypes
@@ -264,6 +429,20 @@ class SharedApplicationTests(unittest.TestCase):
                                                dialog.winfo_screenheight() / 2, delta=24)
                         self.assertIsNone(dialog.grab_current())
 
+                    def verify_main_focus(reason):
+                        def confirmed():
+                            for record in captured.records:
+                                entry = json.loads(record.getMessage())
+                                if entry.get('visibility_reason') == reason and entry.get('keyboard_focus_confirmed'):
+                                    return True
+                            return False
+
+                        until(confirmed)
+                        user32 = ctypes.WinDLL('user32')
+                        user32.GetForegroundWindow.restype = wintypes.HWND
+                        self.assertEqual(user32.GetForegroundWindow(), _frame_handle(user32, root))
+                        self.assertIs(root.focus_displayof().winfo_toplevel(), root)
+
                     app.session.thread.start()
                     try:
                         until(lambda: app.password_save_dialog is not None)
@@ -275,6 +454,7 @@ class SharedApplicationTests(unittest.TestCase):
                         press('Zapisano')
                         until(lambda: app.session_state == 'ready')
                         self.assertTrue(app.browser_window.is_hidden())
+                        verify_main_focus('initial_main_window')
                         self.assertTrue(app.auto_login.get())
                         self.assertTrue(app.request_refresh('dashboard'))
                         until(lambda: len(reads) == 1 and app.session.work.next_scope() is None
@@ -293,6 +473,7 @@ class SharedApplicationTests(unittest.TestCase):
                         press('Wyłącz autologowanie')
                         until(lambda: len(reads) == 2 and app.session_state == 'ready')
                         self.assertTrue(app.browser_window.is_hidden())
+                        verify_main_focus('recovered_main_window')
                         self.assertFalse(app.auto_login.get())
                         self.assertFalse(app.browser_options.snapshot()['auto_login'])
                         self.assertFalse(save.call_args.args[1]['auto_login'])
@@ -436,7 +617,7 @@ class SharedApplicationTests(unittest.TestCase):
                 finally:
                     root.destroy()
 
-    def test_minimized_start_and_later_session_confirmation_do_not_activate_main_window(self):
+    def test_minimized_start_and_background_recovery_do_not_activate_main_window(self):
         with TemporaryDirectory() as directory:
             root = tk.Tk()
             root.withdraw()
@@ -453,10 +634,117 @@ class SharedApplicationTests(unittest.TestCase):
                     root.update_idletasks()
                     minimize.assert_called_once()
                     app.handle_session_event('session_waiting', None)
-                    app.handle_session_event('session_ready', None)
+                    app.handle_session_event('session_ready', True)
+                    root.update_idletasks()
+                    root.deiconify()
+                    root.update_idletasks()
+                    app.handle_session_event('session_waiting', None)
+                    app.handle_session_event('session_ready', False)
                     root.update_idletasks()
                     activate.assert_not_called()
             finally:
+                root.destroy()
+
+    @unittest.skipUnless(sys.platform == 'win32', 'requires the Windows window manager')
+    def test_main_window_is_uncovered_after_login_and_native_reactivation(self):
+        import ctypes
+        import subprocess
+        from ctypes import wintypes
+        from uuid import uuid4
+
+        from neto_incident_monitor.login_diagnostics import _logger
+        from neto_incident_monitor.window_style import _frame_handle
+
+        user32 = ctypes.WinDLL('user32')
+        user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+        user32.FindWindowW.restype = wintypes.HWND
+        user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+        user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.AllowSetForegroundWindow.argtypes = [wintypes.DWORD]
+        title = f'Neto focus fixture {uuid4().hex}'
+        fixture = '''
+import ctypes, sys, threading, tkinter as tk
+from ctypes import wintypes
+api = ctypes.WinDLL('user32')
+api.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
+api.SetForegroundWindow.argtypes = [wintypes.HWND]
+api.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+api.GetAncestor.restype = wintypes.HWND
+root = tk.Tk()
+root.title(sys.argv[1])
+root.geometry('1050x850+25+25')
+root.attributes('-topmost', True)
+root.update_idletasks()
+own_hwnd = api.GetAncestor(root.winfo_id(), 2)
+def reactivate():
+    for line in sys.stdin:
+        hwnd = int(line)
+        if hwnd:
+            api.ShowWindowAsync(hwnd, 9)
+        api.SetForegroundWindow(hwnd or own_hwnd)
+threading.Thread(target=reactivate, daemon=True).start()
+root.mainloop()
+'''
+
+        def until(check, message):
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                root.update()
+                if check():
+                    return
+                time.sleep(.01)
+            self.fail(message() if callable(message) else message)
+
+        with TemporaryDirectory() as directory, subprocess.Popen([sys.executable, '-B', '-c', fixture, title],
+                stdin=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW) as cover:
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                with patch('neto_incident_monitor.app.read_json', return_value={'filters': [],
+                        'window_layout': {'geometry': '930x700+60+60'}}), \
+                        patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
+                        self.assertLogs(_logger, level='INFO') as logs:
+                    app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False,
+                              apply_startup=False, shared_session=True)
+                    until(lambda: user32.FindWindowW(None, title), 'The covering window did not map')
+                    covering = user32.FindWindowW(None, title)
+                    app.handle_session_event('session_ready', None)
+                    hwnd = _frame_handle(user32, root)
+                    topmost = lambda: bool(user32.GetWindowLongW(hwnd, -20) & 8)
+                    exposed = lambda: (app.main_window.inspect().exposure == 'exposed'
+                                       and user32.GetForegroundWindow() == hwnd)
+                    until(lambda: exposed() and topmost(), 'The initial active frame remained covered')
+
+                    # Let Windows restore/activate the main frame from another process.
+                    # No call to the app's show/focus methods on the return path.
+                    def switch_to_cover():
+                        user32.AllowSetForegroundWindow(cover.pid)
+                        cover.stdin.write('0\n')
+                        cover.stdin.flush()
+
+                    switch_to_cover()
+                    until(lambda: not app.main_window.inspect().foreground and not topmost(),
+                          lambda: ('The monitor did not release the topmost state: '
+                                   f'cover_active={user32.GetForegroundWindow() == covering}, '
+                                   f'monitor={app.main_window.inspect()}, topmost={topmost()}'))
+                    root.iconify()
+                    until(lambda: app.main_window.inspect().exposure == 'minimized',
+                          'The monitor did not minimize')
+                    cover.stdin.write(f'{hwnd}\n')
+                    cover.stdin.flush()
+                    until(lambda: exposed() and topmost(), 'Native restore did not expose the active monitor')
+
+                    switch_to_cover()
+                    until(lambda: not topmost() and not app.main_window.inspect().foreground,
+                          'The temporary raise was not released after native reactivation')
+                    rows = [json.loads(record.getMessage()) for record in logs.records]
+                    self.assertTrue(any(row.get('previous_window_exposure') == 'covered_topmost'
+                                        and row.get('window_exposure') == 'exposed'
+                                        and row.get('temporarily_raised') for row in rows))
+                    self.assertTrue(any(row.get('temporary_raise_released') for row in rows))
+            finally:
+                cover.terminate()
                 root.destroy()
 
     def test_one_browser_worker_serves_readers_and_import_without_monitoring(self):
@@ -581,9 +869,9 @@ class SharedApplicationTests(unittest.TestCase):
             revealed = []
             show_window = app.show_window
 
-            def check_visibility():
+            def check_visibility(**options):
                 revealed.append(app.browser_window.is_hidden())
-                show_window()
+                show_window(**options)
 
             app.show_window = check_visibility
             self.assertEqual(root.state(), 'withdrawn')

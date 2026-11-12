@@ -92,16 +92,23 @@ def secret_containers(settings):
 
 def notification_settings(settings):
     global_keys = (*KEYS, "teams_enabled", "google_chat_enabled", "notify", "notification_library")
-    filter_keys = (*KEYS, "enabled", "notify_teams", "notify_google_chat",
-                   "notify_windows", "notification_templates")
+    filter_flags = ('enabled', 'notify_teams', 'notify_google_chat', 'notify_windows')
+    filter_keys = (*KEYS, 'notification_templates')
 
     def values(entry, keys):
         return {key: value.original if isinstance(value, UnavailableSecret) else value
                 for key in keys if (value := entry.get(key)) is not None}
 
-    filters = {entry["url"]: values(entry, filter_keys)
-               for entry in settings.get("filters", []) if isinstance(entry, dict) and "url" in entry}
-    return values(settings, global_keys), filters
+    filters = {}
+    for entry in settings.get('filters', []):
+        if isinstance(entry, dict) and 'url' in entry:
+            preferences = values(entry, filter_keys)
+            preferences.update((key, bool(entry.get(key, True))) for key in filter_flags)
+            filters[entry['url']] = preferences
+    global_preferences = values(settings, global_keys)
+    if not global_preferences.get('notification_library'):
+        global_preferences.pop('notification_library', None)
+    return global_preferences, filters
 
 
 def save_config(path, settings):
@@ -109,10 +116,23 @@ def save_config(path, settings):
         from uuid import uuid4
         previous = load_config(path, {}, migrate_plaintext=False)
         encoded = dict(settings)
+        old_global, old_filters = notification_settings(previous)
+        new_global, new_filters = notification_settings(settings)
         revision = previous.get("notification_revision")
-        if not revision or notification_settings(previous) != notification_settings(settings):
+        if not revision or old_global != new_global:
             revision = uuid4().hex
         encoded["notification_revision"] = revision
+        previous_revisions = previous.get('filter_notification_revisions', {})
+        filter_revisions = {}
+        for url, preferences in new_filters.items():
+            if old_filters.get(url) != preferences:
+                filter_revisions[url] = uuid4().hex
+            elif url in previous_revisions:
+                filter_revisions[url] = previous_revisions[url]
+        if filter_revisions:
+            encoded['filter_notification_revisions'] = filter_revisions
+        else:
+            encoded.pop('filter_notification_revisions', None)
         if isinstance(encoded.get('filters'), list):
             encoded['filters'] = [dict(entry) if isinstance(entry, dict) else entry for entry in encoded['filters']]
         for container, _ in secret_containers(encoded):

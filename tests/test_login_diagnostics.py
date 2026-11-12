@@ -52,6 +52,18 @@ class LoginDiagnosticsTests(unittest.TestCase):
             log = diagnostics.LoginDiagnostics()
             log.record('submit_attempt', attempt=1)
 
+    def test_window_presentation_records_states_without_foreign_window_metadata(self):
+        with self.assertLogs(diagnostics._logger, level='INFO') as captured:
+            diagnostics.LoginDiagnostics().record('session_visibility', visibility_reason='main_window_observed',
+                previous_window_exposure='covered_topmost', window_exposure='exposed', temporarily_raised=True,
+                foreground_confirmed=True, foreign_window_title='PRIVATE_TITLE', foreign_window_handle=123)
+        row = json.loads(captured.records[-1].getMessage())
+        self.assertEqual(row['previous_window_exposure'], 'covered_topmost')
+        self.assertEqual(row['window_exposure'], 'exposed')
+        self.assertTrue(row['temporarily_raised'])
+        self.assertNotIn('foreign_window_handle', row)
+        self.assertNotIn('PRIVATE_TITLE', captured.output[-1])
+
     def test_rotating_log_is_created_in_data_directory(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(diagnostics, 'DATA', Path(folder)), \
              patch.object(diagnostics._logger, 'handlers', []):

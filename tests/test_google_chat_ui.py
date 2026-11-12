@@ -94,4 +94,4 @@ class GoogleChatUITests(unittest.TestCase):
         show_filter_settings(self.app, 0)
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-        self.assertEqual([w.variable.get() for w in toggles[:3]], [True, False, True])
+        self.assertEqual([w.variable.get() for w in toggles[:3]], [True, True, False])

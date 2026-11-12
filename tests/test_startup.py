@@ -124,7 +124,8 @@ class StartupTests(unittest.TestCase):
                             self.assertEqual(root.state(), 'normal')
                 finally:
                     for timer in root.tk.call('after', 'info'):
-                        root.after_cancel(timer)
+                        # Child widgets unregister their own Tcl callbacks when destroyed.
+                        root.tk.call('after', 'cancel', timer)
                     root.destroy()
 
     def test_frozen_command_quotes_executable_with_spaces(self):

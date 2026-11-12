@@ -23,6 +23,7 @@ class ReadJob:
     parts: deque
     requested: tuple
     submitted_at: float = field(default_factory=time.monotonic)
+    skipped_filters: int = 0
 
 
 class ReadQueue:
@@ -39,13 +40,17 @@ class ReadQueue:
             jobs = ([self.active] if self.active is not None else []) + list(self.pending)
             parts = deque(parts)
             requested = set(parts)
-            existing = next((job for job in jobs
-                             if scope == job.scope == 'all' or requested.issubset(job.parts)), None)
+            if scope == 'all':
+                existing = next((job for job in jobs if job.scope == 'all' and set(job.requested) == requested), None)
+            else:
+                existing = next((job for job in jobs if requested.issubset(job.parts)), None)
             if existing is not None:
                 return existing.id, True
             merged = False
             if scope == 'all':
                 for job in self.pending:
+                    if job.scope == 'all':
+                        continue
                     remaining = deque(part for part in job.parts if part not in parts)
                     merged |= len(remaining) != len(job.parts)
                     job.parts = remaining
@@ -58,6 +63,25 @@ class ReadQueue:
         with self.lock:
             jobs = ([self.active] if self.active is not None else []) + list(self.pending)
             return any(job.scope == 'all' for job in jobs), {part for job in jobs for part in job.parts}
+
+    def has_full_read(self, parts):
+        requested = set(parts)
+        with self.lock:
+            jobs = ([self.active] if self.active is not None else []) + list(self.pending)
+            return any(job.scope == 'all' and set(job.requested) == requested for job in jobs)
+
+    def discard_pending_filters(self, parts):
+        with self.lock:
+            affected = []
+            for job in self.pending:
+                remaining = deque(part for part in job.parts if part not in parts)
+                skipped = len(job.parts) - len(remaining)
+                if skipped:
+                    job.parts = remaining
+                    job.skipped_filters += skipped
+                    affected.append((job, skipped))
+            self.pending = deque(job for job in self.pending if job.parts)
+            return affected
 
     def cancel_pending(self, part):
         with self.lock:

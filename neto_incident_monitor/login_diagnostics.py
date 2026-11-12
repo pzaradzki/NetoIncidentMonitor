@@ -40,17 +40,25 @@ FIELDS = ('password_count', 'password_filled', 'password_enabled', 'password_aut
 
 # Only explicitly approved structural fields may reach disk. Unknown text is
 # discarded rather than redacted after the fact.
-NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', 'foreground_confirmed', 'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s',
+NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', 'foreground_confirmed', 'keyboard_focus_confirmed', 'focus_handoff', 'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s',
+    'window_activation_accepted', 'temporarily_raised', 'temporary_raise_released',
     'auto_blocked', 'auto_submitted', 'account_selected', 'blocked', 'supported_origin',
     'password_ready', 'button_count', 'aria_or_class_disabled', 'attempt',
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
     'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available', 'widget_count', 'activated_count',
     'filter_index', 'outside_schedule', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size', 'previous_page_size',
     'row_count', 'records_read', 'duration_ms', 'request_id', 'expected_count', 'ready_count', 'tile_index', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'context_confirmed', 'category_count', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'payload_bytes', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
+WINDOW_EXPOSURE = {'hidden', 'minimized', 'unavailable', 'off_screen', 'exposed', 'partly_covered',
+                   'covered', 'covered_topmost'}
+
 TEXT_FIELDS = {
     'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'favorites'},
-    'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled'},
-    'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window'},
+    'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled', 'filter_changed'},
+    'filter_change': {'add', 'rename', 'replace', 'remove'},
+    'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window',
+                          'recovered_main_window', 'main_window_observed'},
+    'window_exposure': WINDOW_EXPOSURE,
+    'previous_window_exposure': WINDOW_EXPOSURE,
     'url_kind': {'direct', 'wrapper', 'short'},
     'validation_result': {'accepted', 'rejected'},
     'validation_reason': {'none', 'unsafe', 'unsupported_target', 'conflicting_parameters'},
@@ -73,7 +81,7 @@ TEXT_FIELDS = {
                     'authentication_required'},
     'cache_result': {'saved','failed','restored','invalid','skipped'},
     'delay_reason': {'filter','dashboard','login','browser','idle'},
-    'outcome': {'returned', 'error', 'cancelled', 'authentication'},
+    'outcome': {'started', 'returned', 'partial', 'error', 'cancelled', 'authentication'},
     'wait_reason': {'loading', 'missing', 'invalid', 'unstable', 'ready', 'observation_failed'},
     'risk_tile': {'P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'},
     'tile': {'Otwarte wnioski L1', 'Wnioski L1 >7 dni', 'Wnioski L1 >14 dni', 'Nieprzypisane wnioski L1', 'Wnioski Smartfon – start >3 dni'},
@@ -140,7 +148,7 @@ EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}
 EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
-EVENTS.update({'session_visibility', 'session_connection_error', 'refresh_queue'})
+EVENTS.update({'session_visibility', 'session_connection_error', 'refresh_queue', 'filter_config_change'})
 EVENTS.add('password_save_prompt')
 TEXT_FIELDS['password_save_choice'] = {'waiting', 'saved', 'disabled', 'cancelled', 'save_error'}
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}

@@ -29,6 +29,10 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[028 — Odsłonięcie głównego okna](028-odsloniecie-glownego-okna.md) rozdziela aktywację, fokus i odsłonięcie głównego okna po logowaniu.
+
+[027 — Zmiany filtrów podczas monitoringu](027-zmiany-filtrow-podczas-monitoringu.md) opisuje zakres partii, unieważnianie odczytów oraz rewizje powiadomień.
+
 [026 — Potwierdzenie zapisu poświadczeń](026-potwierdzenie-zapisu-poswiadczen.md) utrzymuje Chromium widoczne po ręcznym wpisaniu hasła przy włączonym autologowaniu.
 
 [025 — Wspólna sesja ServiceNow](025-wspolna-sesja-servicenow.md) określa właściciela karty, start po logowaniu i kolejkę odczytów oraz importu.

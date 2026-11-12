@@ -1,7 +1,7 @@
 """Small keyboard-accessible controls matching the application palette."""
 import tkinter as tk
 from time import monotonic
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw, ImageOps, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
@@ -577,6 +577,8 @@ class DashboardButton(RoundedButton):
 class FilterList(tk.Canvas):
     """Card list exposing the small Treeview interface used by the app."""
     ROW = 48
+    ICON_SIZE = 20
+    ICON_SLOT = 24
 
     def __init__(self, parent):
         super().__init__(parent, width=200, height=4 * self.ROW, bg=SURFACE,
@@ -584,9 +586,12 @@ class FilterList(tk.Canvas):
         self.rows, self.selected, self.pictures = {}, None, []
         self.card_images = {}
         self.labels = {}
-        self.image_width = None
+        self.image_layout = None
         self.show_selection = True
         self.enabled_rows = {}
+        self.notification_channels = ()
+        self.notification_rows = {}
+        self.notification_images = {}
         self.updating_item = None
         self.on_toggle = None
         self.on_select = None
@@ -713,10 +718,18 @@ class FilterList(tk.Canvas):
     def redraw(self, event=None):
         self.delete_canvas()
         width = max(100, self.winfo_width())
-        if width != self.image_width:
+        icon_width = len(self.notification_channels) * self.ICON_SLOT
+        layout = (width, icon_width)
+        if layout != self.image_layout:
             self.card_images.clear()
             self.labels.clear()
-            self.image_width = width
+            self.image_layout = layout
+        badge_inline = width - icon_width >= 220
+        if badge_inline:
+            badge = (width - 127 - icon_width, 11, width - 50 - icon_width, 33)
+        else:
+            badge = (27, 24, 104, 40)
+        first_icon = width - 48 - icon_width + self.ICON_SLOT / 2
         from tkinter.font import Font
         font = Font(self, font=("Segoe UI", 9))
         for index, (iid, name) in enumerate(self.rows.items()):
@@ -726,7 +739,7 @@ class FilterList(tk.Canvas):
             key = (chosen, bool(enabled), updating)
             photo = self.card_images.get(key)
             if photo is None:
-                photo = self.card_image(width, chosen, enabled, updating)
+                photo = self.card_image(width, chosen, enabled, badge if updating else None)
                 self.card_images[key] = photo
             self.pictures.append(photo)
             y = index * self.ROW
@@ -734,28 +747,44 @@ class FilterList(tk.Canvas):
             label_key = (name, updating)
             if label_key not in self.labels:
                 label = name
-                while label and font.measure(label) > width - (162 if updating else 72):
+                label_limit = width - icon_width - (162 if updating and badge_inline else 72)
+                while label and font.measure(label) > label_limit:
                     label = label[:-1]
                 if label != name:
                     label = label[:-1] + "…"
                 self.labels[label_key] = label
-            self.create_text(27, y + 22, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            name_y = 13 if updating and not badge_inline else 22
+            self.create_text(27, y + name_y, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
             if updating:
-                self.create_text(width - 89, y + 22, text="Aktualizuje",
+                self.create_text((badge[0] + badge[2]) / 2, y + (badge[1] + badge[3]) / 2, text="Aktualizuje",
                                  fill="#8ee2ac", font=("Segoe UI", 8))
+            states = self.notification_rows.get(iid, ())
+            for slot, (channel, active) in enumerate(zip(self.notification_channels, states)):
+                self.create_image(first_icon + slot * self.ICON_SLOT, y + name_y,
+                                  image=self.notification_icon(channel, active), tags="notification_icon")
         self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))
         self.draw_drop_marker()
 
-    def card_image(self, width, chosen, enabled, updating):
+    def notification_icon(self, channel, active):
+        if channel not in self.notification_images:
+            from neto_incident_monitor.runtime_paths import ROOT
+            filename = f"icons8-{channel.replace('_', '-')}-48.png"
+            with Image.open(ROOT / "icons" / filename) as source:
+                color = source.convert("RGBA").resize((self.ICON_SIZE, self.ICON_SIZE), Image.Resampling.LANCZOS)
+            gray = ImageOps.colorize(ImageOps.grayscale(color), "#696969", "#b6b6b6")
+            gray.putalpha(color.getchannel("A"))
+            self.notification_images[channel] = (ImageTk.PhotoImage(gray, master=self),
+                                                 ImageTk.PhotoImage(color, master=self))
+        return self.notification_images[channel][active]
+
+    def card_image(self, width, chosen, enabled, badge):
         picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 2 * 4, width * 4 - 1, 42 * 4), radius=8 * 4,
                                fill="#432e36" if chosen else "#30353e",
                                outline=ACCENT if chosen else "#444b56", width=4)
-        badge_left = width - 127
-        if updating:
-            draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 50) * 4, 33 * 4),
-                                   radius=11 * 4, fill="#244b37")
+        if badge is not None:
+            draw.rounded_rectangle(tuple(value * 4 for value in badge), radius=11 * 4, fill="#244b37")
         left = width - 38
         draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
                                fill=ACCENT if enabled else "#555c68")

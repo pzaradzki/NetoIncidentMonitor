@@ -12,6 +12,8 @@ cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or
 browser_data = [(str(path), path.parent.relative_to(root).as_posix())
                 for path in sorted((root / "assets").rglob("*"))
                 if path.is_file() and path.name != "Cached Theme.pak"]
+browser_data.extend((str(root / "icons" / f"icons8-{channel}-48.png"), "icons")
+                    for channel in ("windows", "google-chat", "teams"))
 for name in ("chromium", "ffmpeg"):
     info = next(entry for entry in metadata["browsers"] if entry["name"] == name)
     folder = name + "-" + info["revision"]

@@ -65,8 +65,8 @@ def show_filter_settings(app, index):
     schema = profiles.get(entry['url'], {}).get('schema', []) if isinstance(profiles, dict) else []
     for key, title, description, enabled in [
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
-        ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
         ("notify_google_chat", "Powiadomienia Google Chat", "Wymagają włączonych powiadomień globalnych.", app.google_chat_enabled.get()),
+        ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
         ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
         ("allow_large_list", "Pobieraj duże listy bez pytania", "Dotyczy list zawierających ponad 1000 wpisów.", True),
     ]:
@@ -124,6 +124,9 @@ def show_filter_settings(app, index):
             app.notification_library = previous_library
             messagebox.showerror("Ustawienia filtra", 'Nie udało się zapisać ustawień filtra.', parent=window)
             return
+        app.refresh_filter_notifications()
+        app.update_session_filters()
+        app.schedule.request()
         window.destroy()
 
     footer = ttk.Frame(panel, style="White.TFrame")

@@ -79,7 +79,11 @@ Każdy filtr ma własną listę bieżących incydentów i własną historię. Cz
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
 
+W źródłach po wydaniu 1.10.0 przyciski **Dodaj filtr**, **Edytuj** i **Usuń** działają także podczas monitorowania. Filtr dodany podczas rozpoczętej partii trafi do następnej partii swojego typu. Możesz odczytać go wcześniej przyciskiem **Aktualizuj**. Zmiana nazwy pozwala dokończyć odczyt. Zmiana adresu lub usunięcie pomija odczyty starego filtra, zachowując zatwierdzoną historię. **Sprawdź teraz** obejmuje zestaw filtrów z chwili zlecenia.
+
 Lewy panel filtrów ma domyślnie 329 px szerokości. Aby zmienić szerokość, przeciągnij separator przy prawej krawędzi panelu. Aplikacja zapamięta wybraną szerokość.
+
+W źródłach po wydaniu 1.10.0 ikony Windows, Google Chat i Teams obok przełącznika filtra pokazują jego ustawienia powiadomień. Kolor oznacza kanał włączony dla filtra, a szarość kanał wyłączony. Kanał wyłączony globalnie jest ukryty.
 
 Przycisk **Konfiguruj** obok przycisku **Kolumny** otwiera **Ustawienia filtra** zaznaczonego na liście, obejmujące powiadomienia i zgodę na duże odczyty.
 

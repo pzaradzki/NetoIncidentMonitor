@@ -18,11 +18,12 @@ from neto_incident_monitor.pagination import Cancelled
 
 
 class StopSignal:
-    def __init__(self, *events):
+    def __init__(self, *events, invalidated=None):
         self.events = events
+        self.invalidated = invalidated
 
     def is_set(self):
-        return any(event.is_set() for event in self.events)
+        return any(event.is_set() for event in self.events) or bool(self.invalidated and self.invalidated())
 
 
 class MonitorCycle:
@@ -99,6 +100,18 @@ class SharedSession:
             'refresh_queue', queue_scope=part.scope, queue_state='cancelled', outcome='cancelled')
         return True
 
+    def update_filters(self, parts):
+        invalidated = {part for url, part in self.manual_filter_parts.items() if parts.get(url) != part}
+        self.manual_filter_parts = parts
+        self.filter_parts = tuple(part for part in parts.values() if part.data['scheduled'])
+        if invalidated:
+            for job, skipped in self.work.discard_pending_filters(invalidated):
+                LoginDiagnostics(source='monitor', request_id=job.id).record('refresh_queue',
+                    queue_scope=job.scope, queue_state='filter_changed', item_count=skipped)
+
+    def filter_is_current(self, part):
+        return self.manual_filter_parts.get(part.target[0]) == part
+
     def start_cycle(self, initial, intervals):
         self.cycle = MonitorCycle(initial, intervals)
         self.app.schedule.request()
@@ -134,6 +147,7 @@ class SharedSession:
                 if page.is_closed():
                     raise BrowserClosedError('Chromium zamknięto podczas oczekiwania na zapis hasła.')
                 if request['done'].is_set():
+                    self.runtime.restore_main_focus = request.get('restore_main_focus', False)
                     return request['choice'] in ('saved', 'disabled')
                 if self.runtime.page.is_closed():
                     self.runtime.page = page
@@ -154,6 +168,7 @@ class SharedSession:
 
         self.connected = False
         self.runtime.visible_login = visible
+        self.runtime.restore_main_focus = False
         self.emit('session_waiting')
         if self.active_job is not None:
             self.record_job(self.active_job, 'waiting_login')
@@ -189,11 +204,13 @@ class SharedSession:
                     break
                 page.wait_for_timeout(50)
             hidden = self.runtime.window.is_hidden()
-            self.log.record('session_visibility', visibility_reason='session_confirmed', hidden=hidden)
+            restore_focus = self.runtime.restore_main_focus
+            self.log.record('session_visibility', visibility_reason='session_confirmed', hidden=hidden,
+                            focus_handoff=restore_focus)
             if not hidden:
                 raise BrowserClosedError('Nie udało się ukryć okna Chromium.')
             self.connected = self.ready_once = True
-            self.emit('session_ready')
+            self.emit('session_ready', restore_focus)
             return True
         finally:
             self.manual_login = False
@@ -287,6 +304,8 @@ class SharedSession:
             stop = StopSignal(self.closed, cycle.stop) if source != 'manual' else self.closed
             if part.scope == 'favorites':
                 stop = StopSignal(self.closed, part.data['stop'])
+            elif part.scope == 'filter':
+                stop = StopSignal(stop, invalidated=lambda part=part: not self.filter_is_current(part))
             try:
                 checkpoint(stop)
                 if not self.connected or authentication_required(page, HOME):
@@ -297,6 +316,7 @@ class SharedSession:
                 if part.scope == 'favorites':
                     part.data['events'].put((part.target, 'result', ('cancelled', 'Import anulowany.')))
                 success = False
+            skipped = part.scope == 'filter' and not self.filter_is_current(part)
             self.work.complete_part(part, manual=source == 'manual', success=success)
             if source == 'initial':
                 cycle.initial.popleft()
@@ -304,8 +324,14 @@ class SharedSession:
                 cycle.filters.popleft()
                 if not cycle.filters:
                     cycle.finish_filter_batch()
+                if skipped:
+                    self.log.record('refresh_queue', queue_scope='filter', queue_state='filter_changed', item_count=1)
             if source == 'manual':
-                self.active_job_success &= bool(success)
+                if skipped:
+                    self.active_job.skipped_filters += 1
+                    self.record_job(self.active_job, 'filter_changed', item_count=1)
+                else:
+                    self.active_job_success &= bool(success)
             self.emit('refresh_state')
 
     def next_part(self, cycle):
@@ -318,13 +344,14 @@ class SharedSession:
                         not any(part.scope == 'threatened' for part in job.parts)):
                     return ReadPart('threatened'), 'threatened'
                 return job.parts[0], 'manual'
-            self.record_job(job, 'finished', outcome='returned' if self.active_job_success else 'error')
+            outcome = 'error' if not self.active_job_success else 'partial' if job.skipped_filters else 'returned'
+            self.record_job(job, 'finished', outcome=outcome, item_count=job.skipped_filters)
             if cycle and job.scope == 'all':
                 cycle.finish_full_read(job.requested, self.filter_parts)
             self.work.finish()
             self.active_job = None
             self.after_manual = True
-            self.emit('session_job_finished', (job.scope, self.active_job_success))
+            self.emit('session_job_finished', (job.scope, self.active_job_success, job.skipped_filters))
         if cycle and cycle.initial:
             return cycle.initial[0], 'initial'
         if threats_due:

@@ -189,6 +189,55 @@ class DurableAlertTests(unittest.TestCase):
             self.assertIn("1", app.events.get_nowait()[1])
 
 class NotificationRevisionTests(unittest.TestCase):
+    def test_filter_changes_keep_other_alert_targets_and_invalidate_readded_filter(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.secret_config import save_config
+        from neto_incident_monitor.threatened import THREATENED_URL
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.json'
+            first = {'name': 'A', 'url': 'A'}
+            second = {'name': 'B', 'url': 'B'}
+            # Existing installations may have alerts carrying only the global revision.
+            path.write_text(json.dumps({'notify': True, 'notification_revision': 'legacy', 'filters': [first]}),
+                            encoding='utf-8')
+            app = App.__new__(App)
+            with patch('neto_incident_monitor.app.CONFIG', path):
+                original = app.alert_routes('A')
+                threats = app.alert_routes(THREATENED_URL)
+                save_config(path, {'notify': True, 'filters': [first, second], 'notification_library': {}})
+                old_second = app.alert_routes('B')
+                self.assertEqual(app.alert_routes('A'), original)
+                self.assertEqual(app.alert_routes(THREATENED_URL), threats)
+                save_config(path, {'notify': True, 'filters': [first]})
+                self.assertEqual(app.alert_routes('B'), {})
+                save_config(path, {'notify': True, 'filters': [first, second]})
+                self.assertNotEqual(app.alert_routes('B'), old_second)
+                self.assertEqual(app.alert_routes('A'), original)
+                self.assertEqual(app.alert_routes(THREATENED_URL), threats)
+
+    def test_readded_filter_starts_a_new_baseline_and_keeps_history(self):
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'history.json'
+            history = History(path)
+            checkpoint = lambda: None
+            old = {'INC1': {'number': 'INC1', 'short_description': 'Stary zapis'}}
+            history.commit_filter(FilterState(path.with_name('seen.json')), 'A', 'Filtr', old, False, checkpoint)
+            alerts = Mock(return_value=())
+            current = {'INC1': {'number': 'INC1'}, 'INC2': {'number': 'INC2'}}
+            self.assertEqual(history.commit_filter(None, 'A', 'Filtr', current, False, checkpoint,
+                                                   alerts, filter_instance='new'), set())
+            alerts.assert_not_called()
+            self.assertEqual(history.record('INC1', 'A')['incident'], old['INC1'])
+            reopened = History(path)
+            current['INC3'] = {'number': 'INC3'}
+            self.assertEqual(reopened.commit_filter(None, 'A', 'Filtr', current, False, checkpoint,
+                                                    alerts, filter_instance='new'), {'INC3'})
+            alerts.assert_called_once_with({'INC3'})
+
     def test_revision_changes_when_settings_return_to_previous_values(self):
         from neto_incident_monitor.secret_config import load_config, save_config
 
