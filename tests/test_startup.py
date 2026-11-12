@@ -9,6 +9,45 @@ from neto_incident_monitor.startup import set_windows_startup, startup_command
 
 
 class StartupTests(unittest.TestCase):
+    def test_settings_window_is_centered_on_first_open_and_reopen(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.widgets import RoundedButton
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                with patch('neto_incident_monitor.app.read_json', return_value={'filters': []}):
+                    app = App(root, history_path=Path(folder) / 'history.json',
+                              enable_tray=False, apply_startup=False, shared_session=True)
+                app.session.ready_once = True
+                app.handle_session_event('session_ready', None)
+                root.update()
+                window = app.settings_window
+                button = next(child for child in app.controls.winfo_children()
+                              if isinstance(child, RoundedButton) and child.text == 'Ustawienia')
+                x = max(0, (window.winfo_screenwidth() - 700) // 2)
+                y = max(0, (window.winfo_screenheight() - 700) // 2)
+                geometry = window.geometry
+
+                def before_first_map(spec=None):
+                    return '1x1+0+0' if spec is None else geometry(spec)
+
+                for opening in (1, 2):
+                    with self.subTest(opening=opening):
+                        self.assertEqual(window.state(), 'withdrawn')
+                        if opening == 1:
+                            with patch.object(window, 'geometry', side_effect=before_first_map):
+                                button.invoke()
+                        else:
+                            button.invoke()
+                        root.update_idletasks()
+                        self.assertTrue(window.winfo_ismapped())
+                        self.assertEqual(window.geometry(), f'700x700+{x}+{y}')
+                    window.withdraw()
+            finally:
+                root.destroy()
+
     def test_windows_startup_has_no_ui_control_and_other_start_options_remain(self):
         from neto_incident_monitor.app import App
         from neto_incident_monitor.widgets import Toggle

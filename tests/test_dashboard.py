@@ -82,8 +82,7 @@ class DashboardTests(unittest.TestCase):
         for index, container in enumerate(containers):
             container.filter.return_value = container
             checkbox = container.get_by_role.return_value
-            # Both observations now require checked AND not indeterminate.
-            checkbox.evaluate.side_effect = [index == 1, True]
+            checkbox.evaluate.side_effect = ['all', 'all'] if index == 1 else ['none', 'all', 'all']
         # This unit test covers category actions, not a browser document/session.
         with patch('neto_incident_monitor.dashboard.expect'), \
                 patch('neto_incident_monitor.dashboard.authentication_required', return_value=False):

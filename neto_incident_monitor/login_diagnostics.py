@@ -45,9 +45,12 @@ NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', '
     'password_ready', 'button_count', 'aria_or_class_disabled', 'attempt',
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
     'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available', 'widget_count', 'activated_count',
-    'filter_index', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size',
+    'filter_index', 'outside_schedule', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size', 'previous_page_size',
     'row_count', 'records_read', 'duration_ms', 'request_id', 'expected_count', 'ready_count', 'tile_index', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'context_confirmed', 'category_count', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'payload_bytes', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
 TEXT_FIELDS = {
+    'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'favorites'},
+    'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled'},
+    'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window'},
     'url_kind': {'direct', 'wrapper', 'short'},
     'validation_result': {'accepted', 'rejected'},
     'validation_reason': {'none', 'unsafe', 'unsupported_target', 'conflicting_parameters'},
@@ -56,7 +59,7 @@ TEXT_FIELDS = {
     'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
                       'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
                       'stale_id', 'period_mismatch'},
-    'rendering_scope': {'dashboard', 'login'},
+    'rendering_scope': {'dashboard', 'login', 'favorites'},
     'recovery_reason': {'logout', 'network', 'stalled', 'popup_closed'},
     'login_state': {'authentication', 'session', 'target', 'unknown', 'logout'},
     'previous_login_state': {'authentication', 'session', 'target', 'unknown', 'logout', 'initial'},
@@ -68,8 +71,6 @@ TEXT_FIELDS = {
                     'ambiguous_widget','incomplete_widgets','definition_changed','timeout','document_changed',
                     'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected',
                     'authentication_required'},
-    'drilldown_result': {'ready', 'unavailable', 'not_ready', 'value_changed', 'button_unavailable',
-                         'list_unconfirmed', 'authentication', 'authentication_retry'},
     'cache_result': {'saved','failed','restored','invalid','skipped'},
     'delay_reason': {'filter','dashboard','login','browser','idle'},
     'outcome': {'returned', 'error', 'cancelled', 'authentication'},
@@ -83,9 +84,10 @@ TEXT_FIELDS = {
     'origin': {'adeo_identity', 'servicenow', 'other'},
     'filter_outcome': {'success', 'error', 'cancelled', 'discarded', 'waiting_login', 'interrupted', 'rejected'},
     'source': {'dashboard', 'monitor', 'pagination', 'configuration'},
-    'pagination_stage': {'navigate', 'resolve_url', 'read_rows', 'first_page', 'list_total',
+    'pagination_stage': {'navigate', 'resolve_url', 'read_rows', 'first_page', 'list_total', 'page_size',
                          'next_page', 'verify_complete', 'retry', 'prepare', 'history_write'},
     'pagination_mode': {'ranged', 'unpaginated'},
+    'page_size_result': {'checking_menu', 'confirmed', 'unconfirmed', 'menu_unavailable', 'control_unavailable'},
     'pager_direction': {'first', 'next'},
     'pagination_reason': {'ready', 'loading', 'page_unavailable', 'ambiguous_list',
         'pager_disagreement', 'invalid_metadata', 'metadata_missing', 'range_mismatch',
@@ -95,6 +97,7 @@ TEXT_FIELDS = {
         'timeout', 'element_unavailable', 'network_connection'},
     'section': {'sla', 'held', 'requests', 'threatened'},
     'category': {'status', 'location', 'assigned', 'agent', 'other'},
+    'category_state': {'mixed', 'none', 'all'},
     'operation': {'document_ready', 'navigate', 'open_tab', 'open_period', 'fill_start', 'fill_end', 'period_ready', 'commit_period', 'period_confirm', 'refresh_cards', 'category_select', 'category_apply', 'category_confirm', 'prepare_widgets', 'read_scores'},
     'network_error': {'aborted', 'timeout', 'dns', 'connection', 'certificate', 'other'},
     'error_category': {'timeout', 'browser_closed', 'profile_locked', 'browser_missing',
@@ -114,9 +117,9 @@ TEXT_FIELDS = {
         'wybór konta nie spowodował przejścia do formularza',
         'nierozpoznany krok logowania wymaga obsługi użytkownika'},
 }
-EVENTS = set('''dashboard_drilldown_start dashboard_drilldown_tile dashboard_drilldown_finish dashboard_drilldown_open threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred category_check_recovered category_check_failed dashboard_context dashboard_refresh section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end dashboard_observation pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
+EVENTS = set('''threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred category_check_recovered category_check_failed category_partial_resolved dashboard_context dashboard_refresh section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end dashboard_observation pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
 filter_read_start filter_read_resumed filter_read_end filter_read_error filter_links_degraded filter_commit_start filter_commit_complete
-filter_url_validation pagination_query_comparison pagination_approval_wait pagination_action pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
+filter_url_validation pagination_query_comparison pagination_approval_wait pagination_action pagination_page_size pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
 start blocked automatic_skipped awaiting_submission_result dashboard_widgets_retry
 waiting_password_fill waiting_remembered_form submit_unavailable submit_retry_cancelled
 submit_attempt submit_error submit_retry_scheduled submit_clicked account_selection_ambiguous
@@ -137,9 +140,22 @@ EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}
 EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
+EVENTS.update({'session_visibility', 'session_connection_error', 'refresh_queue'})
+EVENTS.add('password_save_prompt')
+TEXT_FIELDS['password_save_choice'] = {'waiting', 'saved', 'disabled', 'cancelled', 'save_error'}
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}
 TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})
 NUMERIC_FIELDS.add('accepted_parts')
+NUMERIC_FIELDS.update({'item_count', 'group_count', 'duplicate_count', 'rejected_count'})
+TEXT_FIELDS['source'].add('favorites')
+TEXT_FIELDS['import_stage'] = {'page', 'open', 'snapshot', 'complete', 'cleanup', 'viewport_read', 'viewport_natural'}
+TEXT_FIELDS['import_reason'] = {'unsupported', 'incomplete', 'empty_unconfirmed', 'context',
+    'search_changed', 'timeout', 'document_changed', 'navigation_interrupted',
+    'network_connection', 'network_dns', 'element_unavailable', 'unexpected'}
+EVENTS.update({'browser_cleanup_error', 'favorites_stage', 'favorites_attempt',
+    'favorites_login_start', 'favorites_login_end', 'favorites_read_error',
+    'favorites_error', 'favorites_end', 'favorites_preview', 'favorites_save_error',
+    'favorites_saved', 'favorites_dialog_end'})
 TEXT_FIELDS.update({
     'delivery_stage': {'read', 'route', 'claim', 'send', 'finish', 'worker'},
     'delivery_outcome': {'started', 'retry', 'error', 'cancelled', 'complete', 'accepted', 'uncertain'},
@@ -190,7 +206,7 @@ def safe_facts(facts):
             clean[key] = value
         elif key == 'error_type':
             clean[key] = 'Error'
-        elif key == 'action_id' and isinstance(value, str):
+        elif key in ('action_id', 'import_id') and isinstance(value, str):
             import re
             if re.fullmatch(r'[a-f0-9]{32}', value):
                 clean[key] = value

@@ -1,6 +1,6 @@
 # 014 — Linki dashboardu pobierane po kliknięciu
 
-Data: 4 listopada 2026. Status: przyjęta i wdrożona w źródłach.
+Data: 4 listopada 2026. Status: zastąpiona przez [024](024-kafelki-informacyjne.md). Poniżej zachowano pierwotne uzasadnienie i opis realizacji.
 
 ## Decyzja i powód
 

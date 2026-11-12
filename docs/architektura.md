@@ -1,18 +1,28 @@
 # Architektura Neto Incident Monitor
 
-Bieżący stan opisuje wersja [1.9.4](wersje/v1.9.4.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+Bieżący stan opisuje wersja [1.10.0](wersje/v1.10.0.md). Zakres wykonanych prób jest w opisie wersji, a pozostałe prace w [indeksie planów](plany/README.md).
+
+Lista filtrów aktualizuje pełny zestaw kart jedną operacją, bez przejściowego pustego obszaru przewijania. Przełącznik zmienia stan istniejącej listy po udanym zapisie, bez jej odbudowy; zachowuje rewizje filtrów i budzenie harmonogramu. Grafiki kart są współdzielone według szerokości i stanu (najwyżej osiem wariantów), a skrócone etykiety są pamiętane do zmiany danych lub szerokości. Zapis konfiguracji nadal jest natychmiastowy i wycofuje stan po błędzie. [Próby listy](plany/zakonczone/plynnosc-listy-filtrow.md).
 
 ## Przepływ i odpowiedzialności
+
+Import pozostawia naturalny rozmiar strony na czas nawigacji i logowania. Tymczasowe 751×884 obejmuje wyłącznie czytnik menu. Emulacja kończy się przed odzyskiwaniem sesji, po błędzie i przy anulowaniu. [Decyzja 023](decyzje/023-naturalne-logowanie-importu.md).
+
+W bieżących źródłach uruchomienie aplikacji tworzy jeden widoczny Chromium. Po potwierdzeniu sesji na stronie SOW i ukryciu Chromium aplikacja udostępnia główne okno. `SharedSession` pozostaje właścicielem karty i obsługuje cykl monitoringu, ręczne aktualizacje i import. Stop kończy cykl. Import używa tej samej karty i oddaje ją po odczycie, a `favorites_ui.py` odbiera wynik w Tk przez kolejkę z identyfikatorem importu. Zapis wymaga potwierdzenia. Nowe filtry i powiadomienia są wyłączone. [Decyzja 025](decyzje/025-wspolna-sesja-servicenow.md), [stan odbioru](plany/wspolna-sesja-servicenow.md).
+
+Jeśli użytkownik wpisał hasło ręcznie przy włączonym autologowaniu, po potwierdzeniu sesji `SharedSession` czeka na jego decyzję w oknie Tk i utrzymuje Chromium widoczne. Tk wyśrodkowuje komunikat na ekranie i aktywuje go po wyświetleniu. Wyłączenie autologowania wymaga zapisu ustawienia przed wznowieniem odczytów. Zdarzenia `password_save_prompt` wiążą oczekiwanie, wynik i potwierdzenie fokusu z przebiegiem logowania. [Decyzja 026](decyzje/026-potwierdzenie-zapisu-poswiadczen.md).
+
+Przy pierwszym starcie z widocznym głównym oknem Tk prosi Windows o jego aktywację po wyświetleniu i sprawdza wynik. Zdarzenie `session_visibility` z przyczyną `initial_main_window` rejestruje wynik bez identyfikatorów okien. [Aktywacja okna w Windows](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow).
 
 `Tk → żądanie/kolejka → wątek monitoringu → Chromium/ServiceNow → walidacja → historia/stan → zdarzenia do Tk → widok/powiadomienia`.
 
 | Obszar | Gdzie szukać | Odpowiedzialność |
 | --- | --- | --- |
 | Koordynacja i UI | [app.py](../neto_incident_monitor/app.py), `ui.py`, `settings_ui.py` | `App` nadal łączy sterowanie monitoringiem, zdarzenia, ustawienia i część parsowania list. Nie jest to w pełni rozdzielona architektura warstwowa. |
-| Harmonogram | [monitoring.py](../neto_incident_monitor/monitoring.py) | `Schedule` budzi worker; `RefreshControl` rezerwuje jedną aktualizację. Kolejność i terminy realizuje `App.monitor`. |
+| Harmonogram i kolejka | [monitoring.py](../neto_incident_monitor/monitoring.py), [shared_session.py](../neto_incident_monitor/shared_session.py) | `Schedule` budzi wątek sesji. `ReadQueue` szereguje ręczne zlecenia, a `MonitorCycle` zachowuje terminy odczytów cyklicznych. |
 | Logowanie i okno | `authentication.py`, `automatic_login.py`, `browser_actions.py`, [browser_policy.py](../neto_incident_monitor/browser_policy.py), `browser_window.py`, `browser_rendering.py` | Rozpoznanie sesji, automatyczne/ręczne logowanie, przerywalne operacje oraz widoczność i fokus. Polecenia okna przechodzą przez `BrowserRuntime`. |
 | Listy INC/SCTASK/REQ/RITM | `service_now_urls.py`, `app.py: collect`, [list_context.py](../neto_incident_monitor/list_context.py), [pagination.py](../neto_incident_monitor/pagination.py) | Normalizacja adresów, odczyt kolumn, powiązanie tabeli i pagera, walidacja kompletnego przejścia. |
-| Dashboard | [dashboard.py](../neto_incident_monitor/dashboard.py), `dashboard_ui.py`, `dashboard_progress.py`, `dashboard_cache.py`, `dashboard_drilldown.py` | SLA i WJRUW, Wstrzymane L1, Wnioski L1, statusy, postęp, cache i otwieranie list na żądanie. |
+| Dashboard | [dashboard.py](../neto_incident_monitor/dashboard.py), `dashboard_ui.py`, `dashboard_progress.py`, `dashboard_cache.py` | SLA i WJRUW, Wstrzymane L1, Wnioski L1, statusy, postęp i cache. |
 | Zagrożenia SLA | [threatened.py](../neto_incident_monitor/threatened.py), `threatened_ui.py`, `history.py` | Sześć liczników, zbiorcza lista i historia INC. Kompletna pojedyncza strona pozwala zapisać obecność i dodać alerty do wspólnej kolejki SQLite. [Odbiór jednej strony](plany/zakonczone/lista-zagrozonych-i-powiadomienia.md). |
 | Dane i powiadomienia | `history.py`, `filter_state.py`, `notification_templates.py`, `template_library.py`, `teams_notifications.py`, `google_chat_notifications.py`, `data_reset.py` | Historia i stan filtrów, reset danych, szablony oraz kanały Windows/Teams/Google Chat. Automatyczne alerty filtrów mają trwałą kolejkę SQLite. |
 | Wspólne podstawy | `theme.py`, `widgets.py`, `themed_dialogs.py`, `runtime_paths.py`, `login_diagnostics.py`, `safe_logging.py` | Styl, kontrolki, dialogi, ścieżki oraz bezpieczna diagnostyka. Duże tabele UI obsługuje porcjami `table_loading.py`. |
@@ -28,6 +38,8 @@ Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wyd
 - Tk jest obsługiwane na głównym wątku; worker przekazuje wyniki przez kolejkę zdarzeń. Operacje Playwright należą do jednego workera. Szczegóły: [decyzja 001](decyzje/001-watki-i-kolejki.md).
 - Start: logowanie → opcjonalny dashboard → zagrożenia → filtry. Pełna ręczna aktualizacja także wykonuje dashboard przed zagrożeniami i filtrami. Aktualizacje pojedynczych sekcji pozostają niezależne. Zagrożenia są sprawdzane ponownie 60 s od zakończenia poprzedniej próby, po dashboardzie i między całymi filtrami; nie tworzymy zaległych minut ani natychmiastowej powtórki po obsłużeniu kolejki. Dashboard, jego retry lub logowanie mogą opóźnić zagrożenia: [decyzja 018](decyzje/018-kolejnosc-aktualizacji.md), zastępująca 002.
 - Błąd, brak danych i prawidłowe zero są odrębnymi stanami. Czytnik zbiera wynik, a UI nie powinno zgadywać jego poprawności: [decyzja 003](decyzje/003-poprawnosc-i-aktualnosc.md).
+- Odczyt pojedynczego filtra na żądanie dopuszcza każdy zapisany filtr z prawidłowym adresem. Harmonogram i pełna aktualizacja biorą tylko włączone filtry. Czytnik sprawdza rewizję przed zapisem i przekazuje do Tk wynik z tej samej rewizji. Zlecenie wyłączonego filtra aktualizuje tabelę i historię bez powiadomień. Log odczytu oznacza je polem `outside_schedule`.
+- Tk wyznacza dostępność przycisków ręcznych z jednego odczytu kolejki. Przycisk zakresu pozostaje nieaktywny, gdy dana część oczekuje lub trwa, a **Sprawdź teraz** pozostaje nieaktywne do zakończenia całego zlecenia. Scalenie zachowuje blokadę części przeniesionych do pełnego odczytu.
 - Współdzielimy mechanizmy, nie limity dobrane przypadkowo. Liczba prób, budżet czasu i kompletność są częścią kontraktu danej operacji; nie dodajemy zagnieżdżonych ponowień: [decyzja 005](decyzje/005-kompletny-odczyt-listy.md).
 - Diagnostyka jest częścią funkcji i korzysta ze wspólnych zabezpieczeń: [decyzja 004](decyzje/004-bezpieczna-diagnostyka.md).
 
@@ -36,6 +48,7 @@ Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wyd
 - EXE przechowuje dane użytkownika w `%LOCALAPPDATA%/NetoIncidentMonitor`; uruchomienie ze źródeł używa katalogu projektu `data/`. Rozstrzyga `runtime_paths.py`.
 - Historia, stan obecności filtrów i cache dashboardu mają różne role. Nie zastępujemy jednego drugim ani nie dołączamy danych użytkownika do wydania.
 - Paginacja zwraca kompletny, zweryfikowany wynik albo błąd. Odbiór źródeł i wydania 1.9.0 opisuje kontrakt list. Paczki po audycie mają odbiór offline, bez ponownego odczytu rzeczywistego ServiceNow.
+- Czytnik klasycznych list przed odczytem sprawdza `rows_per_page` i próbuje ustawić 100 wierszy tylko przy innej potwierdzonej wartości. Po akcji sprawdza ponownie kontekst i zakres. [Kontrakt odczytu list](kontrakty/kontrakt-odczytu-list.md).
 - Dashboard i zagrożenia używają wspólnego `read_tile/read_scores`; liczy się lokalny stan konkretnego widżetu, nie ładowanie obcego wykresu. `dashboard_context.py` potwierdza dashboard, zakładkę i kontrolkę daty; kategorie są stosowane osobno.
 - `section_runner.py` jest jedynym właścicielem ponowień sekcji: aktywny budżet 60 s, najwyżej jedno ponowienie błędu odczytu oraz jedno niezależne odzyskanie logowania (łącznie najwyżej trzy odczyty); pierwsza próba najwyżej 39 s, czas logowania rozliczany osobno. Wznowienie zachowuje żądanie i blokady; wyczerpany budżet nie pozwala na kolejny odczyt. [Decyzja 019](decyzje/019-odzyskiwanie-sesji-sekcji.md) zastępuje dawny limit dwóch prób. `read_budget.py` ogranicza podrzędne oczekiwania. Szczegóły i granice: [decyzja 006](decyzje/006-odczyt-sekcji-dashboardu.md).
 - Cache schematu 2 przechowuje kompletne wyniki i czasy poszczególnych sekcji. Błąd nie zmienia daty sukcesu ani nie miesza kafelków z różnych prób; WJRUW używa jednego kompletu SLA. Migrowany stary cache ma niepotwierdzone czasy sekcji.
@@ -78,14 +91,14 @@ Sekcja Wnioski L1 obejmuje pięć kafelków. Starszy zapis czterech wartości je
 
 Porównywanie warunków listy zachowuje strukturę OR/NQ i dopuszcza potwierdzony alias siedmiodniowej daty pola `sys_updated_on`. Nieznana różnica nadal odrzuca odczyt. Diagnostyka rozróżnia zgodność dokładną, zaakceptowany alias i niezgodność bez zapisu zapytania. [Decyzja 015](decyzje/015-rownowaznosc-dat-filtrow.md), [kontrakt list](kontrakty/kontrakt-odczytu-list.md).
 
-Otwieranie listy dashboardu jest zlecane dopiero po kliknięciu kafelka z wynikiem, także z cache. Odświeżenie wartości nie otwiera list pomocniczych. Istniejący worker przeglądarki korzysta z tymczasowej karty tej samej sesji i potwierdza pełne warunki listy. SLA używa jawnego zakresu dat wyświetlanej migawki. Link nie jest utrwalany. Błąd pozwala ponowić kliknięcie, a Stop anuluje otwarcie. WJRUW nie ma celu nawigacji. [Decyzja 014](decyzje/014-linki-dashboardu-na-zadanie.md), [kontrakt i wyniki odbioru](kontrakty/kontrakt-odczytu-dashboardu.md).
-
-Wspólny `AnimatedMetricTile.bind_content` ustawia tło wszystkich elementów od razu przy ich podłączeniu. Pierwszy poprawny wygląd kafelków nie zależy od najechania kursorem ani uruchomienia animacji.
+Kafelki dashboardu i zagrożeń SLA wyświetlają wyniki. `AnimatedMetricTile` animuje najechanie kursorem i ustawia zwykłą strzałkę na kafelku i jego zawartości. Kafelki nie mają akcji ani fokusu Tab. Usunięto kolejkę ustalania adresu listy i tworzenie tymczasowej karty w tym celu. Przyciski „Otwórz w SNOW” są osobnymi akcjami paneli. [Decyzja 024](decyzje/024-kafelki-informacyjne.md), [kontrakt odczytu](kontrakty/kontrakt-odczytu-dashboardu.md).
 
 `normalize_list_url` rozpakowuje długie adresy list z ponownym kodowaniem parametrów i zachowaniem widoku. Nowe opakowane adresy stają się bezpośrednie, a zapis istniejących adresów bezpośrednich pozostaje bez zmian. Sprzeczne parametry są odrzucane przed zapisem. [Decyzja 016](decyzje/016-normalizacja-adresow-list.md).
 
 ## Lokalna synchronizacja statusów — 5 listopada 2026
 
 Lokalna poprawka czytnika po publikacji 1.9.3 oczekuje na aktywację Zastosuj dla zmienionego okresu, zamiast anulować przy chwilowo wyłączonym przycisku. Po pojedynczym kliknięciu potwierdza okres i zamknięcie panelu; niezmieniony zatwierdzony okres pozwala anulować panel. Końcowa kontrola kategorii obserwuje łącznie zaznaczenie i brak stanu pośredniego, ponawiając wyłącznie odczyty w istniejącym budżecie. Diagnostyka rozdziela gotowość, wysłanie i potwierdzenie. [Decyzja 021](decyzje/021-zatwierdzanie-kontekstu-dashboardu.md), [wyniki i granice odbioru](plany/zakonczone/zatwierdzanie-kontekstu-dashboardu.md).
+
+Jeśli kategoria jest częściowo zaznaczona, czytnik czeka na potwierdzenie skutku pierwszego kliknięcia. Pusty wybór pozwala wykonać osobną akcję zaznaczenia całości. Czytnik wymaga pełnego wyboru przy zatwierdzaniu kategorii i przy końcowej kontroli kontekstu. [Kontrakt odczytu dashboardu](kontrakty/kontrakt-odczytu-dashboardu.md).
 
 Przy aktywnym żądaniu dashboardu panel mapuje stany sekcji na wspólny opis aktywności i stopkę, w tym ponawianie po logowaniu. Stare lub zakończone żądania nie zmieniają statusów; wynik końcowy chroni opis końcowy. Główna pigułka zmienia się przez set_activity bez modyfikowania faz monitoringu i przycisków. Dane, daty, cache, czytnik i harmonogram pozostają bez zmian. Poprawkę najpierw sprawdzono lokalnie jako 1.9.2; późniejszą publikację opisuje [wydanie 1.9.3](plany/zakonczone/wydanie-1.9.3.md). [Decyzja 020](decyzje/020-spojne-statusy-dashboardu.md), [wyniki](plany/zakonczone/synchronizacja-statusow-dashboardu.md).

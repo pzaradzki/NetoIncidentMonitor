@@ -67,6 +67,46 @@ class DashboardCommitTests(unittest.TestCase):
             dashboard.ensure_all_categories(self.page, self.stop, ('Status zgłoszenia',))
         self.assertEqual(self.page.evaluate('window.applied'), 1)
 
+    def test_partial_category_confirms_clear_before_selecting_all(self):
+        self.page.evaluate('''() => {
+            const checkbox = document.querySelector('input[type=checkbox]');
+            checkbox.checked = false;
+            checkbox.setAttribute('aria-checked', 'mixed');
+            checkbox.onclick = event => {
+                event.preventDefault();
+                window.clearClicks = (window.clearClicks || 0) + 1;
+                setTimeout(() => {
+                    const empty = checkbox.cloneNode();
+                    empty.removeAttribute('aria-checked');
+                    empty.checked = false;
+                    empty.onclick = () => window.selectClicks = (window.selectClicks || 0) + 1;
+                    checkbox.replaceWith(empty);
+                }, 250);
+            };
+        }''')
+        log = LoginDiagnostics(source='dashboard', section='sla', request_id=73)
+        with self.assertLogs(_logger, level='INFO') as captured, dashboard.diagnostic_steps(log):
+            dashboard.ensure_all_categories(self.page, self.stop, ('Status zgłoszenia',))
+        self.assertEqual(self.page.evaluate('[clearClicks, selectClicks, applied]'), [1, 1, 1])
+        records = [json.loads(record.getMessage()) for record in captured.records]
+        resolved = next(row for row in records if row['event'] == 'category_partial_resolved')
+        self.assertEqual((resolved['request_id'], resolved['category'], resolved['category_state']),
+                         (73, 'status', 'none'))
+
+    def test_unconfirmed_partial_category_is_not_clicked_again_or_applied(self):
+        self.page.evaluate('''() => {
+            const checkbox = document.querySelector('input[type=checkbox]');
+            checkbox.setAttribute('aria-checked', 'mixed');
+            checkbox.onclick = event => {
+                event.preventDefault();
+                window.clearClicks = (window.clearClicks || 0) + 1;
+            };
+        }''')
+        with self.assertRaises(DashboardReadError) as error:
+            dashboard.ensure_all_categories(self.page, self.stop, ('Status zgłoszenia',))
+        self.assertEqual(error.exception.reason, 'wrong_filter')
+        self.assertEqual(self.page.evaluate('[clearClicks, applied]'), [1, 0])
+
     def test_stop_during_apply_readiness_never_commits(self):
         self.delay_apply()
         def tick():

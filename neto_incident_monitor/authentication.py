@@ -5,6 +5,7 @@ from threading import Lock
 _manual_pages = WeakKeyDictionary()
 _account_selections = WeakKeyDictionary()
 _login_active = WeakSet()
+_manual_password_contexts = WeakSet()
 _generations = WeakKeyDictionary()
 _observed_pages = WeakSet()
 _manual_lock = Lock()
@@ -25,9 +26,16 @@ def set_login_activity(page):
     with _manual_lock:
         _login_active.add(page)
 
+def take_manual_password_entry(page):
+    with _manual_lock:
+        entered = page.context in _manual_password_contexts
+        _manual_password_contexts.discard(page.context)
+        return entered
+
 
 def clear_login_activity(page):
     with _manual_lock:
+        _manual_password_contexts.discard(page.context)
         for active in list(_login_active):
             if active is page or active.context is page.context:
                 _login_active.discard(active)
@@ -90,6 +98,14 @@ INPUT_GUARD = r"""(() => {
     };
     document.addEventListener('beforeinput', edit, true);
     document.addEventListener('paste', edit, true);
+    document.addEventListener('beforeinput', event => {
+        const el = target(event);
+        if (!event.isTrusted || !el?.matches?.('input[type=password], input[autocomplete=current-password]') ||
+            el.matches('[autocomplete=one-time-code]') ||
+            !['insertText', 'insertFromPaste', 'insertCompositionText', 'insertFromDrop'].includes(event.inputType) ||
+            typeof window.__netoManualAction !== 'function') return;
+        window.__netoManualAction('password').catch(() => {});
+    }, true);
     document.addEventListener('keydown', event => {
         const el = target(event);
         if (event.isTrusted && event.key === 'Enter' && el && el.matches &&
@@ -155,9 +171,17 @@ def authentication_required(page, target):
 
 
 def install_input_guard(context):
+    from neto_incident_monitor.login_observation import origin_kind
+
     def handoff(source, kind=None):
         with _manual_lock:
-            if kind == 'account':
+            if kind == 'password':
+                page = source['page']
+                if page not in _login_active or origin_kind(source['frame'].url) == 'other':
+                    return False
+                _manual_password_contexts.add(context)
+                _manual_pages[page] = True
+            elif kind == 'account':
                 _account_selections[source['page']] = _account_selections.get(source['page'], 0) + 1
             else:
                 if kind == 'candidate' and source['page'] not in _login_active:

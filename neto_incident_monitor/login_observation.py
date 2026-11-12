@@ -46,6 +46,21 @@ SIGNALS = r"""() => {
         /incorrect|invalid|błędne|nieprawidł|verification|weryfik|captcha|zablokowan/i.test(el.innerText || ''));
     const user = window.g_user || (window.NOW && window.NOW.user);
     const id = user && (user.userID || user.user_id);
+    // SOW can render the authenticated header without the legacy user global.
+    // Read only the structure of the known main workspace, never its profile data.
+    let sowSession = false;
+    if (window === window.top && location.pathname === '/now/sow/home') {
+        const unique = (root, selector) => {
+            const matches = root?.querySelectorAll(selector);
+            return matches?.length === 1 ? matches[0] : null;
+        };
+        const shell = unique(document, 'macroponent-f51912f4c700201072b211d4d8c26010');
+        const layout = unique(shell?.shadowRoot, 'sn-polaris-layout');
+        const header = unique(layout?.shadowRoot, 'sn-polaris-header');
+        const menu = unique(header?.shadowRoot, 'sn-contextual-menu#userMenu');
+        const avatar = unique(header?.shadowRoot, 'now-avatar');
+        sowSession = !!menu && !!avatar && visible(avatar);
+    }
     return {
         password_count: passwords.length,
         password_filled: passwords.some(el => !!el.value),
@@ -57,7 +72,7 @@ SIGNALS = r"""() => {
         login_button_count: buttons.length,
         login_button_enabled: buttons.some(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true' && !el.classList.contains('disabled')),
         account_count: accounts.length, welcome: accounts.length > 0,
-        intervention, session_signal: !!id && id !== 'guest',
+        intervention, session_signal: (!!id && id !== 'guest') || sowSession,
         logout_signal: /\/(?:external_logout_complete|logout|logout_complete)\.do$/i.test(location.pathname),
         authentication_path: /login|sso|auth/i.test(location.pathname),
         document_ready: document.readyState === 'complete'

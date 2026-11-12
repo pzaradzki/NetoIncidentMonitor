@@ -11,6 +11,8 @@ Stan kontraktu: 1 listopada 2026; lokalny build 1.8.0 z 2 listopada zawiera wdro
 
 Każdy zaakceptowany zestaw musi pochodzić z właściwego dashboardu i zakładki, po zastosowaniu wymaganych ustawień, z jednoznacznych widżetów bez lokalnego ładowania. Wartości: pełne nieujemne liczby całkowite; zero nie jest brakiem danych. Krótka stabilność jest zabezpieczeniem dodatkowym, nie dowodem świeżości.
 
+Na dashboardzie ServiceNow kliknięcie „Wybierz wszystko” przy częściowym wyborze najpierw czyści zaznaczenie. Czytnik rozpoznaje stan pośredni przez `aria-checked="mixed"` lub `indeterminate`. Potwierdzony pusty wybór pozwala na osobne zaznaczenie całości. Jeśli przejście pozostaje niepotwierdzone, czytnik zgłasza `wrong_filter` do istniejącego mechanizmu ponowień. Końcowa kontrola wymaga jednoznacznego pełnego wyboru. Zdarzenie `category_partial_resolved` rejestruje alias kategorii oraz potwierdzony stan kontrolki, bez nazw wybranych opcji.
+
 Wszystkie cztery sekcje używają `read_tile/read_scores`. Nie ma fallbacku do odczytu globalnego. Kategorie są osobno zatwierdzane; brak obserwowalnego potwierdzenia odświeżenia powoduje odtworzenie dokumentu i ustawień. Kontrolki i karty mogą powstać dopiero po przewinięciu. Odczyt nie wymaga zmiany samej liczby.
 
 Zgodnie z [decyzją 019](../decyzje/019-odzyskiwanie-sesji-sekcji.md): jedno ponowienie błędu odczytu i jedno niezależne odzyskanie logowania, najwyżej trzy odczyty we wspólnym aktywnym budżecie 60 s; pierwsza próba do 39 s. Oczekiwanie na ręczne logowanie jest rozliczane osobno. Brak pewności po kliknięciu nie powoduje jego ponownego dostarczenia w tej samej próbie. Budżet jest kooperacyjny i nie stanowi gwarancji zakończenia zablokowanego procesu Chromium.
@@ -53,6 +55,8 @@ Weryfikacja wspólnego timestampu (2 listopada 2026): 43 testy zakresowe zaliczo
 
 ### Cele nawigacji kafelków
 
+Poniższe próby dokumentują wcześniejszą nawigację. W bieżących źródłach kafelki dashboardu i zagrożeń SLA są informacyjne. Usunięto pobieranie adresów list i otwieranie kart w tym celu. [Decyzja 024](../decyzje/024-kafelki-informacyjne.md).
+
 W rzeczywistym ServiceNow kliknięcie kafelka smartfonów otworzyło listę zadań katalogowych w tej samej karcie. Adres nawigacji zawierał skrót `sysparm_tiny`. Próba kafelka nieprzypisanych wniosków także zakończyła się widokiem listy ze skrótem. Nie potwierdzono trwałego wzorca obejmującego filtry L1 ani zależność celu SLA od okresu. Dashboard aplikacji ma paletę sekcji i korzysta ze wspólnego komponentu kafelków. Na tym etapie akcje dashboardu czekały na zweryfikowane cele. WJRUW jest wskaźnikiem lokalnym.
 
 ### Weryfikacja list L1 bez skrótów
@@ -85,7 +89,7 @@ Powtórka pełnego workera dla września 2026 również potwierdziła 11/11 SLA,
 
 Przy jednym pierwszym odświeżeniu karta pomocnicza zgłosiła potrzebę uwierzytelnienia w każdej sekcji, choć główna karta kontynuowała odczyt. W takim przypadku monitor sprawdza sesję głównej karty. Jeśli jest nadal poprawna, ponawia nawigację dla bieżącego kafelka najwyżej raz, bez użycia historii karty i w tym samym budżecie sekcji. Sygnał utraty sesji głównej zatrzymuje pozyskiwanie linków. Diagnostyka odróżnia ponowienie od końcowego błędu.
 
-### Otwieranie list na żądanie
+### Dawne otwieranie list na żądanie
 
 Odświeżenie dashboardu pobiera wyłącznie wartości. Każdy kafelek z wynikiem poza WJRUW może zlecić otwarcie listy. Tk przekazuje pojedyncze żądanie do tego samego workera, który obsługuje odczyty, wraz z okresem wyświetlanej migawki SLA. Po kliknięciu monitor pokazuje „Otwieranie listy…” i próbuje uzyskać tylko jeden link, z budżetem 18 sekund od rozpoczęcia pracy w przeglądarce. Operacja wymaga działającego monitoringu. Nieudana próba umożliwia kolejne kliknięcie bez aktualizacji dashboardu. Po zatrzymaniu monitoringu oczekujące żądanie zostaje anulowane. Linki nie są zapisywane na dysku.
 

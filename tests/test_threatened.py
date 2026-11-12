@@ -129,6 +129,38 @@ class ThreatenedPresentationTests(unittest.TestCase):
             self.assertIsNone(tile.timer)
             for child in (tile, *tile.labels):
                 self.assertEqual(child.cget('background'), SURFACE)
+                self.assertEqual(child.cget('cursor'), 'arrow')
+                self.assertFalse(child.bind('<ButtonRelease-1>'))
+            self.assertEqual(int(tile.cget('takefocus')), 0)
+
+    def test_hover_animates_risk_tile_and_restores_its_colors(self):
+        from neto_incident_monitor.threatened_ui import RiskTile, CATEGORIES
+        from neto_incident_monitor.theme import SURFACE
+        root = tk.Tk()
+        root.withdraw()
+        self.addCleanup(root.destroy)
+        title, description, accent = CATEGORIES[0]
+        tile = RiskTile(root, title, description, accent)
+        tile.pack()
+        root.update_idletasks()
+        outside = tk.Event()
+        outside.x_root = tile.winfo_rootx() - 1
+        outside.y_root = tile.winfo_rooty()
+
+        with patch('neto_incident_monitor.widgets.monotonic', side_effect=(0, 0, 0.15, 1, 1, 1.15)):
+            tile.enter(None)
+            self.assertEqual(tile.cget('highlightbackground'), accent)
+            self.assertIsNotNone(tile.timer)
+            root.tk.call('after', 25)
+            root.update()
+            self.assertEqual(tile.cget('background'), '#303947')
+
+            tile.leave(outside)
+            self.assertFalse(tile.hovered)
+            self.assertIsNotNone(tile.timer)
+            root.tk.call('after', 25)
+            root.update()
+            self.assertTrue(all(widget.cget('background') == SURFACE for widget in (tile, *tile.labels)))
 
     def test_simulated_incident_does_not_cancel_pending_read_and_real_result_replaces_it(self):
         root = tk.Tk()

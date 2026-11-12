@@ -1,8 +1,10 @@
 # Plany i pozostałe prace
 
-Bieżąca wersja to [1.9.4](../wersje/v1.9.4.md).
+Bieżąca wersja to [1.10.0](../wersje/v1.10.0.md).
 
 ## Pozostałe tematy
+
+- [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](wspolna-sesja-servicenow.md) — plan wdrożenia i bieżący stan prac.
 
 
 
@@ -27,6 +29,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Import ulubionych ServiceNow](zakonczone/import-ulubionych-servicenow.md) | Wdrożone w źródłach: 555 testów, 2 pominięcia, bez błędów; DOM sprawdzony na ServiceNow. Pełny rzeczywisty odbiór użytkowy pozostaje osobny; bez nowego EXE. |
 | [Wydanie 1.9.4](zakonczone/wydanie-1.9.4.md) | Opublikowano: 523 testy (2 pominięcia), build i offline smoke, zgodność tagu i SHA-256 ponownie pobranego ZIP-a. |
 | [Zatwierdzanie okresu i filtrów](zakonczone/zatwierdzanie-kontekstu-dashboardu.md) | Lokalne EXE 1.9.3: 523 testy, 2 pominięcia, build i oba smoke OK; poprzednia paczka zachowana, bez publikacji. |
 | [Wydanie 1.9.3](zakonczone/wydanie-1.9.3.md) | Opublikowano: 514 testów (2 pominięcia), build i offline smoke; zgodność tagu oraz SHA-256 pobranego ZIP-a. |
@@ -51,12 +54,14 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 | [Ukryty dashboard](zakonczone/odczyt-dashboardu-w-ukrytym-chromium.md) | Badania A–C i wdrożenie D1–D5; [raport](../weryfikacja/odbior-ukrytego-dashboardu.md) |
 | [Logowanie i ukryte SSO](zakonczone/stabilizacja-logowania.md) | A–F; [raport](../weryfikacja/odbior-stabilizacji-logowania.md), z jawnymi ograniczeniami realnego SSO |
 
-Bieżące zachowanie: [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). Wydanie: [1.9.4](../wersje/v1.9.4.md).
+Bieżące zachowanie opisują [architektura](../architektura.md) i [kontrakty](../kontrakty/README.md). [Wydanie 1.10.0](../wersje/v1.10.0.md).
 
-Zakończono zmianę otwierania list dashboardu: wartości odświeżają się bez pozyskiwania linków, a pojedynczy cel jest potwierdzany po kliknięciu. Kafelki z cache również mają akcję, SLA zachowuje okres wyświetlonej migawki, a błąd pozwala ponowić kliknięcie. [Decyzja i ograniczenia](../decyzje/014-linki-dashboardu-na-zadanie.md), [lokalne i rzeczywiste próby](../kontrakty/kontrakt-odczytu-dashboardu.md). Funkcja jest częścią EXE 1.9.0.
+W źródłach usunięto otwieranie list z kafelków dashboardu i zagrożeń SLA. Kafelki zachowują animację najechania i zwykły kursor. [Decyzja 024](../decyzje/024-kafelki-informacyjne.md).
 
 ## Utrzymanie
 
 Nowy plan twórz tutaj; podaj cel, zakres, dowody, etapy, testy i kryteria ukończenia. Dokumentacja nie jest zgodą na wdrożenie. Weryfikuj aktualność z kodem i stroną. Po istotnym etapie zapisz wynik i braki; po zakończeniu przenieś plan do `zakonczone/`, popraw odnośniki i zaktualizuj ten indeks. Nie kopiuj do niego całej historii ani wyników każdego przebiegu.
 
 Wnioski L1 mają pięć kafelków. Zapis czterech dawnych wartości jest pomijany przy starcie z zachowaniem pozostałych sekcji. Rzeczywiste odczyty i granice odbioru opisuje [kontrakt dashboardu](../kontrakty/kontrakt-odczytu-dashboardu.md).
+
+- [Płynność listy wielu filtrów](zakonczone/plynnosc-listy-filtrow.md) — poprawka źródeł po 1.9.4.

@@ -18,6 +18,50 @@ class FilterReorderTests(unittest.TestCase):
             self.root.tk.call("after", "cancel", timer)
         self.root.destroy()
 
+    def test_many_filters_toggle_keeps_scroll_and_reuses_card_images(self):
+        filters = [{'name': f'Filter {i}', 'url': f'https://adeo.service-now.com/incident_list.do?fixture={i}'} for i in range(100)]
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('neto_incident_monitor.app.read_json', return_value={'filters': filters}), \
+                patch('neto_incident_monitor.app.save_json') as save:
+            app = App(self.root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
+            self.root.geometry('1440x900')
+            self.root.update()
+            table = app.filter_table
+            table.yview_moveto(.5)
+            self.root.update()
+            position = table.yview()
+            with patch.object(table, 'replace_rows', wraps=table.replace_rows) as replace, \
+                    patch.object(table, 'card_image', wraps=table.card_image) as render, \
+                    patch.object(table, 'on_select', wraps=table.on_select) as selected, \
+                    patch.object(app, 'persist_filters', wraps=app.persist_filters) as persist:
+                for item in ('51', '52', '53', '52'):
+                    app.toggle_filter(item)
+                    self.root.update()
+                    self.assertEqual(table.yview(), position)
+                replace.assert_not_called()
+                self.assertLessEqual(render.call_count, 8)
+                self.assertEqual(selected.call_count, 4)
+                self.assertEqual(persist.call_count, 4)
+            self.assertFalse(app.filters[51]['enabled'])
+            self.assertTrue(app.filters[52]['enabled'])
+            self.assertFalse(app.filters[53]['enabled'])
+            self.assertEqual(table.selection(), ('52',))
+            self.assertTrue(save.called)
+            self.assertGreaterEqual(table.master.grid_slaves(row=1, column=1)[0].winfo_x() - table.winfo_width(), 8)
+            app.refresh_filters()
+            self.root.update()
+            self.assertEqual(table.yview(), position)
+            before = dict(table.enabled_rows)
+            revisions = dict(app.filter_revisions)
+            with patch.object(app, 'persist_filters', side_effect=PermissionError('synthetic failure')), \
+                    patch('neto_incident_monitor.app.messagebox.showerror') as error:
+                app.toggle_filter('51')
+            error.assert_called_once()
+            self.assertFalse(app.filters[51]['enabled'])
+            self.assertEqual(table.enabled_rows, before)
+            self.assertEqual(app.filter_revisions, revisions)
+            self.assertEqual(table.yview(), position)
+
     def test_filter_scrollbar_hides_when_all_rows_fit(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
             filters = [{'name': f'Filter {i}', 'url': f'https://adeo.service-now.com/incident_list.do?fixture=list&id={i}'} for i in range(6)]

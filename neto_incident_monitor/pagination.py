@@ -104,6 +104,39 @@ def activate_pager(button, stop):
 PAGE_WAIT_SECONDS = 15
 MAX_READ_SECONDS = 1800
 MAX_ATTEMPTS = 2
+PREFERRED_PAGE_SIZE = 100
+PAGE_SIZE_CONFIRM_SECONDS = 4
+
+
+def select_page_size(target, check):
+    """Use the classic list menu once, leaving confirmation to the reader."""
+    from playwright.sync_api import Error
+    from playwright._impl._errors import TargetClosedError
+    from neto_incident_monitor.read_budget import BudgetExpired, remaining_ms
+
+    action = target.container.locator('button[id$="_control_button"]').filter(visible=True)
+    if action.count() != 1 or not action.is_enabled(timeout=remaining_ms(750)):
+        return 'control_unavailable'
+    show = target.frame.get_by_role('menuitem', name=re.compile(r'^Pokaż(?:\s|$)')).filter(visible=True)
+    option = target.frame.get_by_role('menuitem', name=f'{PREFERRED_PAGE_SIZE} wiersz./str.',
+                                      exact=True).filter(visible=True)
+    selecting = False
+    try:
+        check()
+        action.click(timeout=remaining_ms(1200), no_wait_after=True)
+        show.wait_for(state='visible', timeout=remaining_ms(1000))
+        check()
+        if show.get_attribute('aria-expanded', timeout=remaining_ms(750)) != 'true':
+            show.press('ArrowRight', timeout=remaining_ms(1000))
+        option.wait_for(state='visible', timeout=remaining_ms(1000))
+        check()
+        selecting = True
+        option.click(timeout=remaining_ms(1200), no_wait_after=True)
+    except (BudgetExpired, TargetClosedError):
+        raise
+    except Error:
+        return 'click_uncertain' if selecting else 'menu_unavailable'
+    return 'requested'
 
 
 def _metadata_reason(state, rows, expected_first, total, size):
@@ -142,7 +175,7 @@ def _metadata_reason(state, rows, expected_first, total, size):
 
 
 def _read_attempt(page, url, stop, collect, authentication_page, navigate,
-                  stage, emit, approve, progress, budget):
+                  stage, emit, approve, progress, budget, change_page_size):
     from time import monotonic
     from playwright.sync_api import TimeoutError
     from neto_incident_monitor.browser_actions import checkpoint
@@ -181,7 +214,8 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
     requested_views = requested_parameters.get("sysparm_view", [])
     comparisons_logged = set()
 
-    def wait_page(index, first, total=None, size=None, identity=None, allow_restored=False):
+    def wait_page(index, first, total=None, size=None, identity=None, allow_restored=False,
+                  prepare_size=False, confirm_size_until=None):
         stage('read_rows', index)
         until = min(budget.end, monotonic() + PAGE_WAIT_SECONDS)
         stable, repeats, reason = None, 0, 'page_unavailable'
@@ -208,6 +242,15 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
                         comparisons_logged.add(comparison)
                     if comparison == 'mismatch':
                         raise ListStateError("query_mismatch" if identity is None else "list_changed")
+                if identity is not None and not before.busy and before.identity != identity:
+                    raise ListStateError('list_changed')
+                if (confirm_size_until is not None and before.size != PREFERRED_PAGE_SIZE
+                        and monotonic() < confirm_size_until):
+                    page.wait_for_timeout(100)
+                    continue
+                if (prepare_size and not before.busy and before.size is not None
+                        and before.size > 0 and before.size != PREFERRED_PAGE_SIZE):
+                    return target, before, None
                 if allow_restored and not before.busy and (
                         (before.first is not None and before.first > 1) or
                         (before.cursor is not None and before.cursor > 1) or before.first_disabled is False):
@@ -260,7 +303,24 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
         check()
         raise ListStateError(reason or 'page_timeout')
 
-    target, state, rows = wait_page(1, 1, allow_restored=True)
+    target, state, rows = wait_page(1, 1, allow_restored=True, prepare_size=change_page_size is not None)
+    resized_from = None
+    if (rows is None and change_page_size is not None and state.size is not None
+            and 0 < state.size != PREFERRED_PAGE_SIZE):
+        resized_from = state
+        stage('page_size', 1)
+        emit('pagination_page_size', page_index=1, page_size=state.size, page_size_result='checking_menu')
+        selection = change_page_size(target, check)
+        check()
+        confirming = selection in ('requested', 'click_uncertain')
+        if selection == 'menu_unavailable':
+            # Reopen the same list to dismiss a partially opened menu.
+            navigate(page, first_page(url))
+        target, state, rows = wait_page(1, 1, identity=resized_from.identity, allow_restored=True,
+            confirm_size_until=min(budget.end, monotonic() + PAGE_SIZE_CONFIRM_SECONDS) if confirming else None)
+        result = 'confirmed' if state.size == PREFERRED_PAGE_SIZE else 'unconfirmed' if confirming else selection
+        emit('pagination_page_size', page_index=1, page_size=state.size, page_size_result=result,
+             previous_page_size=resized_from.size)
     if rows is None:
         stage('first_page', 1)
         emit('pagination_action', pager_direction='first', page_index=1)
@@ -275,7 +335,7 @@ def _read_attempt(page, url, stop, collect, authentication_page, navigate,
             cursor.press('Enter', timeout=1000, no_wait_after=True)
         if progress:
             progress(0, 0)
-        target, state, rows = wait_page(1, 1)
+        target, state, rows = wait_page(1, 1, identity=resized_from.identity if resized_from else None)
     emit('pagination_bound', pagination_mode='ranged' if state.ranged else 'unpaginated',
          page_size=state.size, total_rows=state.total)
     identity, total, size = state.identity, state.total, state.size
@@ -325,6 +385,7 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
     current_stage, current_page = 'navigate', 1
     stage_started = started
     approved = False
+    page_size_attempted = False
     diagnostic_warning = False
 
     def emit(event, **facts):
@@ -366,6 +427,11 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
                 raise LargeListRejected()
             approved = True
 
+    def change_page_size(target, check):
+        nonlocal page_size_attempted
+        page_size_attempted = True
+        return select_page_size(target, check)
+
     emit('pagination_start')
     try:
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -374,7 +440,8 @@ def read_all(page, url, stop, collect, empty_list, authentication_page, navigate
             try:
                 with budget_scope(budget):
                     result = _read_attempt(page, url, stop, collect, authentication_page,
-                        navigate, stage, emit, approve, progress, budget)
+                        navigate, stage, emit, approve, progress, budget,
+                        None if page_size_attempted else change_page_size)
                 emit('pagination_complete', attempt=attempt, records_read=len(result[0]),
                      page_count=result[1], duration_ms=round((monotonic() - started) * 1000))
                 return result

@@ -1,6 +1,6 @@
 # Neto Incident Monitor
 
-Instrukcja dla lokalnej wersji **1.8.1**. Status buildu i publikacji: [opis wersji](wersje/v1.8.1.md).
+Instrukcja dla wersji **1.10.0**. [Opis wydania](wersje/v1.10.0.md).
 
 Poprawka przygotowana później w źródłach: miesiąc i rok dashboardu są niedostępne od zlecenia aktualizacji do jej zakończenia, także podczas oczekiwania na logowanie. Po zakończeniu lub Stop można wybrać nowy okres i kliknąć Aktualizuj. Sama zmiana dat w bezczynności nie uruchamia odczytu. Ta poprawka wymaga jeszcze przebudowy EXE.
 
@@ -70,7 +70,7 @@ Obsługiwane listy to INC (`incident_list.do`), SCTASK (`sc_task_list.do`), REQ 
 ### Konfiguracja monitorowania
 
 1. Wybierz **Dodaj filtr** i wprowadź nazwę oraz pełny adres listy ServiceNow z zastosowanym filtrem.
-2. Wybierz **Uruchom monitoring** i zaloguj się w otwartym oknie Chromium. Aplikacja automatycznie rozpoznaje zakończenie logowania.
+2. Chromium otwiera się przy starcie. Dokończ logowanie, jeśli jest potrzebne. Aplikacja ukryje Chromium i udostępni główne okno po potwierdzeniu sesji oraz ewentualnej decyzji w sprawie zapisu poświadczeń. Wybierz **Uruchom monitoring**, jeśli automatyczny start jest wyłączony.
 3. Korzystaj z przełączników przy filtrach, aby włączać lub wyłączać poszczególne listy, również podczas monitorowania.
 
 **Zmiana źródeł z 4 listopada 2026 i głównej paczki lokalnej `dist/Neto Incident Monitor`:** po zalogowaniu aktualizacja przebiega w kolejności **dashboard → incydenty zagrożone → filtry**. Przy wyłączonej automatycznej aktualizacji dashboardu start pomija dashboard. **Sprawdź teraz** dla całości używa nowej kolejności; przyciski poszczególnych sekcji nadal aktualizują wybrany zakres. Zagrożenia zachowują niezależny termin 60 s od końca poprzedniej próby, ale dashboard lub długi filtr mogą go opóźnić. Nie oznacza to zmiany już opublikowanego wydania.
@@ -78,6 +78,8 @@ Obsługiwane listy to INC (`incident_list.do`), SCTASK (`sc_task_list.do`), REQ 
 Każdy filtr ma własną listę bieżących incydentów i własną historię. Czerwone zaznaczenie w panelu filtrów określa zawartość obu zakładek. Ten sam numer incydentu może być niezależnie wykryty w kilku filtrach.
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
+
+Lewy panel filtrów ma domyślnie 329 px szerokości. Aby zmienić szerokość, przeciągnij separator przy prawej krawędzi panelu. Aplikacja zapamięta wybraną szerokość.
 
 Przycisk **Konfiguruj** obok przycisku **Kolumny** otwiera **Ustawienia filtra** zaznaczonego na liście, obejmujące powiadomienia i zgodę na duże odczyty.
 
@@ -130,7 +132,7 @@ Przycisk **Kolumny** jest dostępny po pierwszym pełnym odczycie filtra. Aplika
 
 Widoczność, kolejność i szerokości kolumn są zapisywane osobno dla każdego filtra, wspólnie dla jego bieżącej listy i historii. Dodanie lub usunięcie kolumny w ServiceNow przywraca pełny zestaw i kolejność ze strony. Sama zmiana kolejności na stronie zachowuje własny układ użytkownika. Niepełny lub nieudany odczyt nie zmienia zapisanej konfiguracji.
 
-**Przywróć domyślne** wybiera wszystkie kolumny ServiceNow w ostatnio odczytanej kolejności. Kolumny lokalne znajdują się w osobnej sekcji **Kolumny dodatkowe** i domyślnie są wyłączone oraz umieszczone na końcu. Obejmują czas od utworzenia INC i datę wykrycia w historii. Po włączeniu można zmienić także ich położenie. Zmiany w konfiguratorze zatwierdza przycisk **Zapisz**.
+Po pierwszym udanym odczycie listy INC bez zapisanego układu **Wiek (min)** pojawia się jako pierwsza kolumna. **Przywróć domyślne** ustawia ją na początku listy INC i wybiera wszystkie kolumny ServiceNow w ostatnio odczytanej kolejności. Kolumny lokalne znajdziesz w sekcji **Kolumny dodatkowe**. Datę wykrycia w historii można włączyć osobno. Zmiany w konfiguratorze zatwierdza przycisk **Zapisz**.
 
 Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości panelu. Układ kolumn, szerokość panelu oraz rozmiar i stan maksymalizacji okna są zapamiętywane między uruchomieniami.
 
@@ -144,7 +146,17 @@ Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończ
 
 Automatyczne logowanie może wybrać pojedyncze zapamiętane konto i zatwierdzić gotowy formularz z potwierdzonym autouzupełnieniem. Przy wielu kontach wybiera użytkownik; późniejsze autofill pozwala kontynuować automatycznie. Wpisywanie, wklejanie, ręczne wysłanie lub MFA oddają kontrolę użytkownikowi. Aplikacja nie wpisuje ani nie zapisuje samodzielnie hasła; korzysta z własnego profilu Chromium, niezależnego od zwykłego Chrome.
 
-Opcja „Całkowicie ukryj okno przeglądarki” jest domyślnie włączona i ma pierwszeństwo przed minimalizacją. Przy automatycznym logowaniu oraz odczycie dashboardu i filtrów Chromium może pozostać ukryte. Okno pojawia się, gdy potrzebna jest ręczna obsługa, automatyzacja jest wyłączona lub użytkownik wybierze „Pokaż przeglądarkę”. Po skutecznym pokazaniu aplikacja nie odbiera ponownie fokusu. Zmiany auto/ukrywania/minimalizacji są obsługiwane podczas monitoringu; ręczne logowanie i ochrona wysłanego formularza mają pierwszeństwo.
+Pierwsze logowanie odbywa się w widocznym Chromium. Po udanym logowaniu aplikacja ukrywa Chromium. Jeśli sesja wygaśnie, próbuje ją odzyskać w tle i pokazuje okno, gdy potrzebna jest Twoja interwencja. Podczas takiego oczekiwania możesz użyć **Pokaż okno logowania**. Po zamknięciu lub awarii Chromium użyj **Połącz ponownie**, aby rozpocząć widoczne połączenie.
+
+Jeśli przy włączonym autologowaniu wpiszesz hasło samodzielnie, po udanym logowaniu aplikacja pokaże aktywny komunikat o zapisie poświadczeń na środku ekranu. Kliknij **Zapisz** w Chromium, a następnie **Zapisano** w oknie aplikacji. Możesz też wybrać **Wyłącz autologowanie**, aby zapisać zmianę ustawienia. Chromium pozostanie widoczne do wyboru. Dotyczy to pierwszego logowania i odzyskiwania sesji.
+
+Po zalogowaniu odczyty ręczne i import Ulubionych są dostępne także przy zatrzymanym monitoringu. Zlecenia korzystają z jednej karty i wykonują się kolejno. **Sprawdź teraz** może scalić oczekujące odczyty. Po zakończeniu odczytu Ulubionych możesz obejrzeć podgląd, podczas gdy karta obsługuje kolejne zlecenie.
+
+Opcja **Automatycznie zaktualizuj dashboard przy starcie monitoringu** jest domyślnie wyłączona. Jeśli chcesz pobierać dashboard przy każdym uruchomieniu monitoringu, włącz ją w sekcji **Monitorowanie**.
+
+Przycisk **Aktualizuj** jest nieaktywny, gdy jego odczyt czeka w kolejce lub trwa. W tym czasie możesz zlecić inny zakres albo wybrać **Sprawdź teraz**. Pełna aktualizacja blokuje objęte nią przyciski do zakończenia ich odczytów. Przycisk **Sprawdź teraz** odblokowuje się po zakończeniu całego zlecenia.
+
+Przycisk **Aktualizuj** odczytuje wybrany filtr także wtedy, gdy jego przełącznik jest wyłączony. To jednorazowy odczyt z wynikiem w tabeli i zapisem do historii, bez powiadomień dla wyłączonego filtra. Harmonogram i **Sprawdź teraz** obejmują filtry z włączonym przełącznikiem.
 
 Gotowe puste pole otrzymuje 5 sekund na autofill; później udostępniane jest okno, bez założenia, że hasła nie ma w magazynie. Dostarczone lub niepewne zatwierdzenie nie jest powtarzane. Przy wylogowaniu lub problemie sieciowym monitoring kontrolowanie oczekuje/odzyskuje sesję; **Zatrzymaj** kończy oczekiwanie. Szczegóły limitów, diagnostyki i ograniczeń opisuje [kontrakt logowania](kontrakty/diagnostyka-logowania.md).
 
@@ -243,7 +255,7 @@ Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_ta
 
 W wyborze kolumn dostępne są także **Wnioskowane dla** i **Otwarte przez**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.
 
-W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **SCTASK** (minimum 15 sekund). Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał SCTASK wynosi 3600 sekund (godzinę); wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty nadal odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
+W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **zgłoszeń katalogowych (SCTASK, REQ, RITM)**. Minimum to 15 sekund. Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał zgłoszeń katalogowych wynosi 60 sekund. Wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
 
 ### Ochrona przed dużymi listami
 
@@ -261,4 +273,4 @@ W **Ustawienia → Dane aplikacji** wybierz **Usuń wszystkie dane aplikacji…*
 
 Po przeniesieniu folderu aplikacji uruchom monitor ręcznie z nowej lokalizacji. Jeśli wpis autostartu istnieje, monitor zaktualizuje jego ścieżkę. Przełącznik autostartu Windows jest ukryty w UI; Windows może dodatkowo wyłączyć istniejący wpis w swoich ustawieniach. Reset danych usuwa wpis bieżącego wariantu aplikacji.
 
-Kafelki dashboardu rozróżniają kolorem priorytety, przekroczenia, Wstrzymane L1 i Wnioski L1. WJRUW jest wskaźnikiem obliczanym lokalnie. Po odświeżeniu kliknij aktywny kafelek albo wybierz go klawiszem Tab i naciśnij Enter lub Spację, aby otworzyć odpowiadającą listę w domyślnej przeglądarce. Kafelek SLA otwiera okres wyświetlanej wartości. Monitor ustala cel dopiero po kliknięciu. Jeśli lista się nie otworzy, możesz ponowić kliknięcie bez aktualizacji dashboardu. Wymagany jest działający monitoring.
+W bieżących źródłach kafelki dashboardu i zagrożeń SLA wyświetlają wyniki i podświetlają się po najechaniu. Aby przejść do ServiceNow, użyj przycisku **Otwórz w SNOW** w nagłówku panelu. WJRUW jest wskaźnikiem obliczanym lokalnie.

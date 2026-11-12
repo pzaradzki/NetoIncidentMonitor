@@ -5,6 +5,22 @@ from PIL import Image, ImageDraw, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
+def checkbox_images(master, background):
+    """Shared checkbox geometry; None keeps table/selection backgrounds visible."""
+    images = []
+    for checked in (False, True):
+        picture = Image.new('RGBA' if background is None else 'RGB', (96, 96),
+                            (0, 0, 0, 0) if background is None else background)
+        draw = ImageDraw.Draw(picture)
+        draw.rounded_rectangle((8, 12, 76, 80), radius=16,
+            fill=ACCENT if checked else SURFACE,
+            outline=ACCENT if checked else '#737c8b', width=4)
+        if checked:
+            draw.line([(24, 44), (36, 56), (60, 32)], fill=TEXT, width=8)
+        images.append(ImageTk.PhotoImage(picture.resize((24, 24), Image.Resampling.LANCZOS), master=master))
+    return images
+
+
 def draw_gear(draw, x, y, color, size=16):
     """Shared gear outline, rendered at 4x resolution for smooth edges."""
     import math
@@ -452,13 +468,13 @@ class ThreatenedIncidentsButton(RoundedButton):
 
 
 class AnimatedMetricTile(tk.Frame):
-    """Shared mouse, keyboard and color transitions for metric cards."""
+    """Display a metric with an animated hover highlight."""
 
-    def __init__(self, parent, accent, command=None, **options):
+    def __init__(self, parent, accent, **options):
         super().__init__(parent, bg=SURFACE, highlightthickness=1,
-                         highlightbackground='#3c424d', **options)
-        self.accent, self.command = accent, command
-        self.hovered = self.pressed = False
+                         highlightbackground='#3c424d', takefocus=False, cursor='arrow', **options)
+        self.accent = accent
+        self.hovered = False
         self.timer = None
         self.current_color = self.color_from = self.color_to = SURFACE
         self.labels = []
@@ -466,62 +482,26 @@ class AnimatedMetricTile(tk.Frame):
     def bind_content(self, *widgets):
         self.labels = widgets
         for widget in (self, *widgets):
-            widget.configure(bg=self.current_color)
+            widget.configure(bg=self.current_color, cursor='arrow')
             widget.bind('<Enter>', self.enter)
             widget.bind('<Leave>', self.leave)
-            widget.bind('<ButtonPress-1>', self.press)
-            widget.bind('<ButtonRelease-1>', self.release)
-        self.bind('<FocusIn>', self.enter)
-        self.bind('<FocusOut>', lambda event: self.set_state(False, False) if self.command else None)
-        self.bind('<KeyPress-space>', self.press)
-        self.bind('<KeyRelease-space>', self.release)
-        self.bind('<KeyPress-Return>', self.press)
-        self.bind('<KeyRelease-Return>', self.release)
         self.bind('<Destroy>', self.close, add='+')
 
-        self.set_command(self.command)
-
-    def set_command(self, command):
-        self.command = command
-        self.configure(takefocus=bool(command))
-        for widget in (self, *self.labels):
-            widget.configure(cursor='hand2' if command else '')
-        if command is None and (self.hovered or self.pressed):
-            self.set_state(False, False)
-
-    def enter(self, event=None):
-        if self.command is None:
-            return
-        self.set_state(True, self.pressed)
+    def enter(self, event):
+        self.set_hovered(True)
 
     def leave(self, event):
         # Moving from the tile to a child label is still inside the same tile.
-        if self.command and not (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
+        if not (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
                 and self.winfo_rooty() <= event.y_root < self.winfo_rooty() + self.winfo_height()):
-            self.set_state(False, False)
+            self.set_hovered(False)
 
-    def press(self, event=None):
-        if self.command is None:
+    def set_hovered(self, hovered):
+        if self.hovered == hovered:
             return
-        self.focus_set()
-        self.set_state(True, True)
-
-    def release(self, event=None):
-        if self.command is None:
-            return
-        inside = (event is None or event.num != 1 or
-                  (self.winfo_rootx() <= event.x_root < self.winfo_rootx() + self.winfo_width()
-                   and self.winfo_rooty() <= event.y_root < self.winfo_rooty() + self.winfo_height()))
-        activate = self.pressed and self.hovered and inside
-        self.set_state(self.hovered, False)
-        if activate:
-            self.command()
-
-    def set_state(self, hovered, pressed):
-        self.hovered, self.pressed = hovered, pressed
-        target = '#424b5b' if pressed else '#303947' if hovered else SURFACE
-        self.configure(highlightbackground=self.accent if hovered or pressed else '#3c424d')
-        self.color_from, self.color_to = self.current_color, target
+        self.hovered = hovered
+        self.configure(highlightbackground=self.accent if hovered else '#3c424d')
+        self.color_from, self.color_to = self.current_color, '#303947' if hovered else SURFACE
         self.started = monotonic()
         if self.timer is not None:
             self.after_cancel(self.timer)
@@ -602,6 +582,9 @@ class FilterList(tk.Canvas):
         super().__init__(parent, width=200, height=4 * self.ROW, bg=SURFACE,
                          bd=0, highlightthickness=0, takefocus=True, cursor="hand2")
         self.rows, self.selected, self.pictures = {}, None, []
+        self.card_images = {}
+        self.labels = {}
+        self.image_width = None
         self.show_selection = True
         self.enabled_rows = {}
         self.updating_item = None
@@ -623,6 +606,14 @@ class FilterList(tk.Canvas):
 
     def get_children(self):
         return tuple(self.rows)
+
+    def replace_rows(self, rows):
+        """Replace a complete snapshot without an intermediate empty scroll region."""
+        self.rows = dict(rows)
+        self.labels.clear()
+        if self.selected not in self.rows:
+            self.selected = None
+        self.redraw()
 
     def delete(self, *items):
         for item in items:
@@ -722,48 +713,59 @@ class FilterList(tk.Canvas):
     def redraw(self, event=None):
         self.delete_canvas()
         width = max(100, self.winfo_width())
+        if width != self.image_width:
+            self.card_images.clear()
+            self.labels.clear()
+            self.image_width = width
+        from tkinter.font import Font
+        font = Font(self, font=("Segoe UI", 9))
         for index, (iid, name) in enumerate(self.rows.items()):
             chosen = self.show_selection and iid == self.selected
-            picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
-            draw = ImageDraw.Draw(picture)
-            draw.rounded_rectangle((0, 2 * 4, width * 4 - 1, 42 * 4), radius=8 * 4,
-                                   fill="#432e36" if chosen else "#30353e",
-                                   outline=ACCENT if chosen else "#444b56", width=4)
             enabled = self.enabled_rows.get(iid, True)
             updating = iid == self.updating_item
-            badge_left = width - 127
-            if updating:
-                draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 50) * 4, 33 * 4),
-                                       radius=11 * 4, fill="#244b37")
-            left = width - 38
-            draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
-                                   fill=ACCENT if enabled else "#555c68")
-            center = left + (21 if enabled else 9)
-            draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
-            radius = 3 if chosen else 1.5
-            draw.ellipse(((14 - radius) * 4, (22 - radius) * 4,
-                          (14 + radius) * 4, (22 + radius) * 4),
-                         fill=ACCENT if chosen else "#919aa8")
-            photo = ImageTk.PhotoImage(picture.resize((width, self.ROW), Image.Resampling.LANCZOS), master=self)
+            key = (chosen, bool(enabled), updating)
+            photo = self.card_images.get(key)
+            if photo is None:
+                photo = self.card_image(width, chosen, enabled, updating)
+                self.card_images[key] = photo
             self.pictures.append(photo)
             y = index * self.ROW
             self.create_image(0, y, image=photo, anchor="nw")
-            # Ellipsis keeps each card a single row without changing its saved name.
-            from tkinter.font import Font
-            font = Font(self, font=("Segoe UI", 9))
-            label = name
-            while label and font.measure(label) > width - (162 if updating else 72):
-                label = label[:-1]
-            if label != name:
-                label = label[:-1] + "…"
-            self.create_text(27, y + 22, text=label, anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            label_key = (name, updating)
+            if label_key not in self.labels:
+                label = name
+                while label and font.measure(label) > width - (162 if updating else 72):
+                    label = label[:-1]
+                if label != name:
+                    label = label[:-1] + "…"
+                self.labels[label_key] = label
+            self.create_text(27, y + 22, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
             if updating:
-                self.create_text(badge_left + 38, y + 22, text="Aktualizuje",
+                self.create_text(width - 89, y + 22, text="Aktualizuje",
                                  fill="#8ee2ac", font=("Segoe UI", 8))
-        # A scroll region shorter than the viewport lets Tk shift the rows
-        # down when scrolling upward, leaving empty space above them.
         self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))
         self.draw_drop_marker()
+
+    def card_image(self, width, chosen, enabled, updating):
+        picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
+        draw = ImageDraw.Draw(picture)
+        draw.rounded_rectangle((0, 2 * 4, width * 4 - 1, 42 * 4), radius=8 * 4,
+                               fill="#432e36" if chosen else "#30353e",
+                               outline=ACCENT if chosen else "#444b56", width=4)
+        badge_left = width - 127
+        if updating:
+            draw.rounded_rectangle((badge_left * 4, 11 * 4, (width - 50) * 4, 33 * 4),
+                                   radius=11 * 4, fill="#244b37")
+        left = width - 38
+        draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
+                               fill=ACCENT if enabled else "#555c68")
+        center = left + (21 if enabled else 9)
+        draw.ellipse(((center-6)*4, 16*4, (center+6)*4, 28*4), fill=TEXT)
+        radius = 3 if chosen else 1.5
+        draw.ellipse(((14 - radius) * 4, (22 - radius) * 4,
+                      (14 + radius) * 4, (22 + radius) * 4),
+                     fill=ACCENT if chosen else "#919aa8")
+        return ImageTk.PhotoImage(picture.resize((width, self.ROW), Image.Resampling.LANCZOS), master=self)
 
     def delete_canvas(self):
         super().delete("all")

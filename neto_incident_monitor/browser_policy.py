@@ -40,12 +40,15 @@ class BrowserRuntime:
         from neto_incident_monitor.browser_rendering import HiddenRendering
         self.rendering = HiddenRendering(diagnostics)
         self.login_rendering = HiddenRendering(diagnostics, scope='login')
+        self.favorites_rendering = HiddenRendering(diagnostics, scope='favorites')
         self.rendering_failed = False
         self.manual_key = None
         self.manual_attempts = 0
         self.manual_due = 0
         self.manual_confirmed = False
         self.visibility_failure = False
+        self.visible_login = False
+        self.session_visibility = False
 
     def record(self, event, **facts):
         try:
@@ -73,6 +76,18 @@ class BrowserRuntime:
         clear_login_activity(self.page)
         self.rendering.close('runtime_closed')
         self.login_rendering.close('runtime_closed')
+        self.favorites_rendering.close('runtime_closed')
+
+    @contextmanager
+    def favorites_read(self, page, diagnostics):
+        renderer = self.favorites_rendering
+        renderer.diagnostics = diagnostics
+        try:
+            renderer.sync(page, self.options.snapshot()['hide_browser'])
+            yield
+        finally:
+            renderer.close()
+            renderer.diagnostics = self.diagnostics
 
     def set_activity(self, activity):
         if activity not in ('login', 'dashboard', 'filters'):
@@ -145,7 +160,7 @@ class BrowserRuntime:
         from neto_incident_monitor.authentication import manual_handoff
         if self.window is not None:
             self.window.is_visible()
-        if manual_handoff(self.page):
+        if (not self.session_visibility or self.activity == 'login') and manual_handoff(self.page):
             self.manual_required = True
         options = self.options.snapshot()
         if options != self.previous:
@@ -165,10 +180,10 @@ class BrowserRuntime:
                 if command == 'show':
                     self.manual_key = None
                 force = True
-        if self.activity == 'login' or self.manual_required:
+        if self.activity == 'login' or (self.manual_required and not self.session_visibility):
             self.rendering.sync(self.page, False)
             manual = self.manual_required or not options['auto_login'] or self.rendering_failed
-            hidden = (not manual and self.override != 'show' and
+            hidden = (not self.visible_login and not manual and self.override != 'show' and
                       (self.override == 'hide' or options['hide_browser']))
             visibility = (self.activity, self.page, manual, hidden, self.override)
             if not hidden:
@@ -187,7 +202,7 @@ class BrowserRuntime:
                         self.window_changed(self.window)
                     self.window.hide()
                 elif not manual:
-                    self.show_window(activate=manual or self.override == 'show')
+                    self.show_window(activate=self.visible_login or self.override == 'show')
                 self.applied_visibility = visibility
             try:
                 self.login_rendering.sync(self.page, hidden)
@@ -226,6 +241,7 @@ class BrowserRuntime:
         finish_authentication(self.page)
         self.manual_required = False
         self.override = None
+        self.visible_login = False
         self.login_rendering.close('not_needed')
         self.rendering_failed = False
         self.manual_key = None

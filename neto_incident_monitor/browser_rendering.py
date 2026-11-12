@@ -25,7 +25,7 @@ def dashboard_target(url):
 
 class HiddenRendering:
     def __init__(self, diagnostics, scope='dashboard'):
-        if scope not in ('dashboard', 'login'):
+        if scope not in ('dashboard', 'login', 'favorites'):
             raise ValueError('Unknown rendering scope')
         self.scope = scope
         self.diagnostics = diagnostics
@@ -36,7 +36,7 @@ class HiddenRendering:
 
     def record(self, event, **facts):
         try:
-            self.diagnostics.record(event, **({'rendering_scope': 'login'} if self.scope == 'login' else {}), **facts)
+            self.diagnostics.record(event, **({'rendering_scope': self.scope} if self.scope != 'dashboard' else {}), **facts)
         except Exception:
             pass  # Diagnostics must never change browser behavior.
 
@@ -68,7 +68,7 @@ class HiddenRendering:
             return
         if self.client:
             return
-        if self.scope == 'dashboard' and not authenticated_session(page, 'https://adeo.service-now.com/'):
+        if self.scope != 'login' and not authenticated_session(page, 'https://adeo.service-now.com/'):
             self.record('rendering_deferred', rendering_reason='session_unconfirmed')
             return
         self.frames = self.acks = self.payload_bytes = 0
@@ -124,6 +124,9 @@ class HiddenRendering:
             return False
         if self.scope == 'dashboard':
             return dashboard_target(url)
+        if self.scope == 'favorites':
+            from neto_incident_monitor.favorites import HOME
+            return url == HOME
         try:
             address = urlparse(url)
             return (address.scheme == 'https' and address.hostname == 'idpb2e.adeo.com'

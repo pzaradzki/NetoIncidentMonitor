@@ -177,6 +177,7 @@ class FilterViewTests(unittest.TestCase):
                 app.filter_table.selection_set("1")
                 with patch("neto_incident_monitor.app.save_json"):
                     app.accept_column_schema(app.selected_filter_url(), [{"key": k, "label": k} for k in ["number", "requested_for"]])
+                self.assertEqual(tuple(app.current_table['displaycolumns']), ('number', 'requested_for'))
                 self.assertIn("requested_for", app.applicable_columns())
                 self.assertNotIn("caller", app.applicable_columns())
                 self.assertNotIn("parent_incident", app.applicable_columns())

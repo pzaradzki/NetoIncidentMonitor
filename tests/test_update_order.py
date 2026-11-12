@@ -114,12 +114,13 @@ class UpdateOrderTests(unittest.TestCase):
     def test_startup_message_matches_actual_dashboard_request(self):
         import tkinter as tk
         url = 'https://adeo.service-now.com/incident_list.do'
-        for enabled in (False, True):
-            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as folder:
+        for saved in ({}, {'dashboard_auto_refresh': False}, {'dashboard_auto_refresh': True}):
+            enabled = saved.get('dashboard_auto_refresh', False)
+            with self.subTest(saved=saved), tempfile.TemporaryDirectory() as folder:
                 root = tk.Tk()
                 app = None
                 try:
-                    settings = dict(filters=[dict(name='Synthetic', url=url)], dashboard_auto_refresh=enabled)
+                    settings = dict(filters=[dict(name='Synthetic', url=url)], **saved)
                     with patch('neto_incident_monitor.app.read_json', return_value=settings), \
                             patch('neto_incident_monitor.app.save_json'), \
                             patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):

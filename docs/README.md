@@ -1,6 +1,6 @@
 # Dokumentacja Neto Incident Monitor
 
-Stan bieżący opisuje [lokalne wydanie 1.8.1](wersje/v1.8.1.md).
+Stan bieżący opisuje [wydanie 1.10.0](wersje/v1.10.0.md).
 
 | Cel | Dokument |
 | --- | --- |

@@ -120,6 +120,49 @@ class InputOwnershipScopeTests(unittest.TestCase):
   auto=AutomaticLogin();auto.autofilled=Mock(return_value=True);auto.step(self.page)
   self.assertTrue(auto.blocked);self.assertFalse(self.page.evaluate('!!window.clicks'))
 
+ def test_password_entry_survives_navigation_and_excludes_other_input(self):
+  from neto_incident_monitor.authentication import set_login_activity, take_manual_password_entry
+  self.page.goto('https://idpb2e.adeo.com/password')
+  self.page.evaluate('html=>document.body.innerHTML=html',
+                     '<input type="password" autocomplete="one-time-code"><input id="pwd" type="password">')
+  set_login_activity(self.page)
+  self.page.locator('[autocomplete=one-time-code]').press('1')
+  self.page.locator('#pwd').evaluate("""el => el.dispatchEvent(new InputEvent('beforeinput',
+      {bubbles:true,inputType:'insertText'}))""")
+  self.assertFalse(take_manual_password_entry(self.page))
+  self.page.locator('#pwd').press('x')
+  self.page.goto('https://adeo.service-now.com/dashboard')
+  self.assertTrue(take_manual_password_entry(self.page))
+  self.assertFalse(take_manual_password_entry(self.page))
+
+ def test_password_entry_on_owned_popup_is_delivered_to_main_page(self):
+  from neto_incident_monitor.authentication import set_login_activity, take_manual_password_entry
+  self.ctx.route('https://idpb2e.adeo.com/password', lambda r:
+                 r.fulfill(body='<input type="password">', content_type='text/html'))
+  set_login_activity(self.page)
+  with self.page.expect_popup() as opened:
+   self.page.evaluate("() => { window.open('https://idpb2e.adeo.com/password'); }")
+  popup = opened.value
+  popup.locator('input').press('x')
+  popup.close()
+  self.assertTrue(take_manual_password_entry(self.page))
+
+ def test_password_save_prompt_is_skipped_with_auto_login_disabled(self):
+  from threading import Event
+  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.authentication import set_login_activity
+  self.page.route('https://idpb2e.adeo.com/password', lambda r:
+                  r.fulfill(body='<input type="password">', content_type='text/html'))
+  self.page.goto('https://idpb2e.adeo.com/password')
+  set_login_activity(self.page)
+  self.page.locator('[type=password]').press('x')
+  target = 'https://adeo.service-now.com/now/sow/home'
+  self.page.goto(target)
+  self.page.evaluate('window.g_user = {userID:"fixture"}')
+  prompt = Mock()
+  self.assertTrue(wait_for_login(self.page, target, Event(), auto_login=False, on_password_save=prompt))
+  prompt.assert_not_called()
+
 
 class LoginRenderingScopeTests(unittest.TestCase):
  def setUp(self):

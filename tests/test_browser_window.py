@@ -102,15 +102,15 @@ class BrowserWindowTests(unittest.TestCase):
 
     def test_foreground_input_attachment_is_always_detached(self):
         from unittest.mock import Mock, patch, call
-        from neto_incident_monitor.browser_window import _restore_foreground
+        from neto_incident_monitor.window_style import restore_foreground
         api, kernel = Mock(), Mock()
         kernel.GetCurrentThreadId.return_value = 1
         api.GetWindowThreadProcessId.return_value = 2
         api.AttachThreadInput.return_value = True
         api.SetForegroundWindow.side_effect = RuntimeError('fixture')
-        with patch('neto_incident_monitor.browser_window.ctypes.WinDLL', return_value=kernel):
+        with patch('neto_incident_monitor.window_style.ctypes.WinDLL', return_value=kernel):
             with self.assertRaises(RuntimeError):
-                _restore_foreground(api, 10)
+                restore_foreground(api, 10)
         self.assertEqual(api.AttachThreadInput.call_args_list, [call(1, 2, True), call(1, 2, False)])
 
     def test_passive_show_keeps_foreground_and_supports_browser_actions(self):

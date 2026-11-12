@@ -51,8 +51,6 @@ def build_dashboard(parent, app, cache_path=None):
     panel.data_period = None
     panel.snapshot_values = {}
     panel.section_snapshots = {}
-    cards = {}
-    title_labels = {}
     panel.cache_error = False
     panel.restored_snapshot = False
     panel.request_id = 0
@@ -138,19 +136,18 @@ def build_dashboard(parent, app, cache_path=None):
               "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień")
     panel.month.set(months[date.today().month - 1])
     panel.last_read_text = '—'
-    pending_drilldown = None
+    panel.queued_period = None
+    panel.selected_period = lambda: (int(panel.year.get()), months.index(panel.month.get()) + 1)
 
     def set_message(description):
-        if pending_drilldown is not None:
-            description = 'Otwieranie listy…'
         year, month = panel.data_period or (int(panel.year.get()), months.index(panel.month.get()) + 1)
         panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year}. • '
                           f'Ostatnio odczytano: {panel.last_read_text} • {description}')
     panel.set_message = set_message
     set_message('Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.')
     def period_changed(event=None):
-        if panel.active_request is not None:
-            request_id, year, month = panel.active_request
+        if panel.active_request is not None or panel.queued_period is not None:
+            request_id, year, month = panel.active_request or (panel.request_id, *panel.queued_period)
             if panel.year.get() != str(year):
                 panel.year.set(str(year))
             if panel.month.get() != months[month - 1]:
@@ -181,7 +178,7 @@ def build_dashboard(parent, app, cache_path=None):
     restoring_period = False
     def protect_period(*_):
         nonlocal restoring_period
-        if panel.active_request is not None and not restoring_period:
+        if (panel.active_request is not None or panel.queued_period is not None) and not restoring_period:
             restoring_period = True
             try:
                 period_changed()
@@ -189,6 +186,14 @@ def build_dashboard(parent, app, cache_path=None):
                 restoring_period = False
     for variable in (panel.month, panel.year):
         variable.trace_add('write', protect_period)
+
+    def lock_queued_period(locked):
+        if bool(panel.queued_period) == locked:
+            return
+        panel.queued_period = panel.selected_period() if locked else None
+        for combo in panel.period_controls:
+            combo.configure(state='disabled' if locked or panel.active_request else 'readonly')
+    panel.lock_queued_period = lock_queued_period
 
     def set_updating(request_id, year, month, state):
         if panel.active_request != (request_id, year, month):
@@ -201,7 +206,7 @@ def build_dashboard(parent, app, cache_path=None):
         if state in ('finished', 'cancelled', 'queue_error'):
             panel.active_request = None
             for combo in panel.period_controls:
-                combo.configure(state='readonly')
+                combo.configure(state='disabled' if panel.queued_period else 'readonly')
             panel.finish_pending()
             if not panel.final_result_received:
                 set_message('Aktualizacja dashboardu została przerwana. Kafelki zachowują ostatni wynik.'
@@ -216,7 +221,7 @@ def build_dashboard(parent, app, cache_path=None):
             set_updating(*panel.active_request, 'cancelled')
     panel.cancel_request = cancel_request
 
-    def request(automatic=False, coordinated=False):
+    def request(automatic=False, coordinated=False, *, enqueue=True, selected=None):
         if not automatic and not coordinated:
             return app.request_refresh('dashboard')
         if panel.active_request is not None:
@@ -224,7 +229,7 @@ def build_dashboard(parent, app, cache_path=None):
         if not automatic and (not app.worker or not app.worker.is_alive()):
             set_message('Najpierw uruchom monitoring i zaloguj się w ServiceNow.')
             return False
-        year, month = int(panel.year.get()), months.index(panel.month.get()) + 1
+        year, month = selected or panel.selected_period()
         panel.request_id += 1
         panel.active_request = (panel.request_id, year, month)
         panel.request_period = (year, month)
@@ -242,7 +247,8 @@ def build_dashboard(parent, app, cache_path=None):
         for section in panel.section_pills:
             set_section_state(panel.request_id, section, 'Oczekuje')
         try:
-            app.dashboard_requests.put(panel.active_request)
+            if enqueue:
+                app.dashboard_requests.put(panel.active_request)
         except Exception:
             set_updating(*panel.active_request, 'queue_error')
             if hasattr(app, 'dashboard_progress'):
@@ -253,7 +259,7 @@ def build_dashboard(parent, app, cache_path=None):
                request_state='queued')
         set_message('Oczekiwanie na zalogowanie i odczyt dashboardu…' if automatic else
                           'Oczekiwanie na odczyt w przeglądarce… Poprzednie dane mogą być nieaktualne.')
-        return True
+        return True if enqueue else panel.active_request
 
     panel.request_refresh = request
 
@@ -293,7 +299,7 @@ def build_dashboard(parent, app, cache_path=None):
             accent = '#c8a7ec'
         elif title.startswith(('Wnioski', 'Otwarte wnioski', 'Nieprzypisane')):
             accent = '#83c9b9'
-        card = cards[title] = AnimatedMetricTile(metrics, accent, padx=12, pady=16)
+        card = AnimatedMetricTile(metrics, accent, padx=12, pady=16)
         card.grid(row=row, column=column, rowspan=rowspan, sticky="nsew",
                   padx=(0 if column == 0 else 6, 0 if column == columns - 1 else 6),
                   pady=(0 if row == 0 else 6, 0 if row == 1 else 6))
@@ -301,9 +307,8 @@ def build_dashboard(parent, app, cache_path=None):
         label.pack(anchor="w")
         if dot:
             tk.Label(label, text="●", fg=dot, bg=color, font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
-        title_labels[title] = tk.Label(label, text=title, bg=color, fg=accent, font=("Segoe UI", 9),
-                                     wraplength=title_wrap, justify='left')
-        title_labels[title].pack(side="left")
+        tk.Label(label, text=title, bg=color, fg=accent, font=("Segoe UI", 9),
+                 wraplength=title_wrap, justify='left').pack(side="left")
         variable = panel.values[title] = tk.StringVar(panel, value="—")
         value_label = panel.value_labels[title] = tk.Label(
             card, textvariable=variable, bg=color, fg=TEXT if row == 0 or total else MUTED,
@@ -330,66 +335,12 @@ def build_dashboard(parent, app, cache_path=None):
     for column, title in enumerate(REQUEST_TITLES):
         metrics.columnconfigure(column, weight=1, uniform='requests')
         tile(title, column, 0, title_wrap=112, columns=columns)
-    def request_drilldown(alias, index, title):
-        nonlocal pending_drilldown
-        if pending_drilldown is not None:
-            return
-        snapshot = panel.section_snapshots[alias]
-        period = (snapshot['year'], snapshot['month']) if alias == 'sla' else None
-        token = object()
-        enqueue = getattr(app, 'request_dashboard_drilldown', None)
-        if enqueue is None or not enqueue((token, alias, title, period)):
-            set_message('Aby otworzyć listę, uruchom monitoring i zaloguj się w ServiceNow.')
-            return
-        pending_drilldown = (token, alias, index, period)
-        title_labels[title].configure(text='Otwieranie listy…')
-        set_message('Otwieranie listy…')
-
-    def apply_drilldown(result):
-        from neto_incident_monitor.dashboard_drilldown import valid_drilldown
-        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
-
-        nonlocal pending_drilldown
-        token, url = result
-        if pending_drilldown is None or token is not pending_drilldown[0]:
-            return
-        _, alias, index, period = pending_drilldown
-        cancel_drilldown()
-        if not valid_drilldown(url, alias, period):
-            set_message('Nie udało się potwierdzić listy ServiceNow. Kliknij kafelek ponownie.')
-            return
-        diagnostics = LoginDiagnostics(source='dashboard', section=alias)
-        try:
-            opened = webbrowser.open(url)
-        except Exception:
-            opened = False
-        diagnostics.record('dashboard_drilldown_open', tile_index=index,
-                           outcome='returned' if opened else 'error')
-        set_message('Otwarto listę w przeglądarce.' if opened else
-                    'Nie udało się otworzyć listy w przeglądarce. Kliknij kafelek ponownie.')
-
-    def cancel_drilldown():
-        nonlocal pending_drilldown
-        if pending_drilldown is not None:
-            from neto_incident_monitor.dashboard_cache import SECTIONS
-            _, alias, index, _ = pending_drilldown
-            title = SECTIONS[alias][index]
-            title_labels[title].configure(text=title)
-        pending_drilldown = None
-
-    panel.apply_drilldown = apply_drilldown
-    panel.cancel_drilldown = cancel_drilldown
 
     def render_snapshots():
         from datetime import datetime
         panel.snapshot_values = {}
-        from neto_incident_monitor.dashboard_cache import SECTIONS
         for alias, snapshot in panel.section_snapshots.items():
             panel.snapshot_values.update(snapshot['values'])
-            for index, title in enumerate(SECTIONS[alias]):
-                if title in snapshot['values']:
-                    cards[title].set_command(
-                        lambda alias=alias, index=index, title=title: request_drilldown(alias, index, title))
             if alias == 'sla':
                 panel.data_period = (snapshot['year'], snapshot['month'])
         panel.last_read_text = (datetime.fromisoformat(panel.last_complete_read_at).strftime('%d.%m.%Y %H:%M:%S')

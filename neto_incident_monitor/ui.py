@@ -5,6 +5,11 @@ from neto_incident_monitor.widgets import Toggle, RoundedButton, DashboardButton
 from PIL import Image, ImageDraw, ImageTk
 
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
+from neto_incident_monitor.settings_ui import SETTINGS_WINDOW_SIZE, build_settings
+
+
+MIN_SIDEBAR_WIDTH = 235
+DEFAULT_SIDEBAR_WIDTH = 329
 
 
 def build_ui(app, settings):
@@ -65,16 +70,8 @@ def build_ui(app, settings):
                     indicatorbackground=SURFACE, indicatorforeground=ACCENT)
     style.map("TCheckbutton", background=[("active", BG)],
               indicatorbackground=[("selected", ACCENT), ("active", "#424751")])
-    root.checkbox_images = []
-    for checked in (False, True):
-        picture = Image.new("RGB", (24 * 4, 24 * 4), BG)
-        draw = ImageDraw.Draw(picture)
-        draw.rounded_rectangle((2 * 4, 3 * 4, 19 * 4, 20 * 4), radius=4 * 4,
-                               fill=ACCENT if checked else SURFACE,
-                               outline=ACCENT if checked else "#737c8b", width=4)
-        if checked:
-            draw.line([(6 * 4, 11 * 4), (9 * 4, 14 * 4), (15 * 4, 8 * 4)], fill=TEXT, width=2 * 4)
-        root.checkbox_images.append(ImageTk.PhotoImage(picture.resize((24, 24), Image.Resampling.LANCZOS), master=root))
+    from neto_incident_monitor.widgets import checkbox_images
+    root.checkbox_images = checkbox_images(root, background=BG)
     style.element_create("AppCheck.indicator", "image", root.checkbox_images[0],
                          ("selected", root.checkbox_images[1]), sticky="w")
     style.layout("App.TCheckbutton", [("Checkbutton.padding", {"sticky": "nswe", "children": [
@@ -149,7 +146,7 @@ def build_ui(app, settings):
     app.start_button = RoundedButton(app.controls, text="Uruchom monitoring", icon="play", command=app.start,
                                      primary=True, background=BG)
     app.start_button.pack(side="left", padx=4)
-    app.stop_button = RoundedButton(app.controls, text="Zatrzymaj", icon="stop", command=app.stop.set, background=BG)
+    app.stop_button = RoundedButton(app.controls, text="Zatrzymaj", icon="stop", command=app.stop_monitoring, background=BG)
     app.stop_button.configure(state="disabled")
     app.stop_button.pack(side="left", padx=4)
     app.check_button = RoundedButton(app.controls, text="Sprawdź teraz", icon="refresh", command=app.check_now, background=BG)
@@ -158,14 +155,11 @@ def build_ui(app, settings):
 
     def show_settings():
         window = app.settings_window
-        window.update_idletasks()
-        # Use the configured window size, not the requested height of the
-        # scrollable content, which can be taller than the settings window.
-        size = window.geometry().split("+", 1)[0]
-        width, height = map(int, size.split("x"))
+        width, height = SETTINGS_WINDOW_SIZE
         x = max(0, (window.winfo_screenwidth() - width) // 2)
         y = max(0, (window.winfo_screenheight() - height) // 2)
         window.geometry(f"{width}x{height}+{x}+{y}")
+        window.update_idletasks()
         window.deiconify()
         window.lift()
     RoundedButton(app.controls, text="Ustawienia", icon="gear", command=show_settings,
@@ -180,13 +174,13 @@ def build_ui(app, settings):
     splitter = tk.Frame(body, width=20, background=BG, cursor="sb_h_double_arrow")
     splitter.grid(row=0, column=1, sticky="ns")
     sidebar_area.rowconfigure(0, weight=1)
-    app.sidebar_canvas = canvas = tk.Canvas(sidebar_area, width=235, background=SURFACE,
+    app.sidebar_canvas = canvas = tk.Canvas(sidebar_area, width=DEFAULT_SIDEBAR_WIDTH, background=SURFACE,
                                             highlightthickness=0, borderwidth=0)
     canvas.grid(row=0, column=0, sticky="ns")
     scroll = ttk.Scrollbar(sidebar_area, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=scroll.set)
     sidebar = ttk.Frame(canvas, style="White.TFrame", padding=16)
-    sidebar_window = canvas.create_window((0, 0), window=sidebar, anchor="nw", width=235)
+    sidebar_window = canvas.create_window((0, 0), window=sidebar, anchor="nw", width=DEFAULT_SIDEBAR_WIDTH)
     sidebar.rowconfigure(3, weight=1)
     sidebar.columnconfigure(0, weight=1)
 
@@ -220,7 +214,7 @@ def build_ui(app, settings):
     app.filter_table = FilterList(lists)
     app.filter_table.grid(row=1, column=0, sticky="nsew")
     filter_scroll = app.filter_scroll = ttk.Scrollbar(lists, orient="vertical", command=app.filter_table.yview)
-    filter_scroll.grid(row=1, column=1, sticky="ns")
+    filter_scroll.grid(row=1, column=1, sticky="ns", padx=(8, 0))
     filter_scroll.grid_remove()
 
     def update_filter_scroll(first, last):
@@ -246,6 +240,10 @@ def build_ui(app, settings):
         else:
             button.grid(row=1, column=i - 1, sticky="ew", padx=(0, 4) if i == 1 else (4, 0))
         app.filter_buttons.append(button)
+    app.import_button = import_button = RoundedButton(filter_actions, text="Importuj z ServiceNow", command=app.import_favorites)
+    import_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    if not getattr(app, 'session', None):
+        app.filter_buttons.append(import_button)
     app.refresh_filters()
     app.settings_window = tk.Toplevel(root)
     app.settings_window.withdraw()
@@ -255,7 +253,6 @@ def build_ui(app, settings):
     app.settings_window.transient(root)
     app.settings_window.protocol("WM_DELETE_WINDOW", app.settings_window.withdraw)
     app.settings_window.bind("<Escape>", lambda event: app.settings_window.withdraw())
-    from neto_incident_monitor.settings_ui import build_settings
     build_settings(app, settings)
 
     content_host = ttk.Frame(body)
@@ -358,6 +355,8 @@ def build_ui(app, settings):
         "Lista wcześniej wykrytych zgłoszeń. Pokazuje dane zapisane w chwili wykrycia — mogą różnić się od aktualnych danych w ServiceNow.")
     def align_actions(event=None):
         # The incident pane always fits both tabs and the action buttons.
+        if not actions.winfo_exists() or not app.tabs.winfo_exists():
+            return
         required = sum(image.width() for image in app.root.tab_images) + actions.winfo_reqwidth() + 12
         body.columnconfigure(2, minsize=required)
         root.minsize(48 + 235 + 20 + required, 680)
@@ -367,6 +366,8 @@ def build_ui(app, settings):
 
     app.tabs.bind("<Configure>", align_actions)
     def update_history_action(event=None):
+        if not actions.winfo_exists() or not app.tabs.winfo_exists():
+            return
         if app.tabs.select() == str(history):
             app.clear_history_button.pack(side="right", padx=(8, 0), after=app.configure_filter_button)
         else:
@@ -375,12 +376,14 @@ def build_ui(app, settings):
 
     app.tabs.bind("<<NotebookTabChanged>>", update_history_action, add="+")
     app.tabs.bind("<<NotebookTabChanged>>", app.show_table_tab, add="+")
-    desired_width = max(235, int(settings.get("sidebar_width", 235)))
+    desired_width = max(MIN_SIDEBAR_WIDTH, int(settings.get("sidebar_width", DEFAULT_SIDEBAR_WIDTH)))
     drag_origin = None
 
     def fit_sidebar(event=None):
+        if not actions.winfo_exists() or not canvas.winfo_exists():
+            return
         required = sum(image.width() for image in root.tab_images) + actions.winfo_reqwidth() + 12
-        maximum = max(235, body.winfo_width() - 48 - 20 - required)
+        maximum = max(MIN_SIDEBAR_WIDTH, body.winfo_width() - 48 - 20 - required)
         canvas.configure(width=min(desired_width, maximum))
 
     def start_resize(event):
@@ -393,8 +396,8 @@ def build_ui(app, settings):
         if drag_origin is None:
             return
         required = sum(image.width() for image in root.tab_images) + actions.winfo_reqwidth() + 12
-        maximum = max(235, body.winfo_width() - 48 - 20 - required)
-        desired_width = max(235, min(maximum, drag_origin[1] + event.x_root - drag_origin[0]))
+        maximum = max(MIN_SIDEBAR_WIDTH, body.winfo_width() - 48 - 20 - required)
+        desired_width = max(MIN_SIDEBAR_WIDTH, min(maximum, drag_origin[1] + event.x_root - drag_origin[0]))
         fit_sidebar()
 
     def finish_resize(event):
@@ -418,3 +421,12 @@ def build_ui(app, settings):
     app.table.bind("<Double-1>", app.open_incident)
     app.last_read = tk.StringVar(value="Ostatnia aktualizacja: —")
     app.status = tk.StringVar(value="Uruchom monitoring i zaloguj się w otwartej przeglądarce.")
+    if getattr(app, 'session', None):
+        app.session_status = tk.StringVar(value='Łączenie z ServiceNow')
+        session_bar = ttk.Frame(root, padding=(24, 0, 24, 12))
+        session_bar.pack(fill='x')
+        ttk.Label(session_bar, textvariable=app.session_status).pack(side='left')
+        ttk.Label(session_bar, textvariable=app.last_read, style='Muted.TLabel').pack(side='left', padx=12)
+        ttk.Label(session_bar, textvariable=app.status, style='Muted.TLabel', wraplength=520).pack(side='right')
+        app.login_window_button = RoundedButton(session_bar, text='Pokaż okno logowania', background=BG,
+                                                command=lambda: app.events.put(('show_browser', None)))

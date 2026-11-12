@@ -8,7 +8,13 @@ W warunku pola `sys_updated_on` kompletne wartości `javascript:gs.daysAgoStart(
 
 Na każdej stronie wymagane są spójne zakresy, liczebność, unikalność i stała tożsamość listy. Rzeczywista zmiana warunków powoduje `query_mismatch` na pierwszej stronie lub `list_changed` podczas przejścia. Możliwe jest jedno ponowienie całego odczytu z nowym buforem, w dotychczasowym budżecie. Stop i utrata sesji zachowują odrębne ścieżki. Wynik częściowy nie trafia do historii, obecności ani kolejki alertów.
 
+Dla klasycznych list INC, REQ, RITM i SCTASK czytnik sprawdza `rows_per_page` w metadanych właściwej tabeli przed pobraniem rekordów. Przy 100 wierszach od razu rozpoczyna odczyt. Przy innej potwierdzonej wartości próbuje wybrać **Czynności → Pokaż → 100 wiersz./str.** na tej samej karcie. Po akcji wiąże tabelę ponownie i sprawdza kontekst oraz pierwszą stronę. Niedostępna opcja lub brak potwierdzenia pozwalają użyć zaobserwowanego rozmiaru, jeśli kontekst i kompletność można potwierdzić. Ponowienie całego odczytu wykorzystuje zaobserwowany rozmiar po pierwszej próbie zmiany.
+
+ServiceNow zapisuje wybór jako preferencję użytkownika i stosuje ją na klasycznych listach dostępnych dla tego konta. [Dokumentacja ServiceNow](https://www.servicenow.com/docs/r/platform-user-interface/configure-use-list-functions.html).
+
 ## Diagnostyka
+
+Zdarzenie `pagination_page_size` zapisuje wynik sprawdzenia menu lub potwierdzenia zmiany, numer strony oraz poprzedni i odczytany rozmiar. Przy 100 wierszach istniejące `pagination_bound` podaje rozmiar bez dodatkowych zdarzeń menu.
 
 Przy dodawaniu filtra `validate_urls` normalizuje adres opakowany do bezpośredniej listy. Warstwa opakowania jest dekodowana raz, parametry celu parsowane i ponownie kodowane; dołączone parametry są zachowane, a sprzeczne powtórzenia `sysparm_*` odrzucane. Istniejące bezpośrednie adresy nie są przepisywane. Reguły hosta, listy i bezpiecznych znaków nadal obowiązują. [Decyzja 016](../decyzje/016-normalizacja-adresow-list.md).
 

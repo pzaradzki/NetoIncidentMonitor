@@ -53,13 +53,19 @@ def load_profiles(value):
     return result
 
 
-def update_profile(previous, schema):
+def default_layout(keys, incident_list):
+    visible = ['age_minutes', *keys] if incident_list else list(keys)
+    return visible, visible + [key for key in LOCAL_KEYS if key not in visible]
+
+
+def update_profile(previous, schema, *, incident_list=False):
     schema = normalize_schema(schema)
     if not schema:
         return previous
     keys = [c['key'] for c in schema]
     if previous is None or set(keys) != {c['key'] for c in previous['schema']}:
-        return {'schema': schema, 'visible': keys, 'order': keys + LOCAL_KEYS, 'widths': {}}
+        visible, order = default_layout(keys, incident_list and previous is None)
+        return {'schema': schema, 'visible': visible, 'order': order, 'widths': {}}
     profile = copy.deepcopy(previous)
     profile['schema'] = schema
     return profile
@@ -68,6 +74,9 @@ def update_profile(previous, schema):
 class DynamicColumns:
     def column_profile(self):
         return getattr(self, 'column_profiles', {}).get(self.selected_filter_url())
+
+    def _is_incident_list(self, url):
+        return effective_list_url(url, self.filters).split('?', 1)[0].endswith('/incident_list.do')
 
     def save_column_profiles(self, profiles):
         from neto_incident_monitor.app import read_json, save_json, CONFIG
@@ -78,7 +87,7 @@ class DynamicColumns:
 
     def accept_column_schema(self, url, schema):
         old = self.column_profiles.get(url)
-        profile = update_profile(old, schema)
+        profile = update_profile(old, schema, incident_list=self._is_incident_list(url))
         if profile is None:
             return
         if profile != old:
@@ -147,7 +156,7 @@ class DynamicColumns:
     def applicable_columns(self):
         profile = self.column_profile()
         keys = [c['key'] for c in profile['schema']] if profile else []
-        if effective_list_url(self.selected_filter_url(), self.filters).split('?', 1)[0].endswith('/incident_list.do'):
+        if self._is_incident_list(self.selected_filter_url()):
             keys.append('age_minutes')
         return keys + ['time']
 
@@ -239,6 +248,8 @@ class DynamicColumns:
             return
         url = self.selected_filter_url()
         schema_keys = {c['key'] for c in profile['schema']}
+        incident_list = self._is_incident_list(url)
+        default_visible, _ = default_layout(schema_keys, incident_list)
         dialog = tk.Toplevel(self.root)
         dialog.title('Widoczne kolumny')
         dialog.configure(background=BG)
@@ -284,7 +295,7 @@ class DynamicColumns:
             nonlocal reset_order
             reset_order = True
             for key, value in choices.items():
-                value.set(key in schema_keys)
+                value.set(key in default_visible)
         def save():
             live = self.column_profiles.get(url)
             if live is None or {c['key'] for c in live['schema']} != schema_keys:
@@ -298,7 +309,7 @@ class DynamicColumns:
             updated['visible'] = selected
             if reset_order:
                 updated['visible'] = [k for k, value in choices.items() if value.get()]
-                updated['order'] = [c['key'] for c in live['schema']] + LOCAL_KEYS
+                _, updated['order'] = default_layout([c['key'] for c in live['schema']], incident_list)
                 updated['widths'] = {}
             try:
                 self.save_column_profiles(profiles)

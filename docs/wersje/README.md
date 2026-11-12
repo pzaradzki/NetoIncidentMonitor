@@ -1,6 +1,7 @@
 # Opisy wersji
 
-- [1.9.4](v1.9.4.md) — bieżące wydanie: odporne zatwierdzanie okresu i filtrów dashboardu.
+- [1.10.0](v1.10.0.md) — wspólna sesja ServiceNow, kolejka aktualizacji i import Ulubionych.
+- [1.9.4](v1.9.4.md) — odporne zatwierdzanie okresu i filtrów dashboardu.
 
 - [1.9.3](v1.9.3.md) — poprzednie wydanie: spójne statusy aplikacji, sekcji i opisu dashboardu.
 - [1.9.2](v1.9.2.md) — poprzednie wydanie: niezależne odzyskiwanie logowania po błędzie odczytu dashboardu.

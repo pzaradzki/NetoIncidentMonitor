@@ -3,24 +3,7 @@ import ctypes
 from time import monotonic, sleep
 from ctypes import wintypes
 
-
-def _restore_foreground(api, hwnd):
-    """Restore focus without changing global Windows foreground-lock settings."""
-    current_thread = ctypes.WinDLL('kernel32').GetCurrentThreadId()
-    foreground_thread = api.GetWindowThreadProcessId(api.GetForegroundWindow(), None)
-    api.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
-    api.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
-                                wintypes.UINT, wintypes.UINT, wintypes.UINT]
-    message = wintypes.MSG()
-    api.PeekMessageW(ctypes.byref(message), None, 0, 0, 0)
-    attached = False
-    try:
-        if foreground_thread and foreground_thread != current_thread:
-            attached = bool(api.AttachThreadInput(current_thread, foreground_thread, True))
-        api.SetForegroundWindow(hwnd)
-    finally:
-        if attached:
-            api.AttachThreadInput(current_thread, foreground_thread, False)
+from neto_incident_monitor.window_style import restore_foreground
 
 
 class BrowserWindow:
@@ -81,7 +64,7 @@ class BrowserWindow:
                         else:
                             user32.ShowWindowAsync(hwnd, command)
                     if show and show != 'minimized' and activate:
-                        _restore_foreground(user32, hwnd)
+                        restore_foreground(user32, hwnd)
                 visible.append(bool(user32.IsWindowVisible(hwnd)) and
                                (include_minimized or not user32.IsIconic(hwnd)))
             return True
@@ -140,7 +123,7 @@ class BrowserWindow:
                 pid = wintypes.DWORD()
                 api.GetWindowThreadProcessId(current, ctypes.byref(pid))
                 if current != foreground and pid.value == self.pid and api.IsWindow(foreground):
-                    _restore_foreground(api, foreground)
+                    restore_foreground(api, foreground)
                 sleep(0.02)
         self.visible = self.is_visible()
         self._passive_ready = True

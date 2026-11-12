@@ -3,15 +3,19 @@ import logging
 
 
 class Tray:
-    def __init__(self, events, browser_visible=None):
+    def __init__(self, events, browser_visible=None, login_waiting=None):
         import pystray
         self.events = events
         self.phase = "Gotowy"
         browser_visible = browser_visible or (lambda: False)
+        browser_action = (pystray.MenuItem('Pokaż okno logowania',
+            lambda icon, item: events.put(('show_browser', None)), visible=lambda item: login_waiting())
+            if login_waiting is not None else
+            pystray.MenuItem(lambda item: "Ukryj przeglądarkę" if browser_visible() else "Pokaż przeglądarkę",
+                lambda icon, item: events.put(("hide_browser" if browser_visible() else "show_browser", None))))
         menu = pystray.Menu(
             pystray.MenuItem("Pokaż aplikację", lambda icon, item: events.put(("show", None)), default=True),
-            pystray.MenuItem(lambda item: "Ukryj przeglądarkę" if browser_visible() else "Pokaż przeglądarkę",
-                             lambda icon, item: events.put(("hide_browser" if browser_visible() else "show_browser", None))),
+            browser_action,
             pystray.MenuItem("Zatrzymaj monitoring", lambda icon, item: events.put(("stop_monitor", None))),
             pystray.MenuItem("Zakończ aplikację", lambda icon, item: events.put(("quit", None))),
             pystray.MenuItem("Sprawdź teraz", lambda icon, item: events.put(("check_now", None))),

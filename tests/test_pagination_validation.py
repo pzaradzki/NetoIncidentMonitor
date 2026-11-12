@@ -48,6 +48,47 @@ class PaginationValidationTests(unittest.TestCase):
                 self.assertEqual(pages, 3)
                 self.assertEqual(set(values), {f'INC{i:07}' for i in range(1, total + 1)})
 
+    def test_preferred_size_is_selected_before_collecting_rows_only_if_needed(self):
+        for size, menu_opens in ((20, 1), (100, 0)):
+            with self.subTest(size=size):
+                self.page.unroute_all()
+                self.serve(lambda _: classic_list(total=205, size=size, size_menu='resize'))
+                self.page.goto(URL)
+                self.page.evaluate('localStorage.clear()')
+                collected_sizes = []
+
+                def collect_at_size(view):
+                    collected_sizes.append(self.page.locator('#incident_table').get_attribute('rows_per_page'))
+                    return collect(view)
+
+                with self.assertLogs(_logger, level='INFO') as captured:
+                    records, pages = read_all(self.page, URL, threading.Event(), collect_at_size, empty_list,
+                                              authentication_page, navigate)
+                self.assertEqual((len(records), pages), (205, 3))
+                self.assertEqual(set(collected_sizes), {'100'})
+                self.assertEqual(self.page.evaluate('Number(localStorage.menuOpens || 0)'), menu_opens)
+                self.assertEqual(self.page.evaluate('Number(localStorage.sizeClicks || 0)'), menu_opens)
+                results = [row for row in (json.loads(r.getMessage()) for r in captured.records)
+                           if row['event'] == 'pagination_page_size' and row['page_size_result'] == 'confirmed']
+                self.assertEqual([(row['previous_page_size'], row['page_size']) for row in results],
+                                 [(20, 100)] if menu_opens else [])
+
+    def test_unconfirmed_size_uses_verified_size_without_repeating_click_on_retry(self):
+        self.serve(lambda attempt: classic_list(total=45, size=20, size_menu='unconfirmed',
+                                                mode='overlap' if attempt == 1 else 'normal'))
+        with patch('neto_incident_monitor.pagination.PAGE_SIZE_CONFIRM_SECONDS', .25), \
+                patch('neto_incident_monitor.pagination.PAGE_WAIT_SECONDS', 2):
+            records, pages = self.read()
+        self.assertEqual((len(records), pages, len(self.loads)), (45, 3, 2))
+        self.assertEqual(self.page.evaluate('Number(localStorage.sizeClicks)'), 1)
+
+    def test_resize_that_changes_query_cannot_contribute_rows(self):
+        self.serve(lambda attempt: classic_list(total=45, size=20,
+                                                size_menu='wrong_query' if attempt == 1 else None))
+        values, pages = self.read()
+        self.assertEqual((len(values), pages, len(self.loads)), (45, 3, 2))
+        self.assertEqual(self.page.evaluate('Number(localStorage.sizeClicks)'), 1)
+
     def test_restored_first_page_is_confirmed_by_range_not_url(self):
         self.serve(lambda _: classic_list(total=45, size=20, start=41))
         values, pages = self.read()

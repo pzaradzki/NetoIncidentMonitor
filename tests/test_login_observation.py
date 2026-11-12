@@ -130,6 +130,27 @@ class LoginDOMObservationTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
+    def test_sow_confirms_session_only_after_the_profile_header_is_ready(self):
+        sow = 'https://adeo.service-now.com/now/sow/home'
+        page = self.browser.new_page()
+        self.addCleanup(page.close)
+        page.route('**/*', lambda route: route.fulfill(body='<body></body>', content_type='text/html'))
+        page.goto(sow)
+        self.assertFalse(authenticated_session(page, sow))
+        page.evaluate("""() => {
+            const append = (root, tag) => root.appendChild(document.createElement(tag));
+            const shell = append(document.body, 'macroponent-f51912f4c700201072b211d4d8c26010');
+            const layout = append(shell.attachShadow({mode:'open'}), 'sn-polaris-layout');
+            const header = append(layout.attachShadow({mode:'open'}), 'sn-polaris-header');
+            const root = header.attachShadow({mode:'open'});
+            append(root, 'sn-contextual-menu').id = 'userMenu';
+            append(root, 'now-avatar').textContent = 'PRIVATE_USER';
+        }""")
+        self.assertTrue(authenticated_session(page, sow))
+        self.assertNotIn('PRIVATE_USER', json.dumps(observe_login(page, sow).__dict__))
+        page.evaluate("() => history.replaceState({}, '', '/now/sow/elsewhere')")
+        self.assertFalse(authenticated_session(page, sow))
+
     def test_real_dom_minimal_forms_and_no_secret_export(self):
         fixtures = (
             ('<form><input type=password value=PRIVATE_PASSWORD><a id=signOnButton>Sign in</a></form>'

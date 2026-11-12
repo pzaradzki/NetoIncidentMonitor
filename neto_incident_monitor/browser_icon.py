@@ -14,11 +14,15 @@ ICON = ROOT / 'assets' / 'netology-icon.ico'
 THEME = ROOT / 'assets' / 'neto-browser-theme'
 
 
-def browser_launch_options():
+def browser_launch_options(*, visible=False, offer_password_save=False):
     """Load the bundled, declarative UI theme only in our Chromium profile."""
+    ignored = ['--disable-extensions']
+    if offer_password_save:
+        # Chromium suppresses the native save prompt with --enable-automation.
+        ignored.append('--enable-automation')
     return {
-        'ignore_default_args': ['--disable-extensions'],
-        'args': ['--start-minimized', f'--window-name={APP_NAME}',
+        'ignore_default_args': ignored,
+        'args': ([] if visible else ['--start-minimized']) + [f'--window-name={APP_NAME}',
                  f'--disable-extensions-except={THEME}', f'--load-extension={THEME}'],
     }
 

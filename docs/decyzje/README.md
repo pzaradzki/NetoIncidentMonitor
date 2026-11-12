@@ -17,7 +17,7 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [011](011-transakcyjny-stan-filtrow.md) | Historia i obecność w jednej transakcji SQLite. |
 | [012](012-usuniecie-stanu-przeczytania.md) | Zgodność historii i konfiguracji po usunięciu lokalnego stanu przeczytania. |
 | [013](013-reset-danych-aplikacji.md) | Wznawialny reset lokalnych danych pod blokadą instancji. |
-| [014](014-linki-dashboardu-na-zadanie.md) | Pobieranie celu pojedynczego kafelka dopiero po kliknięciu, poza odświeżaniem wartości. |
+| [014](014-linki-dashboardu-na-zadanie.md) | Zastąpiona przez 024. Uzasadnienie wcześniejszego otwierania list z kafelków. |
 | [015](015-rownowaznosc-dat-filtrow.md) | Ścisłe porównywanie filtrów z potwierdzoną równoważnością siedmiodniowej daty. |
 | [016](016-normalizacja-adresow-list.md) | Rozpakowanie długich adresów list bez utraty kodowania i parametrów. |
 | [017](017-odpornosc-lokalnego-io.md) | Odporne logowanie, obserwowana kolejka alertów, kompletny podział wiadomości i walidacja przed startem. |
@@ -28,6 +28,16 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [020](020-spojne-statusy-dashboardu.md) | Spójna aktywność sekcji, nagłówka i stopki dashboardu, chroniona cyklem żądania. |
 
 ## Format i utrzymanie
+
+[026 — Potwierdzenie zapisu poświadczeń](026-potwierdzenie-zapisu-poswiadczen.md) utrzymuje Chromium widoczne po ręcznym wpisaniu hasła przy włączonym autologowaniu.
+
+[025 — Wspólna sesja ServiceNow](025-wspolna-sesja-servicenow.md) określa właściciela karty, start po logowaniu i kolejkę odczytów oraz importu.
+
+[024 — Kafelki informacyjne](024-kafelki-informacyjne.md) usuwa nawigację z kafelków dashboardu i zagrożeń SLA, zachowując animację najechania.
+
+[023 — Naturalny rozmiar logowania importu](023-naturalne-logowanie-importu.md): viewport tylko podczas odczytu i wykorzystanie jedynej startowej pustej karty; częściowo zastępuje 022.
+
+[022 — Import ulubionych w sesji na żądanie](022-import-ulubionych-na-zadanie.md): wyłączność profilu, zbiorczy odczyt i wybór przed zapisem; wdrożone tylko w źródłach.
 
 [021 — Gotowość i potwierdzenie kontekstu dashboardu](021-zatwierdzanie-kontekstu-dashboardu.md): oczekiwanie na Zastosuj i wspólna obserwacja stanu kategorii bez ponawiania kliknięć.
 

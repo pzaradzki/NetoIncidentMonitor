@@ -5,7 +5,6 @@ import re
 import sqlite3
 import tkinter as tk
 import webbrowser
-from urllib.parse import urlencode
 from tkinter import ttk
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED
 from neto_incident_monitor.widgets import IncidentMenu, StatusPill, PriorityDots, RoundedButton, AnimatedMetricTile
@@ -20,27 +19,10 @@ CATEGORIES = (
     ('Podjęcie', 'Mniej niż 5 min do terminu lub po terminie', '#d0a1ff'),
 )
 
-# Same filters as the six ServiceNow tiles; only the navigation wrapper is removed.
-_COMMON_QUERY = (
-    'task.sys_class_name=incident^task.assignment_group=36e1263edb64b7408033459d3b9619e0'
-    '^task.active=true^task.stateNOT IN3,6,7,8^active=true^stage=in_progress'
-)
-TILE_URLS = {
-    f'P{priority}': 'https://adeo.service-now.com/task_sla_list.do?' + urlencode({'sysparm_query':
-        _COMMON_QUERY + f'^sla.target=resolution^task.priority={priority}'
-        + f'^planned_end_timeRELATIVELT@hour@ahead@{hours}'
-        + '^task.ref_incident.parent_incidentISEMPTY'})
-    for priority, hours in enumerate((1, 2, 4, 24, 48), 1)
-}
-TILE_URLS['Podjęcie'] = 'https://adeo.service-now.com/task_sla_list.do?' + urlencode({'sysparm_query':
-    _COMMON_QUERY + '^sla.target=response^planned_end_timeRELATIVELT@minute@ahead@5'
-    + '^task.ref_incident.parent_incidentISEMPTY'})
-
 
 class RiskTile(AnimatedMetricTile):
     def __init__(self, parent, title, description, accent):
-        self.url = TILE_URLS[title]
-        super().__init__(parent, accent, command=lambda: webbrowser.open(self.url))
+        super().__init__(parent, accent)
         heading = tk.Label(self, text=f'●  {title}', fg=accent, font=('Segoe UI', 12, 'bold'), anchor='w')
         heading.pack(fill='x', padx=20, pady=(18, 0))
         self.value_label = tk.Label(self, text='—', fg=TEXT, font=('Segoe UI', 34), anchor='w')
@@ -327,9 +309,12 @@ def build_threatened_view(parent, app):
     pill.pack(side='left', padx=(12, 0))
     panel.status_pill = pill
     def update_button():
+        if getattr(app, 'session', None):
+            app.update_refresh_controls()
+            return
         busy = hasattr(app, 'refresh_control') and app.refresh_control.busy
         panel.refresh_button.configure(state='normal' if panel.monitoring and not panel.pending and not busy else 'disabled')
-    def request(automatic=False, coordinated=False):
+    def request(automatic=False, coordinated=False, *, enqueue=True):
         if not automatic and not coordinated:
             return app.request_refresh('threatened')
         if panel.pending or app.stop.is_set():
@@ -339,7 +324,8 @@ def build_threatened_view(parent, app):
         panel.request_id += 1
         panel.pending = True
         set_state(panel.request_id, 'Oczekuje')
-        app.threatened_requests.put(panel.request_id)
+        if enqueue:
+            app.threatened_requests.put(panel.request_id)
         if automatic:
             dashboard_pending = getattr(getattr(app, 'dashboard_view', None), 'active_request', None) is not None
             panel.message.set('Oczekiwanie na zalogowanie. Zagrożenia zostaną sprawdzone '
@@ -347,6 +333,8 @@ def build_threatened_view(parent, app):
             if panel.simulated:
                 panel.message.set(panel.message.get() + ' Wyświetlane dane testowe.')
         update_button()
+        if not enqueue:
+            return panel.request_id
     panel.request_refresh = request
     from neto_incident_monitor.threatened import THREATENED_URL
     panel.open_snow_button = RoundedButton(header, text='Otwórz w SNOW',
@@ -363,7 +351,7 @@ def build_threatened_view(parent, app):
         tile = RiskTile(tiles, title, description, accent)
         tile.grid(row=index // 3, column=index % 3, sticky='nsew', padx=(0, 12 if index % 3 != 2 else 0), pady=(0, 12))
         panel.tiles.append(tile)
-    panel.message = tk.StringVar(value='Uruchom monitoring i kliknij Aktualizuj. Kafelki otwierają listy w ServiceNow.')
+    panel.message = tk.StringVar(value='Uruchom monitoring i kliknij Aktualizuj.')
     render_details, history_error = add_threatened_tables(content, app)
     if history_error:
         panel.message.set('Nie udało się odczytać zapisanej historii zagrożeń.')

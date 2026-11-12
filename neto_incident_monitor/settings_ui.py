@@ -2,14 +2,19 @@
 import tkinter as tk
 from tkinter import ttk
 
+from neto_incident_monitor.monitoring import DEFAULT_TASK_INTERVAL
 from neto_incident_monitor.theme import SURFACE, MUTED
 from neto_incident_monitor.widgets import RoundedButton, Toggle
 
 
+SETTINGS_WINDOW_SIZE = (700, 700)
+
+
 def build_settings(app, settings):
     window = app.settings_window
-    window.minsize(700, 600)
-    window.geometry("700x700")
+    width, height = SETTINGS_WINDOW_SIZE
+    window.minsize(width, 600)
+    window.geometry(f'{width}x{height}')
     header = ttk.Frame(window, style="White.TFrame", padding=(28, 24, 28, 0))
     header.pack(fill="x")
     ttk.Label(header, text="Ustawienia", style="White.TLabel",
@@ -83,14 +88,14 @@ def build_settings(app, settings):
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     controls = row(monitoring, "Zgłoszenia katalogowe (SCTASK, REQ, RITM)", "Odstęp między kolejnymi sprawdzeniami list katalogowych.")
-    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", 3600)))
+    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", DEFAULT_TASK_INTERVAL)))
     app.task_interval_entry = ttk.Entry(controls, textvariable=app.task_interval, width=6, justify="center")
     app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
     controls = row(monitoring, "Automatycznie zaktualizuj dashboard przy starcie monitoringu",
                    "Pobierz dane dashboardu po zalogowaniu do ServiceNow. Kolejne odczyty uruchamiaj przyciskiem Aktualizuj.")
-    app.dashboard_auto_refresh = tk.BooleanVar(value=settings.get('dashboard_auto_refresh', True))
+    app.dashboard_auto_refresh = tk.BooleanVar(value=settings.get('dashboard_auto_refresh', False))
     Toggle(controls, app.dashboard_auto_refresh).pack(side='right')
 
     notifications = section("POWIADOMIENIA")
@@ -134,14 +139,15 @@ def build_settings(app, settings):
     app.auto_login = tk.BooleanVar(value=settings.get("auto_login", True))
     app.auto_login_check = Toggle(controls, app.auto_login)
     app.auto_login_check.pack(side="right")
-    controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj Chromium podczas sprawdzania filtrów. Automatyczne logowanie i dashboard działają w tle; ręczne logowanie przywołuje przeglądarkę.")
-    app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", True))
-    app.minimize_browser_check = Toggle(controls, app.minimize_browser)
-    app.minimize_browser_check.pack(side="right")
+    if not getattr(app, 'session', None):
+        controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj Chromium podczas sprawdzania filtrów. Automatyczne logowanie i dashboard działają w tle; ręczne logowanie przywołuje przeglądarkę.")
+        app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", True))
+        app.minimize_browser_check = Toggle(controls, app.minimize_browser)
+        app.minimize_browser_check.pack(side="right")
 
-    controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań podczas sprawdzania filtrów. Automatyczne logowanie i dashboard pozostają widoczne w tle; ręczne logowanie przechodzi na pierwszy plan.")
-    app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
-    Toggle(controls, app.hide_browser).pack(side="right")
+        controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań podczas sprawdzania filtrów. Automatyczne logowanie i dashboard pozostają widoczne w tle; ręczne logowanie przechodzi na pierwszy plan.")
+        app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
+        Toggle(controls, app.hide_browser).pack(side="right")
 
     data = section("DANE APLIKACJI")
     controls = row(data, "Przywrócenie stanu początkowego",

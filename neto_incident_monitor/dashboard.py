@@ -282,6 +282,45 @@ def score_pattern(title):
     return re.compile(r'^\s*' + pattern + r'\s*,')
 
 
+CATEGORY_SELECTION = """element => {
+    if (element.indeterminate || element.getAttribute('aria-checked') === 'mixed') return 'mixed';
+    return element.checked ? 'all' : 'none';
+}"""
+
+
+def category_selection(checkbox, timeout=500):
+    from neto_incident_monitor.read_budget import remaining_ms
+    return checkbox.evaluate(CATEGORY_SELECTION, timeout=remaining_ms(timeout))
+
+
+def clear_partial_category(checkbox, page, stop, category):
+    """ServiceNow clears a partial selection on the first click."""
+    from neto_incident_monitor.dashboard_context import DashboardReadError
+    from neto_incident_monitor.read_budget import BudgetExpired
+
+    click_control(checkbox, page, stop)
+    diagnostics = _diagnostics.get()
+
+    def confirmed():
+        selection = category_selection(checkbox, 300)
+        if selection == 'mixed':
+            raise AssertionError('Partial category selection still present')
+        return selection
+
+    try:
+        selection = read_control(checkbox, stop, confirmed, timeout=2000,
+                                 check=lambda: check_session(page), assertion=True)
+    except BudgetExpired:
+        raise
+    except TimeoutError:
+        if diagnostics:
+            measured_record(diagnostics, 'category_check_failed', category=category, category_state='mixed')
+        raise DashboardReadError('wrong_filter') from None
+    if diagnostics:
+        measured_record(diagnostics, 'category_partial_resolved', category=category, category_state=selection)
+    return selection
+
+
 def check_category(checkbox, page, stop):
     """Confirm a delivered check; never click twice to recover a delayed state."""
     from playwright.sync_api import Error
@@ -292,7 +331,7 @@ def check_category(checkbox, page, stop):
         if type(error) is not Error or str(error).splitlines()[0].strip() != 'Locator.check: Clicking the checkbox did not change its state':
             raise
         def confirmed():
-            if not checkbox.evaluate('(e) => e.checked && !e.indeterminate', timeout=remaining_ms(100)):
+            if category_selection(checkbox, 100) != 'all':
                 raise AssertionError('Category selection not confirmed')
         try:
             read_control(checkbox, stop, confirmed, timeout=500,
@@ -302,11 +341,11 @@ def check_category(checkbox, page, stop):
         except TimeoutError:
             diagnostics = _diagnostics.get()
             if diagnostics:
-                diagnostics.record('category_check_failed')
+                measured_record(diagnostics, 'category_check_failed')
             raise error from None
         diagnostics = _diagnostics.get()
         if diagnostics:
-            diagnostics.record('category_check_recovered')
+            measured_record(diagnostics, 'category_check_recovered')
 
 
 def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokalizacja', 'Przypisany do')):
@@ -316,9 +355,7 @@ def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokaliz
         check_session(page)
         if stop.is_set():
             raise Cancelled()
-        heading = re.compile(r'^(?:Agent|Agenci) L1$') if category == 'Agent L1' else category
-        container = page.locator('sn-component-filter').filter(
-            has=page.get_by_text(heading, exact=True)).filter(visible=True)
+        container = category_container(page, category)
         checkbox = container.get_by_role('checkbox', name=re.compile(r'^(?:Wybierz|Zaznacz) wszystko$'))
         category_code = {'Status zgłoszenia': 'status', 'Lokalizacja': 'location',
                          'Przypisany do': 'assigned', 'Agent L1': 'agent'}.get(category, 'other')
@@ -330,18 +367,21 @@ def ensure_all_categories(page, stop, categories=('Status zgłoszenia', 'Lokaliz
                 activate_dashboard_widgets(page, stop, ready=lambda: checkbox.count() == 1)
                 operation('category_select', category_code)
         wait_control(checkbox, stop, state='attached', check=category_tick)
-        selected = read_control(checkbox, stop,
-            lambda: checkbox.evaluate('(element) => element.checked && !element.indeterminate', timeout=500),
-            check=lambda: check_session(page))
-        if not selected:
+        selection = read_control(checkbox, stop, lambda: category_selection(checkbox),
+                                 check=lambda: check_session(page))
+        def confirmed():
+            if category_selection(checkbox, 300) != 'all':
+                raise AssertionError('Category selection not confirmed')
+        if selection == 'mixed':
+            selection = clear_partial_category(checkbox, page, stop, category_code)
+        if selection == 'none':
             ready_control(checkbox, stop, check=lambda: check_session(page))
             check_category(checkbox, page, stop)
+            read_control(checkbox, stop, confirmed, assertion=True,
+                         check=lambda: check_session(page))
         operation('category_apply', category_code)
         click_control(container.get_by_role('button', name='Zastosuj', exact=True), page, stop)
         operation('category_confirm', category_code)
-        def confirmed():
-            if not checkbox.evaluate('(element) => element.checked && !element.indeterminate', timeout=300):
-                raise AssertionError('Category selection not confirmed')
         read_control(checkbox, stop, confirmed, assertion=True,
                      check=lambda: check_session(page))
         completed_step(category_code)
@@ -370,8 +410,8 @@ def verify_context(page, section, year=None, month=None):
     for category in categories:
         container = category_container(page, category)
         checkbox = container.get_by_role('checkbox', name=re.compile(r'^(?:Wybierz|Zaznacz) wszystko$'))
-        checks = checkbox.evaluate_all('(elements)=>elements.map(e=>!!e.checked && !e.indeterminate)')
-        if container.count() != 1 or checks != [True]:
+        checks = checkbox.evaluate_all(f'elements => elements.map({CATEGORY_SELECTION})')
+        if container.count() != 1 or checks != ['all']:
             raise DashboardReadError('wrong_filter')
     if _diagnostics.get():
         measured_record(_diagnostics.get(), 'dashboard_context', context_confirmed=True,

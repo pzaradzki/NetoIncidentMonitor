@@ -67,11 +67,11 @@ class ProfileTests(unittest.TestCase):
         profile['visible'] = ['state', 'time']
         profile['order'].reverse()
         profile['widths'] = {'state': 211}
-        reordered = update_profile(profile, list(reversed(SCHEMA)))
+        reordered = update_profile(load_profiles({URL: profile})[URL], list(reversed(SCHEMA)), incident_list=True)
         self.assertEqual(reordered['order'], profile['order'])
         self.assertEqual(reordered['visible'], profile['visible'])
         self.assertEqual(reordered['widths'], profile['widths'])
-        changed = update_profile(profile, SCHEMA[:2])
+        changed = update_profile(profile, SCHEMA[:2], incident_list=True)
         self.assertEqual(changed['visible'], ['number', 'sn:u_custom'])
         self.assertEqual(changed['order'][-len(LOCAL_KEYS):], LOCAL_KEYS)
         self.assertEqual(changed['widths'], {})
@@ -133,7 +133,8 @@ class DynamicUITests(unittest.TestCase):
         self.assertFalse(app.current_table['displaycolumns'])
         self.accept()
         self.assertTrue(app.columns_button.enabled)
-        self.assertEqual(tuple(app.current_table['displaycolumns']), ('number', 'sn:u_custom', 'state'))
+        for table in (app.current_table, app.table):
+            self.assertEqual(tuple(table['displaycolumns']), ('age_minutes', 'number', 'sn:u_custom', 'state'))
         incident = {'number': 'INC1234567', 'url': '', '_values': {'sn:u_custom': 'Test', 'state': 'Nowy'}}
         app.snapshots = {1: {incident['number']: incident}}
         app.history.add(incident, 'A', URL)
@@ -147,6 +148,7 @@ class DynamicUITests(unittest.TestCase):
         app.filter_table.selection_set('1')
         self.assertFalse(app.columns_button.enabled)
         self.accept(OTHER, SCHEMA[:2])
+        self.assertEqual(tuple(app.current_table['displaycolumns']), ('age_minutes', 'number', 'sn:u_custom'))
         app.filter_table.selection_set('0')
         self.assertEqual(tuple(app.current_table['displaycolumns']), ('state',))
         self.accept(schema=SCHEMA[:2])
@@ -182,8 +184,9 @@ class DynamicUITests(unittest.TestCase):
             buttons['Zapisz'].invoke()
         stored = save.call_args.args[1]
         self.assertTrue(stored['notify'])
-        self.assertEqual(stored['filter_column_profiles'][URL]['order'], [c['key'] for c in SCHEMA]+LOCAL_KEYS)
-        self.assertEqual(set(app.visible_columns), {c['key'] for c in SCHEMA})
+        self.assertEqual(stored['filter_column_profiles'][URL]['order'],
+                         ['age_minutes', *[c['key'] for c in SCHEMA], 'time'])
+        self.assertEqual(set(app.visible_columns), {'age_minutes', *(c['key'] for c in SCHEMA)})
         self.assertNotIn('time', app.table['displaycolumns'])
 
     def test_schema_persistence_failure_keeps_previous_layout(self):
@@ -200,7 +203,7 @@ class DynamicUITests(unittest.TestCase):
         app.column_profile()['visible'].append('time')
         app.filter_selected()
         with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json'):
-            app.reorder_column(app.table, 'time', 'number')
+            app.reorder_column(app.table, 'time', 'age_minutes')
             app.current_table.column('sn:u_custom', width=277)
             app.sync_column_widths(app.current_table)
         self.assertEqual(tuple(app.table['displaycolumns'])[0], 'time')
@@ -221,7 +224,7 @@ class DynamicUITests(unittest.TestCase):
         table.insert('', 'end', values=app.table_values(table, {'number': 'INC1234567', '_values': {'sn:u_custom': text}}, ''))
         table.column('sn:u_custom', width=80)
         self.root.update()
-        x = table.column('number', 'width') + table.column('sn:u_custom', 'width')
+        x = sum(table.column(key, 'width') for key in ('age_minutes', 'number', 'sn:u_custom'))
         self.assertEqual(table.identify_region(x, 10), 'separator')
         with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json') as save, patch('neto_incident_monitor.app.webbrowser.open') as opened:
             result = app.open_incident(SimpleNamespace(widget=table, x=x, y=10))
