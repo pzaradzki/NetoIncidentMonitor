@@ -47,6 +47,46 @@ class DashboardPeriodTests(unittest.TestCase):
     def assert_controls(self, state):
         self.assertEqual([str(c.cget('state')) for c in self.panel.period_controls], [state, state])
 
+    def test_native_period_popdown_does_not_break_window_observation_or_error_dialog(self):
+        from neto_incident_monitor.themed_dialogs import showerror
+        from neto_incident_monitor.window_style import WindowPresentation, current_grab_path
+
+        self.root.deiconify()
+        self.root.update()
+        self.app.session_state = 'ready'
+        self.app.main_window = Mock()
+        self.app.main_window.inspect.return_value = WindowPresentation('visible', True)
+        for combo in self.panel.period_controls:
+            with self.subTest(combo=str(combo)):
+                self.root.tk.call('ttk::combobox::Post', str(combo))
+                self.root.update()
+                popdown = current_grab_path(self.root)
+                self.assertEqual(str(popdown), f'{combo}.popdown')
+                self.app.observe_main_window()
+                self.assertFalse(self.app.activate_main_window())
+                self.app.focus_after_login()
+                self.app.main_window.uncover.assert_not_called()
+                self.app.main_window.activate.assert_not_called()
+
+                def close_error():
+                    for child in self.root.children.values():
+                        if isinstance(child, tk.Toplevel) and child.title() == 'Błąd testowy':
+                            child.destroy()
+                            break
+
+                close_timer = self.root.after(50, close_error)
+                try:
+                    self.assertEqual(showerror('Błąd testowy', 'Komunikat testowy', parent=self.root), 'ok')
+                finally:
+                    self.root.after_cancel(close_timer)
+                if self.root.tk.getboolean(self.root.tk.call('winfo', 'viewable', popdown)):
+                    self.assertEqual(current_grab_path(self.root), popdown)
+                self.root.tk.call('ttk::combobox::Unpost', str(combo))
+                self.root.update_idletasks()
+                self.assertFalse(current_grab_path(self.root))
+        self.app.observe_main_window()
+        self.app.main_window.uncover.assert_called_once()
+
     def execute(self, during=None, failure=None, drain=True):
         def sla(*args):
             if during:

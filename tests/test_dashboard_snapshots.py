@@ -52,7 +52,7 @@ class SnapshotTests(unittest.TestCase):
             self.result('sla', TITLES)
         self.panel.apply_result((self.panel.request_id, 2026, 10, {}, None, ''))
         self.assertEqual(self.panel.values[TITLES[0]].get(), '1')
-        self.assertIn('Nie udało się zapisać', self.panel.message.get())
+        self.assertTrue(self.panel.message.get().endswith(' • Dane aktualne – błąd zapisu na dysku'))
         self.assertNotIn('PRIVATE_SECRET', self.panel.message.get())
 
     def test_restored_sections_keep_dates_but_start_stale(self):
@@ -86,6 +86,9 @@ class SnapshotTests(unittest.TestCase):
         restored = build_dashboard(self.root, SimpleNamespace(), self.path)
         self.assertEqual(restored.last_complete_read_at, stamp)
         self.assertEqual(restored.last_read_text, self.panel.last_read_text)
+        self.assertEqual(restored.message.get(),
+                         f'Dane SLA za okres październik 2026 • Ostatnia aktualizacja: {restored.last_read_text} • '
+                         'Dane mogą być nieaktualne')
 
     def test_partial_or_failed_read_does_not_advance_complete_timestamp(self):
         self.complete_read()

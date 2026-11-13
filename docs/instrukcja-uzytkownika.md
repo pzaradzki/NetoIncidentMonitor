@@ -1,6 +1,6 @@
 # Neto Incident Monitor
 
-Instrukcja dla wersji **1.10.0**. [Opis wydania](wersje/v1.10.0.md).
+Instrukcja dla wersji **1.11.2**. [Opis wydania](wersje/v1.11.2.md).
 
 Poprawka przygotowana później w źródłach: miesiąc i rok dashboardu są niedostępne od zlecenia aktualizacji do jej zakończenia, także podczas oczekiwania na logowanie. Po zakończeniu lub Stop można wybrać nowy okres i kliknąć Aktualizuj. Sama zmiana dat w bezczynności nie uruchamia odczytu. Ta poprawka wymaga jeszcze przebudowy EXE.
 
@@ -79,11 +79,11 @@ Każdy filtr ma własną listę bieżących incydentów i własną historię. Cz
 
 Kolejność filtrów można zmieniać, przeciągając je myszą. Czerwona linia wskazuje miejsce upuszczenia. Zmiany są zapamiętywane między uruchomieniami i można je wprowadzać również podczas monitorowania.
 
-W źródłach po wydaniu 1.10.0 przyciski **Dodaj filtr**, **Edytuj** i **Usuń** działają także podczas monitorowania. Filtr dodany podczas rozpoczętej partii trafi do następnej partii swojego typu. Możesz odczytać go wcześniej przyciskiem **Aktualizuj**. Zmiana nazwy pozwala dokończyć odczyt. Zmiana adresu lub usunięcie pomija odczyty starego filtra, zachowując zatwierdzoną historię. **Sprawdź teraz** obejmuje zestaw filtrów z chwili zlecenia.
+W wersji 1.11.0 przyciski **Dodaj filtr**, **Edytuj** i **Usuń** działają także podczas monitorowania. Filtr dodany podczas rozpoczętej partii trafi do następnej partii swojego typu. Możesz odczytać go wcześniej przyciskiem **Aktualizuj**. Zmiana nazwy pozwala dokończyć odczyt. Zmiana adresu lub usunięcie pomija odczyty starego filtra, zachowując zatwierdzoną historię. **Sprawdź teraz** obejmuje zestaw filtrów z chwili zlecenia.
 
 Lewy panel filtrów ma domyślnie 329 px szerokości. Aby zmienić szerokość, przeciągnij separator przy prawej krawędzi panelu. Aplikacja zapamięta wybraną szerokość.
 
-W źródłach po wydaniu 1.10.0 ikony Windows, Google Chat i Teams obok przełącznika filtra pokazują jego ustawienia powiadomień. Kolor oznacza kanał włączony dla filtra, a szarość kanał wyłączony. Kanał wyłączony globalnie jest ukryty.
+W wersji 1.11.0 ikony Windows, Google Chat i Teams obok przełącznika filtra pokazują jego ustawienia powiadomień. Kolor oznacza kanał włączony dla filtra, a szarość kanał wyłączony. Kanał wyłączony globalnie jest ukryty.
 
 Przycisk **Konfiguruj** obok przycisku **Kolumny** otwiera **Ustawienia filtra** zaznaczonego na liście, obejmujące powiadomienia i zgodę na duże odczyty.
 
@@ -142,7 +142,7 @@ Separator pomiędzy panelem filtrów a tabelą umożliwia zmianę szerokości pa
 
 ### Ustawienia i praca w tle
 
-Przycisk **Ustawienia**, oznaczony ikoną koła zębatego, otwiera konfigurację częstotliwości odczytu, powiadomień, logowania i minimalizacji. Zmiana częstotliwości odczytu oraz ustawień powiadomień Windows wymaga zatrzymania monitorowania i ponownego jego uruchomienia.
+Przycisk **Ustawienia**, oznaczony ikoną koła zębatego, otwiera konfigurację częstotliwości odczytu, powiadomień, logowania i minimalizacji. Podczas monitoringu można zmieniać interwały odczytu i globalne powiadomienia Windows.
 
 Przycisk **Zatrzymaj** kończy monitorowanie. Zamknięcie głównego okna kończy działanie aplikacji. Przy włączonej minimalizacji do zasobnika systemowego monitoring pozostaje aktywny po zminimalizowaniu okna.
 
@@ -259,7 +259,13 @@ Filtry mogą monitorować również listy zadań katalogowych ServiceNow (`sc_ta
 
 W wyborze kolumn dostępne są także **Wnioskowane dla** i **Otwarte przez**. Pola są odczytywane tylko wtedy, gdy są widoczne na liście ServiceNow. Przy kilku kolumnach o nazwie Stan aplikacja preferuje identyfikator pola stanu zadania. Powiadomienia o SCTASK używają określenia zadanie katalogowe. Aplikacja nie rozwija automatycznie powiązanych REQ ani RITM; monitoruje zadania widoczne na wskazanej liście.
 
-W sekcji **Monitorowanie** można ustawić osobne odstępy odczytu dla **INC** i **zgłoszeń katalogowych (SCTASK, REQ, RITM)**. Minimum to 15 sekund. Zmiana interwałów wymaga zatrzymania i ponownego uruchomienia monitoringu. Ustawienia zapisują się przy uruchomieniu monitorowania. Domyślny interwał zgłoszeń katalogowych wynosi 60 sekund. Wcześniej zapisane wartości są zachowywane. Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
+W sekcji **Monitorowanie** można ustawić osobne interwały odczytu dla **INC** i **zgłoszeń katalogowych (SCTASK, REQ, RITM)**. Minimum to 15 sekund. Domyślny interwał zgłoszeń katalogowych wynosi 60 sekund.
+
+Edycja pola interwału uruchamia licznik widoczny na dole ustawień. Aplikacja zapisuje interwały po 5 sekundach od ostatniej edycji. Zamknięcie ustawień zapisuje je od razu. Jeśli wartość jest błędna lub zapis się nie powiedzie, ustawienia pozostają otwarte z komunikatem, a harmonogram korzysta z poprzednich wartości.
+
+Rozpoczęta partia kończy się normalnie. Nowy interwał liczy się od jej zakończenia. Jeśli monitor już czeka, termin przelicza się od końca ostatniej partii danego rodzaju. Gdy nowy termin już minął, odczyt czeka na zwolnienie karty.
+
+Licznik wskazuje najbliższy zaplanowany odczyt, a **Sprawdź teraz** sprawdza wszystkie włączone filtry niezależnie od ich rodzaju. Odczyty odbywają się kolejno w jednej przeglądarce, więc długi odczyt może opóźnić następny.
 
 ### Ochrona przed dużymi listami
 
@@ -278,3 +284,5 @@ W **Ustawienia → Dane aplikacji** wybierz **Usuń wszystkie dane aplikacji…*
 Po przeniesieniu folderu aplikacji uruchom monitor ręcznie z nowej lokalizacji. Jeśli wpis autostartu istnieje, monitor zaktualizuje jego ścieżkę. Przełącznik autostartu Windows jest ukryty w UI; Windows może dodatkowo wyłączyć istniejący wpis w swoich ustawieniach. Reset danych usuwa wpis bieżącego wariantu aplikacji.
 
 W bieżących źródłach kafelki dashboardu i zagrożeń SLA wyświetlają wyniki i podświetlają się po najechaniu. Aby przejść do ServiceNow, użyj przycisku **Otwórz w SNOW** w nagłówku panelu. WJRUW jest wskaźnikiem obliczanym lokalnie.
+
+Pigułka **Aktualizuje** na bocznym przycisku pokazuje trwający odczyt dashboardu lub zagrożeń SLA. Stopka dashboardu pokazuje okres SLA, czas ostatniej pełnej aktualizacji i bieżący status.

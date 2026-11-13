@@ -238,18 +238,36 @@ class NotificationRevisionTests(unittest.TestCase):
                                                     alerts, filter_instance='new'), {'INC3'})
             alerts.assert_called_once_with({'INC3'})
 
-    def test_revision_changes_when_settings_return_to_previous_values(self):
+    def test_windows_toggle_keeps_remote_routes_and_does_not_revive_old_windows_alerts(self):
+        from neto_incident_monitor.app import App
         from neto_incident_monitor.secret_config import load_config, save_config
+        from neto_incident_monitor.threatened import THREATENED_URL
 
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            save_config(path, {"notify": True})
-            first = load_config(path, {})["notification_revision"]
-            save_config(path, {"notify": True, "window_geometry": "800x600"})
-            self.assertEqual(load_config(path, {})["notification_revision"], first)
-            save_config(path, {"notify": False})
-            save_config(path, {"notify": True})
-            self.assertNotEqual(load_config(path, {})["notification_revision"], first)
+            path = Path(directory) / 'config.json'
+            settings = {'notify': True, 'notification_revision': 'legacy',
+                        'filters': [{'name': 'Test', 'url': 'A'}],
+                        'teams_enabled': True, 'teams_webhook': 'https://example.test/teams',
+                        'google_chat_enabled': True, 'google_chat_webhook': 'https://example.test/chat'}
+            path.write_text(json.dumps(settings), encoding='utf-8')
+            app = App.__new__(App)
+            with patch('neto_incident_monitor.app.CONFIG', path), \
+                    patch('neto_incident_monitor.secret_config.protect', side_effect=lambda value: {'fixture': value}), \
+                    patch('neto_incident_monitor.secret_config.unprotect', side_effect=lambda value: value['fixture']):
+                urls = ('A', THREATENED_URL)
+                before = {url: app.alert_routes(url) for url in urls}
+                self.assertTrue(all(route['windows'] == ('legacy', '') for route in before.values()))
+                save_config(path, {**settings, 'window_geometry': '800x600'})
+                self.assertEqual({url: app.alert_routes(url) for url in urls}, before)
+                save_config(path, {**settings, 'notify': False})
+                for url in urls:
+                    self.assertEqual(app.alert_routes(url), {k: v for k, v in before[url].items() if k != 'windows'})
+                save_config(path, settings)
+                for url in urls:
+                    after = app.alert_routes(url)
+                    self.assertNotEqual(after.pop('windows'), before[url]['windows'])
+                    self.assertEqual(after, {k: v for k, v in before[url].items() if k != 'windows'})
+                self.assertEqual(load_config(path, {})['notification_revision'], 'legacy')
 
 class ShutdownWriteTests(unittest.TestCase):
     def test_window_stays_open_until_queued_writes_finish(self):

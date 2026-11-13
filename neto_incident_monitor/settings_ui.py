@@ -1,5 +1,7 @@
 """Settings window with aligned controls and descriptive option groups."""
 import tkinter as tk
+from math import ceil
+from time import monotonic
 from tkinter import ttk
 
 from neto_incident_monitor.monitoring import DEFAULT_TASK_INTERVAL
@@ -10,8 +12,65 @@ from neto_incident_monitor.widgets import RoundedButton, Toggle
 SETTINGS_WINDOW_SIZE = (700, 700)
 
 
+class ScheduleIntervalAutosave:
+    def __init__(self, timer_owner, fields, status, save):
+        self.timer_owner = timer_owner
+        self.fields = fields
+        self.status = status
+        self.save = save
+        self.saved_values = self.values()
+        self.timer = None
+        self.deadline = None
+        for field in fields:
+            field.trace_add('write', self.edited)
+
+    def values(self):
+        return tuple(field.get() for field in self.fields)
+
+    def cancel(self):
+        if self.timer is not None:
+            self.timer_owner.after_cancel(self.timer)
+            self.timer = None
+
+    def edited(self, *_):
+        self.cancel()
+        if self.values() == self.saved_values:
+            self.status.set('')
+            return
+        self.deadline = monotonic() + 5
+        self.tick()
+
+    def tick(self):
+        self.timer = None
+        remaining = self.deadline - monotonic()
+        if remaining <= 0:
+            self.flush()
+            return
+        self.status.set(f'Zapis interwałów za {ceil(remaining)} s.')
+        self.timer = self.timer_owner.after(min(1000, ceil(remaining * 1000)), self.tick)
+
+    def flush(self):
+        self.cancel()
+        values = self.values()
+        if values == self.saved_values:
+            return True
+        if not self.save():
+            return False
+        self.saved_values = values
+        return True
+
+
 def build_settings(app, settings):
     window = app.settings_window
+    interval_autosave = None
+
+    def close_settings(_event=None):
+        if interval_autosave is None or interval_autosave.flush():
+            window.withdraw()
+        return 'break'
+
+    window.protocol('WM_DELETE_WINDOW', close_settings)
+    window.bind('<Escape>', close_settings)
     width, height = SETTINGS_WINDOW_SIZE
     window.minsize(width, 600)
     window.geometry(f'{width}x{height}')
@@ -23,7 +82,7 @@ def build_settings(app, settings):
               style="WhiteMuted.TLabel").pack(anchor="w", pady=(4, 22))
     footer = ttk.Frame(window, style="White.TFrame", padding=(28, 12, 28, 24))
     footer.pack(fill="x", side="bottom")
-    RoundedButton(footer, text="Zamknij", command=window.withdraw).pack(side="right")
+    RoundedButton(footer, text="Zamknij", command=close_settings).pack(side="right")
     from neto_incident_monitor.release_check import check_updates
     update_button = RoundedButton(footer, text="Sprawdź aktualizacje",
                                   command=lambda: check_updates(window, update_button))
@@ -92,6 +151,19 @@ def build_settings(app, settings):
     app.task_interval_entry = ttk.Entry(controls, textvariable=app.task_interval, width=6, justify="center")
     app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
+
+    if getattr(app, 'session', None) is not None:
+        app.schedule_interval_status = tk.StringVar(master=window)
+        interval_autosave = app.schedule_interval_autosave = ScheduleIntervalAutosave(
+            app.root, (app.interval, app.task_interval), app.schedule_interval_status, app.save_schedule_intervals)
+        ttk.Label(footer, textvariable=app.schedule_interval_status, style='WhiteMuted.TLabel',
+                  wraplength=330).pack(side='left', padx=(12, 0))
+
+        def cancel_on_destroy(event):
+            if event.widget is window:
+                interval_autosave.cancel()
+
+        window.bind('<Destroy>', cancel_on_destroy, add='+')
 
     controls = row(monitoring, "Automatycznie zaktualizuj dashboard przy starcie monitoringu",
                    "Pobierz dane dashboardu po zalogowaniu do ServiceNow. Kolejne odczyty uruchamiaj przyciskiem Aktualizuj.")

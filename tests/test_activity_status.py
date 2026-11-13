@@ -147,7 +147,7 @@ class ActivityStatusTests(unittest.TestCase):
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Błąd odczytu')),
                   ('dashboard_section_status', (request[0], 'Wnioski L1', 'W trakcie aktualizacji')),
-                  ('dashboard_result', (*request, {}, None, 'Nie udało się odczytać: Dashboard SLA. Pozostałe dane są dostępne.')),
+                  ('dashboard_result', (*request, {}, None, 'Nie udało się odczytać: Dashboard SLA')),
                   ('dashboard_updating', (*request, 'finished')))
         self.assertEqual(app.activity_pill.tone, 'error')
         self.assertIn('Dashboard SLA', app.activity_pill.status_text)
@@ -192,8 +192,10 @@ class ActivityStatusTests(unittest.TestCase):
         panel = app.dashboard_view
         self.assertEqual(app.activity_pill.status_text, 'Aktualizacja dashboardu zakończona')
         self.assertEqual(app.activity_pill.tone, 'success')
-        self.assertIn('Dane zostały zaktualizowane', panel.message.get())
         self.assertIsNotNone(panel.last_complete_read_at)
+        self.assertEqual(panel.message.get(),
+                         f'Dane SLA za okres {panel.month.get().lower()} {request[1]} • '
+                         f'Ostatnia aktualizacja: {panel.last_read_text} • Dane aktualne')
         self.assertEqual(panel.values[TITLES[0]].get(), '0')
         before = (panel.message.get(), panel.last_complete_read_at)
         self.emit(('dashboard_section_status', (request[0], 'Wnioski L1', 'Ponawianie odczytu')))

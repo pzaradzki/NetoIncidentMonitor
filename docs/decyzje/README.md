@@ -29,6 +29,12 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[031 — Automatyczny zapis interwałów](031-automatyczny-zapis-odstepow.md) określa czas zapisu po edycji i przy zamykaniu ustawień.
+
+[030 — Odstępy odczytów podczas monitoringu](030-odstepy-podczas-monitoringu.md) opisuje zapis i przeliczenie następnego terminu bez przerywania rozpoczętej partii.
+
+[029 — Powiadomienia Windows podczas monitoringu](029-powiadomienia-windows-podczas-monitoringu.md) opisuje zapis przełącznika i rewizję oczekujących alertów Windows.
+
 [028 — Odsłonięcie głównego okna](028-odsloniecie-glownego-okna.md) rozdziela aktywację, fokus i odsłonięcie głównego okna po logowaniu.
 
 [027 — Zmiany filtrów podczas monitoringu](027-zmiany-filtrow-podczas-monitoringu.md) opisuje zakres partii, unieważnianie odczytów oraz rewizje powiadomień.

@@ -1,10 +1,10 @@
 # Plany i pozostałe prace
 
-Bieżąca wersja to [1.10.0](../wersje/v1.10.0.md).
+Lokalna wersja to [1.11.2](../wersje/v1.11.2.md). Opublikowana wersja to [1.10.0](../wersje/v1.10.0.md).
 
 ## Pozostałe tematy
 
-- [Odzyskanie zmian po wydaniu 1.10.0](odzyskanie-zmian-po-v1.10.0.md) — inwentarz utraconych plików, poprawki z czatu i kroki odzyskania.
+- [Wydanie 1.11.2](wydanie-1.11.2.md) — budowanie i publikacja.
 - [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](wspolna-sesja-servicenow.md) — plan wdrożenia i bieżący stan prac.
 
 
@@ -30,6 +30,9 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Lokalne wydanie 1.11.1](zakonczone/wydanie-1.11.1-lokalne.md) | 81 testów, zgodność 1444 plików i dwie próby offline. Kopia 1.11.0 zachowana. |
+| [Lokalne wydanie 1.11.0](zakonczone/wydanie-1.11.0-lokalne.md) | 19 testów, zgodność 1444 plików ZIP i dwie próby offline. Kopia 1.10.0 zachowana. |
+| [Odzyskanie zmian po wydaniu 1.10.0](zakonczone/odzyskanie-zmian-po-v1.10.0.md) | Odtworzono 38 plików. Użytkownik potwierdził przywrócenie monitora jednym kliknięciem na pasku zadań. |
 | [Wydanie 1.10.0](zakonczone/wydanie-1.10.0.md) | Opublikowano. Regresja 585 testów, 2 pominięcia. Potwierdzono zgodność EXE ze źródłami i SHA-256 pobranego ZIP-a. |
 | [Import ulubionych ServiceNow](zakonczone/import-ulubionych-servicenow.md) | Wdrożone w źródłach: 555 testów, 2 pominięcia, bez błędów; DOM sprawdzony na ServiceNow. Pełny rzeczywisty odbiór użytkowy pozostaje osobny; bez nowego EXE. |
 | [Wydanie 1.9.4](zakonczone/wydanie-1.9.4.md) | Opublikowano: 523 testy (2 pominięcia), build i offline smoke, zgodność tagu i SHA-256 ponownie pobranego ZIP-a. |

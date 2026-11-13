@@ -111,6 +111,30 @@ class ThreatenedReaderTests(unittest.TestCase):
 
 
 class ThreatenedPresentationTests(unittest.TestCase):
+    def test_sidebar_activity_badge_fits_with_warning_icons(self):
+        from neto_incident_monitor.widgets import ThreatenedIncidentsButton
+
+        root = tk.Tk()
+        root.withdraw()
+        self.addCleanup(root.destroy)
+        button = ThreatenedIncidentsButton(root)
+        button.redraw()
+        label = next(item for item in button.find_all() if button.type(item) == 'text')
+        left, _, right, _ = button.bbox(label)
+        label_width = right - left
+        button.set_alert(True)
+        button.set_updating(True)
+
+        for available, stacked in ((label_width + 170, False), (label_width + 60, True)):
+            with self.subTest(stacked=stacked), patch.object(button, 'winfo_width', return_value=available):
+                button.redraw()
+                label, badge = [button.bbox(item) for item in button.find_all() if button.type(item) == 'text']
+                self.assertTrue(all(0 <= left < right <= available for left, _, right, _ in (label, badge)))
+                if stacked:
+                    self.assertLessEqual(label[3], badge[1])
+                else:
+                    self.assertLess(label[2], badge[0])
+
     def test_tiles_have_dark_content_before_first_hover_and_after_remapping(self):
         from neto_incident_monitor.threatened_ui import RiskTile, CATEGORIES
         from neto_incident_monitor.theme import SURFACE
@@ -245,6 +269,19 @@ class ThreatenedPresentationTests(unittest.TestCase):
             self.assertEqual(app.threatened_requests.qsize(), 1)
             self.assertFalse(panel.refresh_button.enabled)
             request = panel.request_id
+            button = app.threatened_incidents_button
+            self.assertFalse(button.updating)
+            panel.set_state(request - 1, 'W trakcie aktualizacji')
+            self.assertFalse(button.updating)
+            panel.set_state(request, 'W trakcie aktualizacji')
+            self.assertTrue(button.updating)
+            panel.set_state(request, 'Oczekuje')
+            self.assertFalse(button.updating)
+            panel.set_state(request, 'Ponawianie odczytu')
+            panel.finish_request(request - 1)
+            self.assertTrue(button.updating)
+            panel.finish_request(request)
+            self.assertFalse(button.updating)
             values = dict.fromkeys(KEYS, 0)
             values['P2'] = 3
             app.refresh_coordinator().finish()
@@ -261,12 +298,16 @@ class ThreatenedPresentationTests(unittest.TestCase):
             panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
             self.assertFalse(app.threatened_incidents_button.alert)
             self.assertTrue(app.threatened_incidents_button.healthy)
+            panel.set_state(request, 'W trakcie aktualizacji')
             panel.apply_result(request, None, None)
+            self.assertFalse(button.updating)
             self.assertFalse(app.threatened_incidents_button.healthy)
             self.assertFalse(app.threatened_incidents_button.alert)
             panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
             self.assertTrue(app.threatened_incidents_button.healthy)
+            panel.set_state(request, 'W trakcie aktualizacji')
             panel.set_monitoring(False)
+            self.assertFalse(button.updating)
             self.assertFalse(app.threatened_incidents_button.healthy)
             self.assertFalse(panel.refresh_button.enabled)
             panel.apply_result(request, values, 400)
@@ -294,6 +335,8 @@ class ThreatenedWorkerTests(unittest.TestCase):
             app.read_threatened_request(Mock())
         self.assertEqual(read.call_count, 2)
         app.restore_login.assert_called_once()
+        states = [value for kind, value in app.events.queue if kind == 'threatened_state']
+        self.assertEqual(states, [(4, 'W trakcie aktualizacji'), (4, 'Oczekuje'), (4, 'Ponawianie odczytu')])
         results = [v for k,v in app.events.queue if k == 'threatened_result']
         self.assertEqual(results[0][:2], (4, values))
         app.browser_runtime.set_activity.assert_called_with('filters')

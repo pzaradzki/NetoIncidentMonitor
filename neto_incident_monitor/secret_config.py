@@ -91,7 +91,7 @@ def secret_containers(settings):
 
 
 def notification_settings(settings):
-    global_keys = (*KEYS, "teams_enabled", "google_chat_enabled", "notify", "notification_library")
+    global_keys = (*KEYS, "teams_enabled", "google_chat_enabled", "notification_library")
     filter_flags = ('enabled', 'notify_teams', 'notify_google_chat', 'notify_windows')
     filter_keys = (*KEYS, 'notification_templates')
 
@@ -122,6 +122,14 @@ def save_config(path, settings):
         if not revision or old_global != new_global:
             revision = uuid4().hex
         encoded["notification_revision"] = revision
+        # Old configurations keep their existing Windows route until the first toggle.
+        windows_revision = previous.get('windows_notification_revision')
+        if bool(previous.get('notify')) != bool(settings.get('notify')):
+            windows_revision = uuid4().hex
+        if windows_revision:
+            encoded['windows_notification_revision'] = windows_revision
+        else:
+            encoded.pop('windows_notification_revision', None)
         previous_revisions = previous.get('filter_notification_revisions', {})
         filter_revisions = {}
         for url, preferences in new_filters.items():

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
 from neto_incident_monitor import themed_dialogs as messagebox
+from neto_incident_monitor.window_style import current_grab_path
 from urllib.parse import urlparse, unquote
 from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url, resolved_list_url
 from neto_incident_monitor.history import History
@@ -727,8 +728,10 @@ class App(DynamicColumns, TableLoading):
             self.status.set(f'Wyłączono filtry z nieprawidłowym adresem: {invalid_count}. Popraw ich adresy w edycji filtra.')
         if getattr(settings, 'protection_errors', []):
             self.status.set(' '.join(dict.fromkeys(settings.protection_errors)))
-        for setting in (self.notify, self.google_chat_enabled, self.teams_enabled):
+        for setting in (self.google_chat_enabled, self.teams_enabled):
             setting.trace_add('write', self.refresh_filter_notifications)
+        self.saved_notify_windows = self.notify.get()
+        self.notify.trace_add('write', self.save_notify_windows)
         self.teams_enabled.trace_add("write", self.change_teams)
         from neto_incident_monitor.google_chat_ui import changed as google_chat_changed
         self.google_chat_enabled.trace_add("write", lambda *_: google_chat_changed(self))
@@ -1220,7 +1223,8 @@ class App(DynamicColumns, TableLoading):
             if endpoint and not isinstance(endpoint, UnavailableSecret) and settings.get(channel + "_enabled") and entry.get("notify_" + channel, True):
                 routes[channel] = (revision, endpoint)
         if settings.get("notify") and entry.get("notify_windows", True):
-            routes["windows"] = (revision, "")
+            windows_revision = settings.get('windows_notification_revision')
+            routes['windows'] = (f'{revision}:windows:{windows_revision}' if windows_revision else revision, '')
         return routes
 
     def prepare_threatened_alerts(self, incidents, request_id=None):
@@ -1832,7 +1836,7 @@ class App(DynamicColumns, TableLoading):
 
     def activate_main_window(self):
         if (self.quitting or self.root.state() not in ('normal', 'zoomed')
-                or self.root.grab_current() is not None):
+                or current_grab_path(self.root)):
             return False
         try:
             return self.main_window.activate()
@@ -1859,7 +1863,7 @@ class App(DynamicColumns, TableLoading):
             raised = released = False
             if not current.foreground or current.exposure in ('hidden', 'minimized'):
                 released = self.main_window.release()
-            elif self.session_state == 'ready' and self.root.grab_current() is None:
+            elif self.session_state == 'ready' and not current_grab_path(self.root):
                 raised = self.main_window.uncover(current)
                 if raised:
                     current = self.main_window.inspect()
@@ -1875,7 +1879,7 @@ class App(DynamicColumns, TableLoading):
 
     def focus_after_login(self, reason='initial_main_window', attempt=1):
         if (self.quitting or self.session_state != 'ready' or self.root.state() not in ('normal', 'zoomed')
-                or self.root.grab_current() is not None):
+                or current_grab_path(self.root)):
             return
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
         from neto_incident_monitor.window_style import WindowPresentation
@@ -1896,7 +1900,7 @@ class App(DynamicColumns, TableLoading):
             keyboard = raised = False
             try:
                 current = self.main_window.inspect()
-                if self.root.grab_current() is None:
+                if not current_grab_path(self.root):
                     raised = self.main_window.uncover(current)
                     if raised:
                         current = self.main_window.inspect()
@@ -2191,6 +2195,33 @@ class App(DynamicColumns, TableLoading):
         except (OSError, ValueError):
             self.status.set('Nie udało się zapisać ustawienia aktualizacji dashboardu.')
 
+    def save_notify_windows(self, *_):
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+
+        enabled = self.notify.get()
+        previous = self.saved_notify_windows
+        if enabled == previous:
+            return
+        diagnostics = LoginDiagnostics(source='monitor')
+        fields = dict(channel='windows', notify_enabled=enabled, previous_notify_enabled=previous)
+        started = time.monotonic()
+        diagnostics.record('notification_preference', outcome='started', **fields)
+        try:
+            with self.filter_config_lock:
+                settings = read_json(CONFIG, {})
+                settings['notify'] = enabled
+                save_json(CONFIG, settings)
+        except (OSError, ValueError) as error:
+            self.notify.set(previous)
+            self.status.set('Nie udało się zapisać powiadomień Windows. Przywrócono poprzednią wartość.')
+            diagnostics.record('notification_preference', outcome='error', **fields, **error_facts(error),
+                               duration_ms=round((time.monotonic() - started) * 1000))
+        else:
+            self.saved_notify_windows = enabled
+            diagnostics.record('notification_preference', outcome='returned', **fields,
+                               duration_ms=round((time.monotonic() - started) * 1000))
+        self.refresh_filter_notifications()
+
     def save_notify_threatened(self, *_):
         from uuid import uuid4
 
@@ -2329,12 +2360,9 @@ class App(DynamicColumns, TableLoading):
         try:
             filters = load_filters({"filters": self.filters}, tolerate_invalid=True)
             urls = validate_urls("\n".join(entry["url"] for entry in filters if not entry.get('url_invalid')))
-            interval = int(self.interval.get())
-            task_interval = int(self.task_interval.get())
-            if min(interval, task_interval) < 15:
-                raise ValueError("Minimalny odstęp wynosi 15 sekund.")
+            intervals = self.read_schedule_intervals()
             settings = {"urls": urls, "filters": filters,
-                        "interval": interval, "task_interval": task_interval, "notify": self.notify.get(), "auto_login": self.auto_login.get(),
+                         "interval": intervals['inc'], "task_interval": intervals['task'], "auto_login": self.auto_login.get(),
                         "minimize_to_tray": self.minimize_to_tray.get(),
                         "minimize_browser": self.minimize_browser.get(), "hide_browser": self.hide_browser.get()}
             existing = read_json(CONFIG, {})
@@ -2367,7 +2395,6 @@ class App(DynamicColumns, TableLoading):
         self.stop_button.configure(state="normal")
         self.interval_entry.configure(state="disabled")
         self.task_interval_entry.configure(state="disabled")
-        self.notify_check.configure(state="disabled")
         for button in self.filter_buttons:
             button.configure(state="disabled")
         if self.dashboard_auto_refresh.get():
@@ -2393,6 +2420,51 @@ class App(DynamicColumns, TableLoading):
             return self.cycle_active
         return bool(self.worker and self.worker.is_alive())
 
+    def read_schedule_intervals(self, values=None):
+        inc, task = values if values is not None else (self.interval.get(), self.task_interval.get())
+        try:
+            intervals = {'inc': int(inc), 'task': int(task)}
+            for value in intervals.values():
+                float(value)  # Deadlines are expressed as floating-point seconds.
+        except (ValueError, OverflowError):
+            raise ValueError('Podaj interwały w pełnych sekundach.') from None
+        if min(intervals.values()) < 15:
+            raise ValueError('Minimalny interwał wynosi 15 sekund.')
+        return intervals
+
+    def persist_schedule_intervals(self, intervals):
+        settings = read_json(CONFIG, {})
+        settings.update(interval=intervals['inc'], task_interval=intervals['task'])
+        save_json(CONFIG, settings)
+
+    def save_schedule_intervals(self):
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+
+        if self.quitting:
+            return False
+        diagnostics = LoginDiagnostics(source='monitor')
+        try:
+            intervals = self.read_schedule_intervals()
+        except ValueError as error:
+            self.schedule_interval_status.set(str(error))
+            diagnostics.record('schedule_interval_change', interval_stage='rejected')
+            return False
+        fields = dict(inc_interval_s=intervals['inc'], task_interval_s=intervals['task'])
+        started = time.monotonic()
+        diagnostics.record('schedule_interval_change', interval_stage='saving', **fields)
+        try:
+            self.persist_schedule_intervals(intervals)
+        except (ValueError, OSError) as error:
+            self.schedule_interval_status.set('Nie udało się zapisać. Nadal obowiązują poprzednie interwały.')
+            diagnostics.record('schedule_interval_change', interval_stage='error', **fields, **error_facts(error),
+                               duration_ms=round((time.monotonic() - started) * 1000))
+            return False
+        self.session.update_intervals(intervals)
+        self.schedule_interval_status.set('Zapisano interwały.')
+        diagnostics.record('schedule_interval_change', interval_stage='saved', **fields,
+                           duration_ms=round((time.monotonic() - started) * 1000))
+        return True
+
     def start_session_cycle(self):
         from neto_incident_monitor.monitoring import ReadPart
         if self.quitting or self.cycle_active or self.session_state != 'ready':
@@ -2402,28 +2474,19 @@ class App(DynamicColumns, TableLoading):
             self.status.set('Włącz przynajmniej jeden filtr, aby uruchomić monitoring.')
             return
         try:
-            intervals = {'inc': int(self.interval.get()), 'task': int(self.task_interval.get())}
-            if min(intervals.values()) < 15:
-                raise ValueError('Minimalny odstęp wynosi 15 sekund.')
-            settings = read_json(CONFIG, {})
-            settings.update(interval=intervals['inc'], task_interval=intervals['task'], notify=self.notify.get())
-            save_json(CONFIG, settings)
+            intervals = self.read_schedule_intervals(self.schedule_interval_autosave.saved_values)
+            self.persist_schedule_intervals(intervals)
         except (ValueError, OSError):
-            messagebox.showerror('Konfiguracja', 'Sprawdź odstępy odczytów i dostęp do konfiguracji.', parent=self.root)
+            messagebox.showerror('Konfiguracja', 'Sprawdź interwały odczytów i dostęp do konfiguracji.', parent=self.root)
             return
         initial = [ReadPart('dashboard', self.dashboard_view.selected_period())] if self.dashboard_auto_refresh.get() else []
         initial.append(ReadPart('threatened'))
         self.cycle_active = True
         self.threatened_view.monitoring = True
-        self.set_cycle_controls(False)
         self.set_phase('Monitoring aktywny')
         self.session.start_cycle(initial, intervals)
         self.submit_alert_delivery(True)
         self.update_refresh_controls()
-
-    def set_cycle_controls(self, available):
-        for widget in (self.interval_entry, self.task_interval_entry, self.notify_check):
-            widget.configure(state='normal' if available else 'disabled')
 
     def stop_monitoring(self):
         if not getattr(self, 'session', None):
@@ -2434,7 +2497,6 @@ class App(DynamicColumns, TableLoading):
         self.threatened_view.monitoring = False
         self.check_deadlines = {}
         self.next_check = None
-        self.set_cycle_controls(True)
         self.set_phase('Monitoring zatrzymany')
         self.update_refresh_controls()
 
@@ -2902,7 +2964,9 @@ class App(DynamicColumns, TableLoading):
             return True
         except (TargetClosedError, BrowserClosedError):
             restarting = own_request
-            if not own_request:
+            if restarting:
+                self.events.put(('threatened_state', (request, 'Oczekuje')))
+            else:
                 self.threatened_requests.put(request)
             raise
         except Cancelled:
@@ -2982,9 +3046,8 @@ class App(DynamicColumns, TableLoading):
                     failures.append(section)
                     LOG.warning('Dashboard: sekcja %s nie powiodła się (%s).', alias, type(exc).__name__)
                     metadata = {'section': alias, 'error': True, 'diagnostics': diagnostics}
-                self.events.put(('dashboard_result', (request_id, year, month, dict(values), None,
-                    'Trwa aktualizacja dashboardu…', metadata)))
-            message = ('Nie udało się odczytać: ' + ', '.join(failures) + '. Pozostałe dane są dostępne.') if failures else ''
+                self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, '', metadata)))
+            message = 'Nie udało się odczytać: ' + ', '.join(failures) if failures else ''
             self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, message)))
             success = not failures and not stop.is_set()
         except (TargetClosedError, BrowserClosedError):
@@ -3458,7 +3521,7 @@ class App(DynamicColumns, TableLoading):
                     self.dashboard_view.refresh_button.configure(state='disabled')
                     self.dashboard_view.request_id += 1
                     self.dashboard_progress.hide()
-                    self.dashboard_view.set_message('Monitoring zatrzymany — odczyt dashboardu jest niedostępny. Kafelki zachowują ostatni wynik.')
+                    self.dashboard_view.set_message('Monitoring zatrzymany')
                     while not self.dashboard_requests.empty():
                         try:
                             self.dashboard_requests.get_nowait()
@@ -3477,7 +3540,6 @@ class App(DynamicColumns, TableLoading):
                     self.check_button.configure(state="disabled")
                     self.interval_entry.configure(state="normal")
                     self.task_interval_entry.configure(state="normal")
-                    self.notify_check.configure(state="normal")
                     for button in self.filter_buttons:
                         button.configure(state="normal")
                     if getattr(self, 'favorites_import', None) is not None:

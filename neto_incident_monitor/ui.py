@@ -4,7 +4,7 @@ from tkinter import ttk
 from neto_incident_monitor.widgets import Toggle, RoundedButton, DashboardButton, FilterList, TabTooltip
 from PIL import Image, ImageDraw, ImageTk
 
-from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
+from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT, VIEW_TITLE_FONT
 from neto_incident_monitor.settings_ui import SETTINGS_WINDOW_SIZE, build_settings
 
 
@@ -250,8 +250,6 @@ def build_ui(app, settings):
     app.settings_window.configure(background=SURFACE)
     app.settings_window.resizable(False, False)
     app.settings_window.transient(root)
-    app.settings_window.protocol("WM_DELETE_WINDOW", app.settings_window.withdraw)
-    app.settings_window.bind("<Escape>", lambda event: app.settings_window.withdraw())
     build_settings(app, settings)
     app.refresh_filters()
 
@@ -308,19 +306,21 @@ def build_ui(app, settings):
     main.columnconfigure(0, weight=1)
     main.rowconfigure(2, weight=1)
     app.phase = tk.StringVar(value="Gotowy do uruchomienia")
-    state = ttk.Frame(main, padding=(0, 0, 0, 12))
-    state.grid(row=0, column=0, sticky="ew")
+    state = tk.Frame(main, bg=BG)
+    state.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+    state.columnconfigure(0, weight=1)
+    heading = tk.Frame(state, bg=BG)
+    heading.grid(row=0, column=0, sticky='sew')
     app.selected_filter_name = tk.StringVar()
-    ttk.Label(state, textvariable=app.selected_filter_name, font=("Segoe UI", 10, "bold"),
-              foreground=TEXT).pack(side="left", padx=(0, 12))
+    tk.Label(heading, textvariable=app.selected_filter_name, font=VIEW_TITLE_FONT, bg=BG, fg=TEXT).pack(side='left')
     from neto_incident_monitor.widgets import StatusPill
-    app.phase_label = StatusPill(state, compact=True)
-    app.phase_label.pack(side="left")
+    app.phase_label = StatusPill(heading, compact=True)
+    app.phase_label.pack(side='left', padx=(12, 0))
     app.table_load_status = tk.StringVar(value='')
-    ttk.Label(state, textvariable=app.table_load_status, style='Muted.TLabel').pack(side='left', padx=(12, 0))
+    ttk.Label(heading, textvariable=app.table_load_status, style='Muted.TLabel').pack(side='left', padx=(12, 0))
     app.update_phase_text()
     app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  SCTASK/REQ/RITM: -")
-    ttk.Label(state, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
+    ttk.Label(heading, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
 
     app.current_count = tk.StringVar(value="0")
 
@@ -336,6 +336,15 @@ def build_ui(app, settings):
         command=lambda: app.request_refresh('filter'), background=BG)
     app.refresh_filter_button.configure(state='disabled')
     app.refresh_filter_button.pack(side='right', padx=(8, 0))
+
+    def match_dashboard_heading_height(event=None):
+        # The dashboard's period selectors can be taller than its buttons at higher DPI.
+        height = app.dashboard_view.heading_row.winfo_reqheight()
+        for row in (state, app.threatened_view.heading_row):
+            row.rowconfigure(0, minsize=height)
+
+    app.dashboard_view.heading_row.bind('<Configure>', match_dashboard_heading_height, add='+')
+    root.after_idle(match_dashboard_heading_height)
     columns_button = RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG)
     app.columns_button = columns_button
     columns_button.configure(state="disabled")

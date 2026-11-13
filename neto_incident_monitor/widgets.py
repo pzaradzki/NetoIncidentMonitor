@@ -393,12 +393,24 @@ class RoundedButton(tk.Canvas):
         return result
 
 
+UPDATING_BADGE_WIDTH = 77
+
+
+def draw_updating_badge(canvas, draw, left, center_y):
+    right = left + UPDATING_BADGE_WIDTH
+    draw.rounded_rectangle((left * 4, (center_y - 11) * 4, right * 4, (center_y + 11) * 4),
+                           radius=44, fill='#244b37')
+    canvas.create_text((left + right) / 2, center_y, text='Aktualizuje',
+                       fill='#8ee2ac', font=('Segoe UI', 8))
+
+
 class ThreatenedIncidentsButton(RoundedButton):
     """Sidebar warning with a cancellable, smooth pulse on the Tk thread."""
     def __init__(self, parent):
         self.alert = False
         self.healthy = False
         self.selected = False
+        self.updating = False
         self.pulse_timer = None
         self.pulse_started = 0
         super().__init__(parent, text='Incydenty zagrożone', command=lambda: None, icon='warning')
@@ -431,6 +443,11 @@ class ThreatenedIncidentsButton(RoundedButton):
             self.redraw()
             self.pulse_timer = self.after(50, self._pulse)
 
+    def set_updating(self, updating):
+        if self.updating != updating:
+            self.updating = updating
+            self.redraw()
+
     def redraw(self, event=None):
         from math import cos, pi
         from time import monotonic
@@ -450,21 +467,35 @@ class ThreatenedIncidentsButton(RoundedButton):
         bounds = self.bbox(label)
         # Use the actual text item bounds: equal gaps, centered as one group.
         icon_positions = (bounds[0] - 26, bounds[2] + 10)
+        label_y = badge_y = height / 2
+        if self.updating:
+            extra_width = 8 + UPDATING_BADGE_WIDTH
+            side_space = 34 if self.alert else 8
+            if bounds[2] - bounds[0] + extra_width + 2 * side_space <= width:
+                self.move(label, -extra_width / 2, 0)
+                badge_left = bounds[2] - extra_width / 2 + 8
+                icon_positions = (icon_positions[0] - extra_width / 2, icon_positions[1] + extra_width / 2)
+            else:
+                label_y, badge_y = 12, height - 12
+                self.move(label, 0, label_y - height / 2)
+                badge_left = (width - UPDATING_BADGE_WIDTH) / 2
         picture = Image.new('RGB', (width * 4, height * 4), self.cget('background'))
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 0, width * 4 - 1, height * 4 - 1), radius=32,
                                fill=color, outline=ACCENT if self.selected else '#95505c' if self.alert else
                                '#476b57' if self.healthy else color, width=8 if self.selected else 4)
         if self.alert:
-            y = (height - 16) / 2
+            y = label_y - 8
             for x in icon_positions:
                 draw.polygon([(x * 4, (y + 15) * 4), ((x + 8) * 4, y * 4),
                               ((x + 16) * 4, (y + 15) * 4)], fill='#ffe0a3')
                 draw.line(((x + 8) * 4, (y + 5) * 4, (x + 8) * 4, (y + 9) * 4), fill='#61232e', width=6)
                 draw.ellipse(((x + 7.2) * 4, (y + 11) * 4, (x + 8.8) * 4, (y + 12.6) * 4), fill='#61232e')
+        if self.updating:
+            draw_updating_badge(self, draw, badge_left, badge_y)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         background = self.create_image(0, 0, image=self.picture, anchor='nw')
-        self.tag_lower(background, label)
+        self.tag_lower(background)
 
 
 class AnimatedMetricTile(tk.Frame):
@@ -558,20 +589,16 @@ class DashboardButton(RoundedButton):
         label_x = width / 2
         badge_y = height / 2
         if self.updating:
-            badge_width, gap = 77, 8
-            group_width = self.label_width + gap + badge_width
+            gap = 8
+            group_width = self.label_width + gap + UPDATING_BADGE_WIDTH
             left = max(48, (width - group_width) / 2)
             label_x = left + self.label_width / 2
             badge_left = left + self.label_width + gap
-            draw.rounded_rectangle((badge_left * 4, (badge_y - 11) * 4,
-                                    (badge_left + badge_width) * 4, (badge_y + 11) * 4),
-                                   radius=44, fill="#244b37")
+            draw_updating_badge(self, draw, badge_left, badge_y)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
-        self.create_image(0, 0, image=self.picture, anchor="nw")
+        background = self.create_image(0, 0, image=self.picture, anchor="nw")
+        self.tag_lower(background)
         self.create_text(label_x, badge_y, text=self.text, fill=TEXT, font=self.label_font)
-        if self.updating:
-            self.create_text(badge_left + badge_width / 2, badge_y, text="Aktualizuje",
-                             fill="#8ee2ac", font=("Segoe UI", 8))
 
 
 class FilterList(tk.Canvas):

@@ -1,6 +1,6 @@
 # 028 — Odsłonięcie głównego okna po logowaniu
 
-**Status.** Przyjęta i odtworzona w źródłach z oryginalnych poprawek. Powtórzono natywną próbę odsłonięcia i przywrócenia. Ręczny odbiór przycisku na pasku zadań pozostaje otwarty w [planie odzyskania](../plany/odzyskanie-zmian-po-v1.10.0.md).
+**Status.** Przyjęta i odtworzona w źródłach z oryginalnych poprawek. Powtórzono natywną próbę odsłonięcia i przywrócenia. Użytkownik potwierdził przywrócenie okna jednym kliknięciem na pasku zadań. [Wyniki odbioru](../plany/zakonczone/odzyskanie-zmian-po-v1.10.0.md).
 
 **Decyzja.** Po pokazaniu głównego okna jedna ścieżka przywraca i aktywuje jego ramkę Windows, a osobny pomiar sprawdza odsłonięcie. Ta decyzja uzupełnia [025](025-wspolna-sesja-servicenow.md) bez zmiany cyklu logowania.
 

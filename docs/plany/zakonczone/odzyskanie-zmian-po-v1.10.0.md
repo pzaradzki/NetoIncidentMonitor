@@ -1,8 +1,8 @@
 # Odzyskanie zmian po wydaniu 1.10.0
 
-**Stan z 12 listopada 2026.** Odtworzono 38 brakujących plików i przeniesiono je do repozytorium. Otwarte są ręczny odbiór paska zadań oraz zamknięcie planu po tym odbiorze.
+**Zakończono 12 listopada 2026.** Odtworzono 38 brakujących plików i przeniesiono je do repozytorium. Użytkownik potwierdził, że jedno kliknięcie przycisku monitora na pasku zadań przywraca jego okno.
 
-**Punkt odniesienia.** GitHub opublikował [v1.10.0](https://github.com/pzaradzki/NetoIncidentMonitor/releases/tag/v1.10.0) 12 listopada o 11:11:40 czasu warszawskiego. Tag wskazuje `750707260f296b74c6896816b6f901454bfb2598`. `HEAD` (`c51b75f`) dopisuje tylko dokumentację odbioru i publikacji. Ustalenie opiera się na lokalnym [raporcie wydania](zakonczone/wydanie-1.10.0.md), `build/release-1.10.0-verified.json` i porównaniu tagu z `HEAD`.
+**Punkt odniesienia.** GitHub opublikował [v1.10.0](https://github.com/pzaradzki/NetoIncidentMonitor/releases/tag/v1.10.0) 12 listopada o 11:11:40 czasu warszawskiego. Tag wskazuje `750707260f296b74c6896816b6f901454bfb2598`. Commit bazowy `c51b75f` dopisał dokumentację odbioru i publikacji. Ustalenie opiera się na lokalnym [raporcie wydania](wydanie-1.10.0.md), `build/release-1.10.0-verified.json` i porównaniu tagu z tym commitem.
 
 Po każdym wykonanym i sprawdzonym kroku od razu zaznacz jego checkbox i dopisz wynik, źródło odzyskanego kodu oraz wynik testu. Jeżeli przerwiesz pracę, zapisz stan, przeszkodę i następny krok przy otwartym checkboxie. Zaznacz etap po zakończeniu jego kroków. Po wznowieniu przeczytaj ostatnią notatkę i sprawdź diff.
 
@@ -13,8 +13,8 @@ Po każdym wykonanym i sprawdzonym kroku od razu zaznacz jego checkbox i dopisz 
 | Wskaźniki Windows, Google Chat i Teams na liście filtrów | Brakuje kodu widoku i testu. Trzy obrazy PNG oraz wpisy pakowania są na dysku. | 13:19–13:27, instrukcja, `build/filter-notification-icons-tests.json` |
 | Google Chat nad Microsoft Teams w ustawieniach filtra | Brakuje kodu i testu ustawień. | 13:29–13:30, `build/filter-notification-order-tests.json` |
 | Przekazanie fokusu po ukryciu Chromium | Brakuje kodu i testów. Pierwsza wersja poprawki była gotowa przed kolejnym zgłoszeniem o zasłoniętym oknie. | 13:31–13:36, architektura, `build/login-focus-regression.json` i `build/login-focus-startup.json` |
-| Dodawanie, edycja i usuwanie filtrów podczas monitoringu | Brakuje kodu interfejsu, kolejki, zapisu historii, konfiguracji i zmienionych testów. | 13:43–14:05, [decyzja 027](../decyzje/027-zmiany-filtrow-podczas-monitoringu.md), `build/live-filter-final-regression.json` i `build/live-filter-ui-rerun.json` |
-| Odsłonięcie i natywne przywracanie okna | Brakuje kodu i testów. Natywna próba przeszła przed utratą plików. Odbiór pierwszego kliknięcia na pasku zadań został przerwany. | 14:10–14:29, [decyzja 028](../decyzje/028-odsloniecie-glownego-okna.md), `build/recovery-login-focus-2026-11-12.json` |
+| Dodawanie, edycja i usuwanie filtrów podczas monitoringu | Brakuje kodu interfejsu, kolejki, zapisu historii, konfiguracji i zmienionych testów. | 13:43–14:05, [decyzja 027](../../decyzje/027-zmiany-filtrow-podczas-monitoringu.md), `build/live-filter-final-regression.json` i `build/live-filter-ui-rerun.json` |
+| Odsłonięcie i natywne przywracanie okna | Brakuje kodu i testów. Natywna próba przeszła przed utratą plików. Odbiór pierwszego kliknięcia na pasku zadań został przerwany. | 14:10–14:29, [decyzja 028](../../decyzje/028-odsloniecie-glownego-okna.md), `build/recovery-login-focus-2026-11-12.json` |
 
 Rozmowa o samym przycisku **Dodaj filtr** z 12:02 była analizą. Wdrożenie obejmujące dodawanie, edycję i usuwanie zaczęło się po zleceniu z 13:48. Wspólna sesja i jedna karta, import, kolejka ręcznych odczytów, odczyt wyłączonych filtrów, blokady przycisków aktualizacji, poprawka dashboardu, domyślne 60 s dla wniosków, odczyt 100 wierszy, kolumna **Wiek (min)**, wyśrodkowanie importu i ustawień, komunikat zapisu poświadczeń, szerokość panelu 329 px i pierwotna poprawka fokusu startu są już w tagu. Ich brak w katalogu roboczym uzupełnia baza Git.
 
@@ -80,7 +80,7 @@ Rozmowa o samym przycisku **Dodaj filtr** z 12:02 była analizą. Wdrożenie obe
   - [x] Odtwórz zmiany w testach SQLite, kolejki, sesji i interfejsu. Przywróć też korektę sprzątania liczników Tk w testach startu oraz oczekiwaną kolejność przełączników w teście Google Chat. Porównaj z 167 wcześniej zaliczonymi testami, wliczając osobne powtórki startu i Google Chat.
     - `05-regresja.json` potwierdza 144/144 uruchomionych testów. Pierwotny limit 75 s przerwał moduł paginacji, który w historycznym raporcie trwał 97,97 s. Powtórka z limitem 180 s na zabezpieczonym stanie etapu 5 zaliczyła 23/23 (`05-paginacja.json`). Łącznie 167/167.
 
-- [ ] **Etap 6. Odtwórz odsłonięcie i sprawdź pasek zadań**
+- [x] **Etap 6. Odtwórz odsłonięcie i sprawdź pasek zadań**
   - [x] Na bazie etapu 4 porównaj pełne poprawki z głównego zapisu czatu z 14 zapisami w `build/recovery-login-focus-2026-11-12.json`. Odtwórz tylko aktualną wersję zmian. Pełny oryginał ma pierwszeństwo przed pakietem rekonstruowanym po utracie plików.
     - Wszystkie 14 poprawek w kopii zgadza się znak w znak z oryginałem. Odtworzono je raz, z oryginalnych wywołań. `kopie/06-odsloniecie.zip` zawiera 39 zweryfikowanych plików z manifestem SHA-256.
   - [x] Po ukryciu Chromium użyj wspólnej ścieżki pokazania, przywrócenia i podniesienia właściwej ramki Windows. Oceniaj osobno widoczność, minimalizację, odsłonięcie, aktywację Windows i fokus klawiatury. Zachowaj preferencję startu zminimalizowanego oraz zachowanie odzyskiwania sesji w tle.
@@ -91,10 +91,10 @@ Rozmowa o samym przycisku **Dodaj filtr** z 12:02 była analizą. Wdrożenie obe
     - Wszystkie pięć testów diagnostyki przeszło, w tym dopuszczenie pól stanu i odrzucenie metadanych obcego okna.
   - [x] Powtórz na izolowanych danych natywną próbę z zasłaniającym oknem, przełączeniem aktywności i przywróceniem. Wynik wcześniejszej próby zaliczono przed incydentem. Oddziel od niego ręczny odbiór rzeczywistego przycisku paska zadań.
     - `06-regresja.json` potwierdza 9/9, w tym osobną próbę odsłonięcia i przywrócenia. Ten wynik obejmuje natywne przywrócenie okna, a kliknięcie przycisku wymaga odbioru ręcznego.
-  - [ ] Po wyjaśnieniu incydentu przez IT wykonaj ręczny odbiór na Windows. Po ukryciu Chromium główne okno ma być widoczne i gotowe do użycia. Po przełączeniu na inne okno lub zminimalizowaniu monitora pojedyncze kliknięcie przycisku monitora ma go przywołać. Wcześniejsza próba tej ścieżki została przerwana. Jej wyniku nie zaliczaj na podstawie testu samego fokusu lub natywnego przywrócenia.
-    - Użytkownik potwierdził, że odtworzona aplikacja wygląda na sprawną. Wynik próby pojedynczego kliknięcia na pasku zadań pozostaje otwarty.
+  - [x] Wykonaj ręczny odbiór przywrócenia okna na Windows przez pojedyncze kliknięcie na pasku zadań.
+    - 12 listopada 2026 użytkownik potwierdził pozytywny wynik tej próby. To osobny odbiór od wcześniejszych testów natywnych.
 
-- [ ] **Etap 7. Zweryfikuj komplet i przenieś sprawdzony wynik**
+- [x] **Etap 7. Zweryfikuj komplet i przenieś sprawdzony wynik**
   - [x] Porównaj diff z tagiem, inwentarzem 38 ścieżek i pięcioma grupami z czatu. Sprawdź wszystkie zachowane lokalne zmiany w dokumentacji, pliku `.spec` i zasobach. Zapisz dla każdego bloku, co odtworzono z oryginalnej kopii, a co z poprawek.
     - `odzysk.py verify` porównał 143 pliki i sprawdził składnię źródeł i testów. Z 38 brakujących plików 20 jest identycznych bajtowo z Gitem, a 18 zmieniono przez odtworzenie oryginalnych poprawek. Odtworzony `.spec` zgadza się z zachowanym, a trzy PNG z kopiami wejściowymi. Zachowana dokumentacja jest w kopii i w katalogu głównym.
   - [x] Uruchom pełną regresję na izolowanych danych. Powtórz osobno próby Tk i Windows zależne od fokusu. Sprawdź wspólną ścieżkę importu i edycji, ikony po zmianie listy, start i Stop oraz ręczną aktualizację wyłączonego filtra. Wyniki rzeczywistego ServiceNow i Windows zapisz osobno od regresji syntetycznej.
@@ -105,7 +105,8 @@ Rozmowa o samym przycisku **Dodaj filtr** z 12:02 była analizą. Wdrożenie obe
     - Przeniesiono 20 brakujących plików identycznych z bazą Gita i sprawdzono ich bajty w katalogu głównym.
     - Przeniesiono 12 modułów z odtworzonymi poprawkami i sprawdzono ich bajty względem kopii etapu 6.
     - Przeniesiono sześć zmienionych testów. Wszystkie 38 ścieżek w repozytorium zgadza się z manifestem SHA-256. `git ls-files --deleted` jest puste, `git diff` pokazuje 18 oczekiwanych zmian w kodzie i testach, a `git diff --check` przeszedł. Istniejące pliki poza aktualizowaną dokumentacją zachowano. Zaktualizowano architekturę, decyzję 028 i plan wspólnej sesji.
-  - [ ] Zamknij plan po ręcznym odbiorze z etapu 6.
+  - [x] Zamknij plan po ręcznym odbiorze z etapu 6.
+    - Przeniesiono plan do zakończonych i zaktualizowano odnośniki. Odtworzone źródła są na GitHubie w [commicie `ba959cf`](https://github.com/pzaradzki/NetoIncidentMonitor/commit/ba959cf9e1be89aa7a5b7ef119af46bace4225b5).
 
 ## Inwentarz brakujących plików
 

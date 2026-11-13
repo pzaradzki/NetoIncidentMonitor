@@ -144,6 +144,12 @@ NUMERIC_FIELDS.update({
     'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 EVENTS.add('alert_delivery')
+EVENTS.add('notification_preference')
+NUMERIC_FIELDS.update({'notify_enabled', 'previous_notify_enabled'})
+EVENTS.add('schedule_interval_change')
+NUMERIC_FIELDS.update({'inc_interval_s', 'task_interval_s', 'interval_s', 'previous_interval_s', 'batch_active'})
+TEXT_FIELDS['interval_stage'] = {'rejected', 'saving', 'error', 'saved', 'applied'}
+TEXT_FIELDS['schedule_kind'] = {'inc', 'task'}
 EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}

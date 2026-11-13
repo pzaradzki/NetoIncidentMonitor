@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from neto_incident_monitor.theme import BG, TEXT
 
 
+def current_grab_path(window):
+    """Return the Tcl grab owner, including native popdowns without a Python widget."""
+    return window.tk.call('grab', 'current', str(window))
+
+
 def colorref(value):
     red, green, blue = (int(value[i:i + 2], 16) for i in (1, 3, 5))
     return red | (green << 8) | (blue << 16)

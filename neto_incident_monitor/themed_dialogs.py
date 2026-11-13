@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from neto_incident_monitor.theme import BG, TEXT, MUTED, ACCENT
 from neto_incident_monitor.widgets import RoundedButton
-from neto_incident_monitor.window_style import apply_window_style
+from neto_incident_monitor.window_style import apply_window_style, current_grab_path
 
 
 def _show(title, message, parent=None, error=False, question=False, **kwargs):
@@ -12,7 +12,8 @@ def _show(title, message, parent=None, error=False, question=False, **kwargs):
     if temporary:
         owner = tk.Tk()
         owner.withdraw()
-    previous_grab = owner.grab_current()
+    previous_grab = current_grab_path(owner)
+    previous_grab_status = owner.tk.call('grab', 'status', previous_grab) if previous_grab else 'none'
     dialog = tk.Toplevel(owner)
     dialog.title(title)
     dialog.configure(background=BG)
@@ -54,8 +55,12 @@ def _show(title, message, parent=None, error=False, question=False, **kwargs):
     dialog.grab_set()
     button.focus_set()
     owner.wait_window(dialog)
-    if previous_grab is not None and previous_grab.winfo_exists():
-        previous_grab.grab_set()
+    if (previous_grab_status != 'none' and not current_grab_path(owner)
+            and owner.tk.getboolean(owner.tk.call('winfo', 'viewable', previous_grab))):
+        if previous_grab_status == 'global':
+            owner.tk.call('grab', 'set', '-global', previous_grab)
+        else:
+            owner.tk.call('grab', 'set', previous_grab)
     if temporary:
         owner.destroy()
     return result if question else "ok"

@@ -6,7 +6,7 @@ import sqlite3
 import tkinter as tk
 import webbrowser
 from tkinter import ttk
-from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED
+from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, VIEW_TITLE_FONT
 from neto_incident_monitor.widgets import IncidentMenu, StatusPill, PriorityDots, RoundedButton, AnimatedMetricTile
 from neto_incident_monitor.service_now_urls import safe_record_url
 
@@ -302,9 +302,13 @@ def build_threatened_view(parent, app):
     canvas.bind('<Configure>', layout)
     content.bind('<Configure>', layout)
     header = tk.Frame(content, bg=BG)
-    header.pack(fill='x', pady=(0, 18))
-    tk.Label(header, text='Incydenty zagrożone SLA', bg=BG, fg=TEXT, font=('Segoe UI', 12, 'bold')).pack(side='left')
-    pill = StatusPill(header, compact=True)
+    header.pack(fill='x', pady=(0, 14))
+    header.columnconfigure(0, weight=1)
+    panel.heading_row = header
+    heading = tk.Frame(header, bg=BG)
+    heading.grid(row=0, column=0, sticky='sw')
+    tk.Label(heading, text='Incydenty zagrożone SLA', bg=BG, fg=TEXT, font=VIEW_TITLE_FONT).pack(side='left')
+    pill = StatusPill(heading, compact=True)
     pill.set_status('Dane nieaktualne')
     pill.pack(side='left', padx=(12, 0))
     panel.status_pill = pill
@@ -337,10 +341,12 @@ def build_threatened_view(parent, app):
             return panel.request_id
     panel.request_refresh = request
     from neto_incident_monitor.threatened import THREATENED_URL
-    panel.open_snow_button = RoundedButton(header, text='Otwórz w SNOW',
+    actions = tk.Frame(header, bg=BG)
+    actions.grid(row=0, column=1, sticky='se')
+    panel.open_snow_button = RoundedButton(actions, text='Otwórz w SNOW',
         command=lambda: webbrowser.open(THREATENED_URL), background=BG)
     panel.open_snow_button.pack(side='right', padx=(8, 0))
-    panel.refresh_button = RoundedButton(header, text='Aktualizuj', icon='refresh', command=request, background=BG)
+    panel.refresh_button = RoundedButton(actions, text='Aktualizuj', icon='refresh', command=request, background=BG)
     panel.refresh_button.pack(side='right')
     panel.refresh_button.configure(state='disabled')
     tiles = tk.Frame(content, bg=BG)
@@ -360,11 +366,12 @@ def build_threatened_view(parent, app):
     def set_state(request_id, state):
         if request_id != panel.request_id:
             return
+        button = app.threatened_incidents_button
+        button.set_updating(state in ('W trakcie aktualizacji', 'Ponawianie odczytu'))
         if state in ('Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
             panel.pending = True
             update_button()
         if state in ('Błąd odczytu', 'Dane nieaktualne'):
-            button = app.threatened_incidents_button
             button.set_alert(button.alert, confirmed=False)
         pill.set_status(state)
         timestamp = time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(panel.last_full_read)) if panel.last_full_read else '—'
@@ -429,6 +436,7 @@ def build_threatened_view(parent, app):
     def finish_request(request_id):
         if request_id == panel.request_id:
             panel.pending = False
+            app.threatened_incidents_button.set_updating(False)
             update_button()
     panel.finish_request = finish_request
     def set_monitoring(active):

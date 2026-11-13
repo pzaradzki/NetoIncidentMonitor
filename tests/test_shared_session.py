@@ -45,6 +45,67 @@ class ReadQueueTests(unittest.TestCase):
             cycle.next_filter((first, second, added))
             self.assertEqual(list(cycle.filters), [first, second, added])
 
+    def test_interval_change_during_batch_keeps_reads_and_uses_new_delay_at_finish(self):
+        app = Mock(threatened_next_read=10_000)
+        session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        session.connected = True
+        page = Mock()
+        page.is_closed.return_value = False
+        first = ReadPart('filter', ('A', None), {'kind': 'inc', 'scheduled': True})
+        second = ReadPart('filter', ('B', None), {'kind': 'inc', 'scheduled': True})
+        task = ReadPart('filter', ('C', None), {'kind': 'task', 'scheduled': True})
+        session.update_filters({'A': first, 'B': second, 'C': task})
+        session.start_cycle([], {'inc': 60, 'task': 120})
+        reads = []
+
+        with patch('neto_incident_monitor.shared_session.monotonic', return_value=100) as clock, \
+                patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
+                patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=lambda *_: session.closed.set()):
+            def read(_page, part, stop, source):
+                self.assertEqual(source, 'filter')
+                self.assertFalse(stop.is_set())
+                reads.append(part)
+                clock.return_value += 5
+                if part == task:
+                    session.update_intervals({'inc': 30, 'task': 120})
+                return True
+
+            app.execute_session_part.side_effect = read
+            session.serve(page)
+        self.assertEqual(reads, [first, second, task])
+        self.assertEqual(session.cycle.deadlines, {'inc': 145, 'task': 235})
+        session.log.record.assert_called_with('schedule_interval_change', interval_stage='applied',
+                                              schedule_kind='inc', previous_interval_s=60, interval_s=30,
+                                              batch_active=True)
+
+    def test_interval_change_while_waiting_uses_last_batch_and_latest_saved_value(self):
+        app = Mock(threatened_next_read=10_000)
+        session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        inc = ReadPart('filter', ('A', None), {'kind': 'inc', 'scheduled': True})
+        task = ReadPart('filter', ('B', None), {'kind': 'task', 'scheduled': True})
+        session.update_filters({'A': inc, 'B': task})
+        session.start_cycle([], {'inc': 60, 'task': 120})
+        cycle = session.cycle
+        with patch('neto_incident_monitor.shared_session.monotonic', return_value=100) as clock:
+            self.assertEqual(session.next_part(cycle), (inc, 'filter'))
+            cycle.filters.popleft()
+            self.assertEqual(session.next_part(cycle), (task, 'filter'))
+            cycle.filters.popleft()
+            cycle.finish_filter_batch()
+            clock.return_value = 145
+            self.assertIsNone(session.next_part(cycle))
+            session.update_intervals({'inc': 90, 'task': 100})
+            session.update_intervals({'inc': 20, 'task': 150})
+            self.assertEqual(session.next_part(cycle), (inc, 'filter'))
+            self.assertEqual(cycle.deadlines, {'inc': 120, 'task': 250})
+            cycle.filters.popleft()
+            clock.return_value = 146
+            cycle.finish_filter_batch()
+            self.assertEqual(cycle.deadlines, {'inc': 166, 'task': 250})
+            self.assertIsNone(session.next_part(cycle))
+
     def test_deleting_active_filter_cancels_its_login_wait_and_runs_next_filter(self):
         app = Mock(threatened_next_read=None)
         session = SharedSession(app, Path('unused'))
@@ -245,7 +306,179 @@ class PasswordSaveWaitTests(unittest.TestCase):
         self.assertEqual(diagnostics.record.call_args.kwargs['password_save_choice'], 'cancelled')
 
 
+class ScheduleAutosaveTests(unittest.TestCase):
+    def test_countdown_restarts_and_saves_once_five_seconds_after_last_edit(self):
+        from neto_incident_monitor.settings_ui import ScheduleIntervalAutosave
+
+        owner, status, save = Mock(), Mock(), Mock(return_value=True)
+        owner.after.side_effect = ('first', 'second', 'third', 'fourth')
+        inc, task = Mock(), Mock()
+        inc.get.return_value, task.get.return_value = '60', '120'
+        autosave = ScheduleIntervalAutosave(owner, (inc, task), status, save)
+        with patch('neto_incident_monitor.settings_ui.monotonic', return_value=100) as clock:
+            inc.get.return_value = '30'
+            inc.trace_add.call_args.args[1]()
+            status.set.assert_called_with('Zapis interwałów za 5 s.')
+
+            clock.return_value = 103
+            task.get.return_value = '90'
+            task.trace_add.call_args.args[1]()
+            owner.after_cancel.assert_called_once_with('first')
+            status.set.assert_called_with('Zapis interwałów za 5 s.')
+
+            clock.return_value = 105
+            owner.after.call_args.args[1]()
+            status.set.assert_called_with('Zapis interwałów za 3 s.')
+            save.assert_not_called()
+            clock.return_value = 107.5
+            owner.after.call_args.args[1]()
+            self.assertEqual(owner.after.call_args.args[0], 500)
+            save.assert_not_called()
+
+            clock.return_value = 108
+            owner.after.call_args.args[1]()
+            self.assertEqual(autosave.saved_values, ('30', '90'))
+            self.assertTrue(autosave.flush())
+            save.assert_called_once()
+
+
 class SharedApplicationTests(unittest.TestCase):
+    def test_closing_settings_saves_intervals_immediately_and_keeps_failed_edits_visible(self):
+        from neto_incident_monitor.app import read_json, save_json
+        from neto_incident_monitor.login_diagnostics import _logger
+        from neto_incident_monitor.widgets import RoundedButton
+
+        url = 'https://adeo.service-now.com/incident_list.do'
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            config = folder / 'config.json'
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                with patch('neto_incident_monitor.app.CONFIG', config), \
+                        patch('neto_incident_monitor.app.DATA', folder), \
+                        patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+                    save_json(config, {'interval': 60, 'task_interval': 120,
+                                       'filters': [{'name': 'Test', 'url': url}]})
+                    app = App(root, history_path=folder / 'history.json', enable_tray=False,
+                              apply_startup=False, shared_session=True)
+                    app.submit_alert_delivery = Mock()
+                    app.session.ready_once = True
+                    app.handle_session_event('session_ready', None)
+                    app.start_session_cycle()
+                    cycle = app.session.cycle
+                    self.assertEqual(str(app.interval_entry['state']), 'normal')
+                    self.assertEqual(str(app.task_interval_entry['state']), 'normal')
+                    settings_window = app.settings_window
+                    close_button = next(child for parent in settings_window.winfo_children()
+                                        for child in parent.winfo_children()
+                                        if isinstance(child, RoundedButton) and child.text == 'Zamknij')
+
+                    settings_window.deiconify()
+                    app.interval.set('30')
+                    app.task_interval.set('90')
+                    self.assertEqual(read_json(config, {})['interval'], 60)
+                    settings_window.tk.call(settings_window.protocol('WM_DELETE_WINDOW'))
+                    saved = read_json(config, {})
+                    self.assertEqual((saved['interval'], saved['task_interval']), (30, 90))
+                    self.assertEqual(settings_window.state(), 'withdrawn')
+                    self.assertIsNone(app.schedule_interval_autosave.timer)
+                    cycle.apply_interval_changes()
+                    self.assertEqual(cycle.intervals, {'inc': 30, 'task': 90})
+                    self.assertIn('Zapisano', app.schedule_interval_status.get())
+
+                    before = config.read_bytes()
+                    settings_window.deiconify()
+                    app.interval.set('14')
+                    close_button.invoke()
+                    self.assertIn('15 sekund', app.schedule_interval_status.get())
+                    self.assertEqual(settings_window.state(), 'normal')
+                    self.assertEqual(config.read_bytes(), before)
+                    self.assertFalse(cycle.apply_interval_changes())
+
+                    app.interval.set('45')
+                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
+                            self.assertLogs(_logger, level='INFO') as captured:
+                        close_button.invoke()
+                    self.assertEqual(config.read_bytes(), before)
+                    self.assertFalse(cycle.apply_interval_changes())
+                    self.assertIn('poprzednie interwały', app.schedule_interval_status.get())
+                    self.assertEqual(settings_window.state(), 'normal')
+                    self.assertIs(app.session.cycle, cycle)
+                    self.assertFalse(cycle.stop.is_set())
+                    events = [json.loads(row.getMessage()) for row in captured.records]
+                    changes = [event for event in events if event['event'] == 'schedule_interval_change']
+                    self.assertEqual([event['interval_stage'] for event in changes], ['saving', 'error'])
+                    self.assertEqual(changes[-1]['inc_interval_s'], 45)
+                    self.assertNotIn('PRIVATE_FAILURE', ''.join(captured.output))
+
+                    app.stop_monitoring()
+                    app.start_session_cycle()
+                    self.assertEqual(app.session.cycle.intervals, {'inc': 30, 'task': 90})
+                    close_button.invoke()
+                    app.session.cycle.apply_interval_changes()
+                    self.assertEqual(app.session.cycle.intervals, {'inc': 45, 'task': 90})
+                    self.assertEqual(settings_window.state(), 'withdrawn')
+            finally:
+                root.destroy()
+
+    def test_windows_notifications_can_be_changed_and_saved_during_monitoring(self):
+        from neto_incident_monitor.app import read_json, save_json
+        from neto_incident_monitor.login_diagnostics import _logger
+        from neto_incident_monitor.threatened import THREATENED_URL
+
+        url = 'https://adeo.service-now.com/incident_list.do'
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            config = folder / 'config.json'
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                with patch('neto_incident_monitor.app.CONFIG', config), \
+                        patch('neto_incident_monitor.app.DATA', folder), \
+                        patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+                    save_json(config, {'notify': False, 'filters': [{'name': 'Test', 'url': url}]})
+                    app = App(root, history_path=folder / 'history.json', enable_tray=False,
+                              apply_startup=False, shared_session=True)
+                    app.submit_alert_delivery = Mock()
+                    app.session.ready_once = True
+                    app.handle_session_event('session_ready', None)
+                    app.start_session_cycle()
+                    self.assertTrue(app.cycle_active)
+                    self.assertEqual(str(app.interval_entry['state']), 'normal')
+                    self.assertTrue(app.notify_check.enabled)
+
+                    app.notify_check.toggle()
+                    self.assertTrue(read_json(config, {})['notify'])
+                    self.assertIn('windows', app.alert_routes(url))
+                    self.assertIn('windows', app.alert_routes(THREATENED_URL))
+                    self.assertIn('windows', app.filter_table.notification_channels)
+
+                    app.notify_check.toggle()
+                    self.assertFalse(read_json(config, {})['notify'])
+                    self.assertNotIn('windows', app.alert_routes(url))
+                    self.assertNotIn('windows', app.alert_routes(THREATENED_URL))
+                    self.assertNotIn('windows', app.filter_table.notification_channels)
+
+                    before = config.read_bytes()
+                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
+                            self.assertLogs(_logger, level='INFO') as captured:
+                        app.notify_check.toggle()
+                    self.assertEqual(config.read_bytes(), before)
+                    self.assertFalse(app.notify.get())
+                    self.assertNotIn('windows', app.filter_table.notification_channels)
+                    self.assertTrue(app.cycle_active)
+                    self.assertFalse(app.session.cycle.stop.is_set())
+                    self.assertIn('Przywrócono poprzednią wartość', app.status.get())
+                    events = [event for row in captured.records if
+                              (event := json.loads(row.getMessage()))['event'] == 'notification_preference']
+                    self.assertEqual([row['outcome'] for row in events], ['started', 'error'])
+                    self.assertTrue(events[-1]['notify_enabled'])
+                    self.assertFalse(events[-1]['previous_notify_enabled'])
+                    self.assertNotIn('PRIVATE_FAILURE', ''.join(captured.output))
+            finally:
+                root.destroy()
+
     def test_filter_buttons_work_during_monitoring_and_only_saved_changes_invalidate_work(self):
         from neto_incident_monitor.app import save_json
         from neto_incident_monitor.filter_state import FilterState

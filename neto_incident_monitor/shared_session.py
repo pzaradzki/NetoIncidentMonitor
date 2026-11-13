@@ -1,7 +1,7 @@
 """One Chromium owner and serial ServiceNow work for the desktop application."""
 
 from collections import deque
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from time import monotonic
 from uuid import uuid4
 
@@ -30,10 +30,36 @@ class MonitorCycle:
     def __init__(self, initial, intervals):
         self.stop = Event()
         self.initial = deque(initial)
-        self.intervals = intervals
+        self.intervals = dict(intervals)
         self.deadlines = dict.fromkeys(intervals, 0.0)
+        self.last_finished = {}
         self.filters = deque()
         self.filter_kinds = set()
+        self._interval_lock = Lock()
+        self._pending_intervals = None
+
+    def request_intervals(self, intervals):
+        with self._interval_lock:
+            self._pending_intervals = dict(intervals)
+
+    def apply_interval_changes(self):
+        """Consume the latest saved settings in the session thread."""
+        with self._interval_lock:
+            pending = self._pending_intervals
+            self._pending_intervals = None
+        if pending is None:
+            return ()
+        changes = []
+        for kind, previous in self.intervals.items():
+            interval = pending[kind]
+            if interval == previous:
+                continue
+            active = kind in self.filter_kinds
+            if not active and kind in self.last_finished:
+                self.deadlines[kind] = self.last_finished[kind] + interval
+            self.intervals[kind] = interval
+            changes.append((kind, previous, interval, active))
+        return changes
 
     def next_filter(self, parts):
         if not self.filters:
@@ -47,15 +73,19 @@ class MonitorCycle:
     def finish_filter_batch(self):
         now = monotonic()
         for kind in self.filter_kinds:
-            self.deadlines[kind] = now + self.intervals[kind]
+            self.schedule_next(kind, now)
         self.filter_kinds.clear()
+
+    def schedule_next(self, kind, finished):
+        self.last_finished[kind] = finished
+        self.deadlines[kind] = finished + self.intervals[kind]
 
     def finish_full_read(self, requested, current):
         now = monotonic()
-        for kind, interval in self.intervals.items():
+        for kind in self.intervals:
             enabled = {part for part in current if part.data['kind'] == kind}
             if enabled and enabled.issubset(requested):
-                self.deadlines[kind] = now + interval
+                self.schedule_next(kind, now)
                 self.filter_kinds.discard(kind)
                 self.filters = deque(part for part in self.filters if part.data['kind'] != kind)
 
@@ -115,6 +145,17 @@ class SharedSession:
     def start_cycle(self, initial, intervals):
         self.cycle = MonitorCycle(initial, intervals)
         self.app.schedule.request()
+
+    def update_intervals(self, intervals):
+        cycle = self.cycle
+        if cycle is not None and not cycle.stop.is_set():
+            cycle.request_intervals(intervals)
+            self.app.schedule.request()
+
+    def apply_interval_changes(self, cycle):
+        for kind, previous, interval, active in cycle.apply_interval_changes():
+            self.log.record('schedule_interval_change', interval_stage='applied', schedule_kind=kind,
+                            previous_interval_s=previous, interval_s=interval, batch_active=active)
 
     def stop_cycle(self):
         if self.cycle:
@@ -323,6 +364,7 @@ class SharedSession:
             if source == 'filter':
                 cycle.filters.popleft()
                 if not cycle.filters:
+                    self.apply_interval_changes(cycle)
                     cycle.finish_filter_batch()
                 if skipped:
                     self.log.record('refresh_queue', queue_scope='filter', queue_state='filter_changed', item_count=1)
@@ -335,6 +377,8 @@ class SharedSession:
             self.emit('refresh_state')
 
     def next_part(self, cycle):
+        if cycle is not None:
+            self.apply_interval_changes(cycle)
         job = self.active_job
         deadline = self.app.threatened_next_read
         threats_due = cycle is not None and (deadline is None or deadline <= monotonic())

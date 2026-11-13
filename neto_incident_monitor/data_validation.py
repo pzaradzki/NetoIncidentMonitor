@@ -50,6 +50,9 @@ def validate_config(settings):
         _require(isinstance(settings['urls'], list) and all(isinstance(v, str) for v in settings['urls']))
     if 'filter_notification_revisions' in settings:
         _require(_string_map(settings['filter_notification_revisions']))
+    if 'windows_notification_revision' in settings:
+        value = settings['windows_notification_revision']
+        _require(isinstance(value, str) and bool(value))
     for key in ('window_layout', 'column_widths', 'filter_visible_columns'):
         if key in settings:
             _require(isinstance(settings[key], dict))

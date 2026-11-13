@@ -4,7 +4,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import ttk
 
-from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED
+from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, VIEW_TITLE_FONT
 from neto_incident_monitor.widgets import RoundedButton, PriorityDots, StatusPill, AnimatedMetricTile
 
 
@@ -75,8 +75,7 @@ def build_dashboard(parent, app, cache_path=None):
     panel.section_pills = {}
     def section_header(parent, section):
         frame = tk.Frame(parent, bg=BG)
-        tk.Label(frame, text=section, bg=BG, fg=TEXT,
-                 font=('Segoe UI', 12, 'bold')).pack(side='left')
+        tk.Label(frame, text=section, bg=BG, fg=TEXT, font=VIEW_TITLE_FONT).pack(side='left')
         pill = StatusPill(frame, compact=True)
         pill.pack(side='left', padx=(12, 0))
         pill.set_status('Dane nieaktualne')
@@ -124,11 +123,12 @@ def build_dashboard(parent, app, cache_path=None):
             if state in ('Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
                 set_section_state(panel.request_id, section, 'Dane nieaktualne')
     panel.finish_pending = finish_pending
-    panel.message = tk.StringVar(panel, value="Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.")
+    panel.message = tk.StringVar(panel)
     panel.month = tk.StringVar(panel, value="")
     panel.year = tk.StringVar(panel, value=str(date.today().year))
     toolbar = tk.Frame(content, bg=BG)
     toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+    panel.heading_row = toolbar
     section_header(toolbar, 'Dashboard SLA').pack(side='left', anchor='s')
     period = tk.Frame(toolbar, bg=BG)
     period.pack(side='right')
@@ -139,12 +139,12 @@ def build_dashboard(parent, app, cache_path=None):
     panel.queued_period = None
     panel.selected_period = lambda: (int(panel.year.get()), months.index(panel.month.get()) + 1)
 
-    def set_message(description):
-        year, month = panel.data_period or (int(panel.year.get()), months.index(panel.month.get()) + 1)
-        panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year}. • '
-                          f'Ostatnio odczytano: {panel.last_read_text} • {description}')
+    def set_message(status):
+        year, month = panel.data_period or panel.selected_period()
+        panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year} • '
+                          f'Ostatnia aktualizacja: {panel.last_read_text} • {status}')
     panel.set_message = set_message
-    set_message('Wybierz okres i kliknij Aktualizuj. Wymagany uruchomiony monitoring.')
+    set_message('Brak odczytu')
     def period_changed(event=None):
         if panel.active_request is not None or panel.queued_period is not None:
             request_id, year, month = panel.active_request or (panel.request_id, *panel.queued_period)
@@ -162,16 +162,12 @@ def build_dashboard(parent, app, cache_path=None):
         year, month = int(panel.year.get()), months.index(panel.month.get()) + 1
         record('dashboard_period_state', request_id=panel.request_id, year=year, month=month,
                request_state='idle_changed')
-        set_message(f'Wybrano {months[month - 1].lower()} {year} — kliknij Aktualizuj. '
-                    'Kafelki SLA pokazują poprzedni odczyt.')
+        set_message(f'Wybrano {months[month - 1].lower()} {year}')
 
-    for label, variable, options, width in (("Miesiąc", panel.month, months, 16),
-                                ("Rok", panel.year, tuple(str(y) for y in range(2026, 2031)), 7)):
-        field = tk.Frame(period, bg=BG)
-        field.pack(side="left", padx=(0, 10))
-        tk.Label(field, text=label, bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 5))
-        combo = ttk.Combobox(field, values=options, state="readonly", width=width, textvariable=variable)
-        combo.pack()
+    for variable, options, width in ((panel.month, months, 16),
+                                     (panel.year, tuple(str(y) for y in range(2026, 2031)), 7)):
+        combo = ttk.Combobox(period, values=options, state="readonly", width=width, textvariable=variable)
+        combo.pack(side="left", anchor="s", padx=(0, 10))
         panel.period_controls.append(combo)
         combo.bind('<<ComboboxSelected>>', period_changed)
 
@@ -209,8 +205,7 @@ def build_dashboard(parent, app, cache_path=None):
                 combo.configure(state='disabled' if panel.queued_period else 'readonly')
             panel.finish_pending()
             if not panel.final_result_received:
-                set_message('Aktualizacja dashboardu została przerwana. Kafelki zachowują ostatni wynik.'
-                            if state == 'cancelled' else 'Odczyt dashboardu nie został zakończony w całości.')
+                set_message('Aktualizacja przerwana' if state == 'cancelled' else 'Odczyt niepełny')
             record('dashboard_period_state', request_id=request_id, year=year, month=month,
                    request_state='unlocked')
         return True
@@ -227,7 +222,7 @@ def build_dashboard(parent, app, cache_path=None):
         if panel.active_request is not None:
             return False
         if not automatic and (not app.worker or not app.worker.is_alive()):
-            set_message('Najpierw uruchom monitoring i zaloguj się w ServiceNow.')
+            set_message('Odczyt niedostępny')
             return False
         year, month = selected or panel.selected_period()
         panel.request_id += 1
@@ -253,12 +248,11 @@ def build_dashboard(parent, app, cache_path=None):
             set_updating(*panel.active_request, 'queue_error')
             if hasattr(app, 'dashboard_progress'):
                 app.dashboard_progress.hide()
-            set_message('Nie udało się zlecić aktualizacji dashboardu. Spróbuj ponownie.')
+            set_message('Nie udało się zlecić aktualizacji')
             return False
         record('dashboard_request_state', request_id=panel.request_id, year=year, month=month,
                request_state='queued')
-        set_message('Oczekiwanie na zalogowanie i odczyt dashboardu…' if automatic else
-                          'Oczekiwanie na odczyt w przeglądarce… Poprzednie dane mogą być nieaktualne.')
+        set_message('Oczekiwanie na logowanie' if automatic else 'Oczekiwanie na odczyt')
         return True if enqueue else panel.active_request
 
     panel.request_refresh = request
@@ -274,7 +268,7 @@ def build_dashboard(parent, app, cache_path=None):
         except Exception:
             opened = False
         if not opened:
-            set_message('Nie udało się otworzyć dashboardu w przeglądarce.')
+            set_message('Nie udało się otworzyć dashboardu w przeglądarce')
 
     RoundedButton(period, text='Otwórz w SNOW', command=open_dashboard,
                   background=BG).pack(side='left', anchor='s', padx=(8, 0))
@@ -375,7 +369,7 @@ def build_dashboard(parent, app, cache_path=None):
             panel.final_result_received = True
         if error:
             panel.request_error = True
-            set_message('Nie udało się odczytać danych. Zachowano ostatnie poprawne wyniki i ich daty.')
+            set_message('Błąd odczytu')
             return
         if metadata:
             alias = metadata['section']
@@ -421,9 +415,9 @@ def build_dashboard(parent, app, cache_path=None):
                 from neto_incident_monitor.login_diagnostics import error_facts
                 record('dashboard_cache', cache_result='failed', **error_facts(exc))
         panel.restored_snapshot = False
-        message = message or 'Dane zostały zaktualizowane. Wstrzymane L1 i Wnioski L1 przedstawiają stan bieżący.'
+        message = message or ('Trwa aktualizacja' if metadata else 'Dane aktualne')
         if panel.cache_error:
-            message += ' Nie udało się zapisać odczytu na dysku.'
+            message += ' – błąd zapisu na dysku'
         set_message(message)
     panel.apply_result = result
     cached = load_snapshot(cache_path)
@@ -440,7 +434,7 @@ def build_dashboard(parent, app, cache_path=None):
             panel.year.set(str(sla['year']))
         render_snapshots()
         panel.restored_snapshot = True
-        set_message('Zapisane dane mogą być nieaktualne. Wstrzymane L1 i Wnioski L1 przedstawiają stan z poprzedniego odczytu.')
+        set_message('Dane mogą być nieaktualne')
     notice_text = tk.Label(content, textvariable=panel.message, wraplength=700,
                            bg=BG, fg=MUTED, font=('Segoe UI', 10),
                            justify='left', anchor='w')
