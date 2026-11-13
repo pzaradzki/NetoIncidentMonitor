@@ -86,24 +86,24 @@ class WrappedFilterDialogTests(unittest.TestCase):
         import tkinter as tk
         from tkinter import ttk
         from pathlib import Path
-        from unittest.mock import Mock
         from neto_incident_monitor.app import App
-        from neto_incident_monitor.secret_config import save_config, load_config
+        from neto_incident_monitor.secret_config import load_config
         from neto_incident_monitor.widgets import RoundedButton
 
-        root=tk.Tk()
+        root = tk.Tk()
+        root.withdraw()
         self.addCleanup(root.destroy)
-        app=App.__new__(App)
-        app.root,app.worker,app.filters=root,None,[]
-        app.filter_table=Mock()
-        app.filter_table.selection.return_value=()
-        app.refresh_filters=Mock()
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory)/'config.json'
-            app.persist_filters=lambda: save_config(path,{'filters': app.filters})
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('neto_incident_monitor.app.DATA', Path(directory)), \
+                patch('neto_incident_monitor.app.CONFIG', Path(directory) / 'config.json'), \
+                patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+            path = Path(directory) / 'config.json'
+            path.write_text('{"filters": []}', encoding='utf-8')
+            app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
             def submit(address):
                 app.edit_filter()
-                dialog=next(w for w in root.winfo_children() if isinstance(w,tk.Toplevel))
+                dialog = next(w for w in root.winfo_children()
+                              if isinstance(w, tk.Toplevel) and w.title() == 'Dodaj filtr')
                 next(w for w in dialog.winfo_children() if isinstance(w,ttk.Entry)).insert(0,'Synthetic')
                 field=next(w for w in dialog.winfo_children() if isinstance(w,tk.Text))
                 field.delete('1.0','end');field.insert('1.0',address)
