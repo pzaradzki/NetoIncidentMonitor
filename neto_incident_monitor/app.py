@@ -758,6 +758,7 @@ class App(DynamicColumns, TableLoading):
         for event in ('<Map>', '<Unmap>', '<FocusIn>', '<FocusOut>'):
             root.bind(event, self.main_window_changed, add='+')
         root.bind('<Control-Shift-F12>', lambda event: self.threatened_view.simulate_read(), add='+')
+        root.bind('<Control-Shift-KeyRelease-F11>', self.toggle_debug_browser, add='+')
         self.window_save_timer = None
         self.window_layout = dict(settings.get("window_layout", {}))
         self.saved_window_layout = dict(self.window_layout)
@@ -1240,9 +1241,8 @@ class App(DynamicColumns, TableLoading):
             if channel == "windows" and len(lines) > 1:
                 body = [lines[0], f"Pozostałe nowe zagrożenia: {len(lines) - 1}"]
             yield dict(url=THREATENED_URL, channel=channel, target=revision, title=title,
-                       message="\n".join([*body, THREATENED_URL]),
-                       links={THREATENED_URL: THREATENED_URL,
-                              **{item["number"]: item["url"] for item in incidents}},
+                       message="\n".join(body),
+                       links={item["number"]: item["url"] for item in incidents},
                        request_id=request_id)
 
     def submit_alert_delivery(self, recover=False):
@@ -1299,6 +1299,7 @@ class App(DynamicColumns, TableLoading):
 
     def _deliver_alert_jobs(self, jobs, diagnostics, state_context):
         from neto_incident_monitor import teams_notifications, google_chat_notifications
+        from neto_incident_monitor.threatened import THREATENED_URL
         for key, job in jobs:
             if self.stop.is_set():
                 return
@@ -1321,17 +1322,20 @@ class App(DynamicColumns, TableLoading):
             diagnostics.record('alert_delivery', delivery_stage='send', delivery_outcome='started',
                                action_id=key, channel=channel)
             try:
+                title, message, links = job['title'], job['message'], job['links']
+                if job['url'] == THREATENED_URL:
+                    # Older pending jobs stored the dashboard URL on the final line.
+                    message = message.removesuffix('\n' + THREATENED_URL)
                 if channel == "windows":
-                    from plyer import notification
-                    notification.notify(title=job["title"], message=job["message"],
-                                        app_name="Neto Incident Monitor", timeout=10)
+                    from neto_incident_monitor import windows_notifications
+                    windows_notifications.notify(title, message, diagnostics=diagnostics, action_id=key)
                     accepted = 1
                 else:
                     if channel == "teams":
-                        parts = teams_notifications.message_chunks(job["title"], job["message"], job["links"])
-                        send = lambda part: teams_notifications.send(route[1], job["title"], part, job["links"])
+                        parts = teams_notifications.message_chunks(title, message, links)
+                        send = lambda part: teams_notifications.send(route[1], title, part, links)
                     else:
-                        parts = google_chat_notifications.payloads(job["title"], job["message"], job["links"])
+                        parts = google_chat_notifications.payloads(title, message, links)
                         send = lambda part: google_chat_notifications.send(route[1], part)
                     for part in parts:
                         if self.stop.is_set() or self.alert_routes(job["url"]).get(channel) != route:
@@ -1417,9 +1421,9 @@ class App(DynamicColumns, TableLoading):
                                            **sender_options('google_chat', google_chat_webhook))
         if self.notify.get() and entry.get("notify_windows", True):
             try:
-                from plyer import notification
+                from neto_incident_monitor import windows_notifications
                 self.root.bell()
-                notification.notify(title=title, message=message, app_name="Neto Incident Monitor", timeout=10)
+                windows_notifications.notify(title, message)
             except Exception:
                 LOG.exception("Błąd powiadomienia filtra")
                 self.status.set("Incydenty zapisano. Nie udało się wysłać powiadomienia Windows.")
@@ -1834,6 +1838,16 @@ class App(DynamicColumns, TableLoading):
         if activate and not self.quitting:
             self.root.after_idle(self.activate_main_window)
 
+    def toggle_debug_browser(self, _event=None):
+        if not self.quitting:
+            if self.browser_runtime is None and not (getattr(self, 'session', None) and self.session.ready_once):
+                self.status.set('Podgląd Chromium będzie dostępny po połączeniu z ServiceNow.')
+            else:
+                enabled = self.browser_options.toggle_debug_browser()
+                self.status.set('Podgląd Chromium włączony' if enabled else 'Podgląd Chromium wyłączony')
+                self.schedule.request()
+        return 'break'
+
     def activate_main_window(self):
         if (self.quitting or self.root.state() not in ('normal', 'zoomed')
                 or current_grab_path(self.root)):
@@ -2152,10 +2166,9 @@ class App(DynamicColumns, TableLoading):
         self.status.set(message)
         self.show_window()
         try:
-            from plyer import notification
+            from neto_incident_monitor import windows_notifications
             self.root.bell()
-            notification.notify(title="ServiceNow — przerwa w monitoringu", message=message[:240],
-                                app_name="Neto Incident Monitor", timeout=15)
+            windows_notifications.notify("ServiceNow — przerwa w monitoringu", message, timeout=15)
         except Exception:
             LOG.exception("Nie udało się pokazać alertu o przerwie w monitoringu")
 

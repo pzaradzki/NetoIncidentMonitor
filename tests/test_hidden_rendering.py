@@ -131,6 +131,58 @@ class RenderingTests(unittest.TestCase):
             self.assertIsNotNone(runtime.rendering.client)
         self.assertIsNone(runtime.rendering.client)
 
+    def test_debug_show_survives_activity_and_login_then_restores_hidden_rendering(self):
+        options = BrowserOptions({'hide_browser': True, 'auto_login': True, 'debug_show_browser': True})
+        window = Mock()
+        runtime = BrowserRuntime(self.page, options, lambda: window, Mock(), self.log, Mock())
+        self.assertFalse(options.snapshot()['debug_show_browser'])
+        with runtime.dashboard_read(self.page, self.log):
+            self.assertIsNotNone(runtime.rendering.client)
+            window.reset_mock()
+            self.assertTrue(options.toggle_debug_browser())
+            runtime.tick()
+            window.show.assert_called_once_with(activate=True)
+            self.assertIsNone(runtime.rendering.client)
+        runtime.set_activity('login')
+        runtime.complete_login()
+        window.show.assert_called_once()
+        window.hide.assert_not_called()
+
+        with runtime.dashboard_read(self.page, self.log):
+            self.assertIsNone(runtime.rendering.client)
+            self.assertFalse(options.toggle_debug_browser())
+            runtime.tick()
+            window.hide.assert_called_once()
+            self.assertIsNotNone(runtime.rendering.client)
+        for enabled in (True, False):
+            self.log.record.assert_any_call('session_visibility', visibility_reason='debug_browser_toggled',
+                activity='dashboard', debug_show_browser=enabled, hide_browser=not enabled,
+                window_visible=unittest.mock.ANY)
+        self.assertEqual(safe_facts({'debug_show_browser': True, 'visibility_reason': 'debug_browser_toggled'}),
+                         {'debug_show_browser': True, 'visibility_reason': 'debug_browser_toggled'})
+
+    def test_debug_toggle_keeps_manual_login_visible_and_updates_import_rendering(self):
+        options = BrowserOptions({'hide_browser': True, 'auto_login': True})
+        window = Mock()
+        runtime = BrowserRuntime(self.page, options, lambda: window, Mock(), self.log, Mock())
+        runtime.favorites_rendering = Mock()
+        with runtime.favorites_read(self.page, self.log):
+            options.toggle_debug_browser()
+            runtime.tick()
+            options.toggle_debug_browser()
+            runtime.tick()
+            self.assertEqual([call.args[1] for call in runtime.favorites_rendering.sync.call_args_list],
+                             [True, False, True])
+
+        options.toggle_debug_browser()
+        runtime.set_activity('login')
+        runtime.manual_required = True
+        window.reset_mock()
+        options.toggle_debug_browser()
+        runtime.tick()
+        window.hide.assert_not_called()
+        self.assertFalse(runtime.debug_show_browser)
+
     def test_scope_stops_after_exception_and_manual_login_takes_focus_once(self):
         runtime = BrowserRuntime(self.page, BrowserOptions({'hide_browser': True}), Mock(), Mock(), self.log, Mock())
         with self.assertRaisesRegex(ValueError, 'original'):

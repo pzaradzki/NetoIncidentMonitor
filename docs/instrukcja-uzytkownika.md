@@ -152,6 +152,8 @@ Automatyczne logowanie może wybrać pojedyncze zapamiętane konto i zatwierdzi�
 
 Pierwsze logowanie odbywa się w widocznym Chromium. Po udanym logowaniu aplikacja ukrywa Chromium. Jeśli sesja wygaśnie, próbuje ją odzyskać w tle i pokazuje okno, gdy potrzebna jest Twoja interwencja. Podczas takiego oczekiwania możesz użyć **Pokaż okno logowania**. Po zamknięciu lub awarii Chromium użyj **Połącz ponownie**, aby rozpocząć widoczne połączenie.
 
+W źródłach po wersji 1.11.2 skrót **Ctrl+Shift+F11** w głównym oknie monitora włącza podgląd roboczego Chromium. Podgląd pozostaje włączony między odczytami i podczas ponownego logowania. Aby go wyłączyć, wróć do okna monitora i naciśnij skrót ponownie. Chromium wróci do zwykłej widoczności. Jeśli nadal potrzebne jest ręczne logowanie, okno pozostanie widoczne do jego zakończenia. Podgląd wyłącza się po zamknięciu monitora.
+
 Jeśli przy włączonym autologowaniu wpiszesz hasło samodzielnie, po udanym logowaniu aplikacja pokaże aktywny komunikat o zapisie poświadczeń na środku ekranu. Kliknij **Zapisz** w Chromium, a następnie **Zapisano** w oknie aplikacji. Możesz też wybrać **Wyłącz autologowanie**, aby zapisać zmianę ustawienia. Chromium pozostanie widoczne do wyboru. Dotyczy to pierwszego logowania i odzyskiwania sesji.
 
 Po zalogowaniu odczyty ręczne i import Ulubionych są dostępne także przy zatrzymanym monitoringu. Zlecenia korzystają z jednej karty i wykonują się kolejno. **Sprawdź teraz** może scalić oczekujące odczyty. Po zakończeniu odczytu Ulubionych możesz obejrzeć podgląd, podczas gdy karta obsługuje kolejne zlecenie.

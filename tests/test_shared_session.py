@@ -287,6 +287,21 @@ class ReadQueueTests(unittest.TestCase):
 
 
 class PasswordSaveWaitTests(unittest.TestCase):
+    def test_session_can_become_ready_while_debug_window_is_visible(self):
+        session = SharedSession(Mock(), Path('unused'))
+        session.log = Mock()
+        session.runtime = Mock(debug_show_browser=True, restore_main_focus=True)
+        session.runtime.window.is_hidden.return_value = False
+        page = Mock()
+        page.is_closed.return_value = False
+        with patch('neto_incident_monitor.shared_session.authentication_required', return_value=True), \
+                patch('neto_incident_monitor.app.wait_for_login', return_value=True):
+            self.assertTrue(session.authenticate(page, session.closed))
+        self.assertTrue(session.connected)
+        session.app.events.put.assert_called_with(('session_ready', False))
+        session.log.record.assert_called_with('session_visibility', visibility_reason='session_confirmed',
+                                              hidden=False, focus_handoff=False, debug_show_browser=True)
+
     def test_shutdown_releases_prompt_and_logs_cancellation(self):
         session = SharedSession(Mock(), Path('unused'))
         session.runtime = Mock()
@@ -993,6 +1008,7 @@ root.mainloop()
         page.wait_for_timeout.side_effect = lambda ms: time.sleep(ms / 1000)
         context = Mock(pages=[page])
         runtime = Mock()
+        runtime.debug_show_browser = False
         runtime.window.is_hidden.return_value = True
         calls = []
 
@@ -1032,6 +1048,12 @@ root.mainloop()
 
             wait_for(lambda: app.session_state == 'ready')
             self.assertNotEqual(root.state(), 'withdrawn')
+            self.assertTrue(root.bind('<Control-Shift-KeyRelease-F11>'))
+            self.assertEqual(app.toggle_debug_browser(), 'break')
+            self.assertTrue(app.browser_options.snapshot()['debug_show_browser'])
+            self.assertEqual(app.status.get(), 'Podgląd Chromium włączony')
+            self.assertEqual(app.toggle_debug_browser(), 'break')
+            self.assertFalse(app.browser_options.snapshot()['debug_show_browser'])
             self.assertTrue(app.request_refresh('all'))
             app.import_favorites()
             wait_for(lambda: app.favorites_import.result is not None)
@@ -1127,6 +1149,18 @@ root.mainloop()
                 focused = root.focus_displayof()
                 self.assertIsNotNone(focused)
                 self.assertIs(focused.winfo_toplevel(), root)
+
+                for enable in (True, False):
+                    root.focus_force()
+                    root.event_generate('<Control-Shift-KeyRelease-F11>')
+                    self.assertIs(app.browser_options.snapshot()['debug_show_browser'], enable)
+                    is_expected = app.browser_window.is_visible if enable else app.browser_window.is_hidden
+                    deadline = time.monotonic() + 4
+                    while not is_expected() and time.monotonic() < deadline:
+                        root.update()
+                        time.sleep(.01)
+                    self.assertTrue(is_expected())
+                self.assertEqual(app.session_state, 'ready')
             finally:
                 app.session.shutdown()
                 app.session.thread.join(6)

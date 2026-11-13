@@ -4,6 +4,7 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 ## Pozostałe tematy
 
+- [Diagnostyka błędów odczytu list i dashboardu ServiceNow](diagnostyka-odczytow-servicenow.md) — uzgodniony plan stałych podsumowań. Wdrożenie odłożone.
 - [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](wspolna-sesja-servicenow.md) — plan wdrożenia i bieżący stan prac.
 
 

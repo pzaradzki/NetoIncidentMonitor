@@ -11,6 +11,7 @@ class BrowserOptions:
     def __init__(self, settings):
         self.lock = Lock()
         self.values = {key: bool(settings.get(key, False)) for key in self.KEYS}
+        self.values['debug_show_browser'] = False
 
     def update(self, **values):
         with self.lock:
@@ -19,6 +20,12 @@ class BrowserOptions:
     def snapshot(self):
         with self.lock:
             return dict(self.values)
+
+    def toggle_debug_browser(self):
+        with self.lock:
+            enabled = not self.values['debug_show_browser']
+            self.values['debug_show_browser'] = enabled
+            return enabled
 
     def background(self):
         values = self.snapshot()
@@ -41,6 +48,8 @@ class BrowserRuntime:
         self.rendering = HiddenRendering(diagnostics)
         self.login_rendering = HiddenRendering(diagnostics, scope='login')
         self.favorites_rendering = HiddenRendering(diagnostics, scope='favorites')
+        self.favorites_page = None
+        self.debug_show_browser = False
         self.rendering_failed = False
         self.manual_key = None
         self.manual_attempts = 0
@@ -83,10 +92,12 @@ class BrowserRuntime:
     def favorites_read(self, page, diagnostics):
         renderer = self.favorites_rendering
         renderer.diagnostics = diagnostics
+        self.favorites_page = page
         try:
-            renderer.sync(page, self.options.snapshot()['hide_browser'])
+            renderer.sync(page, self.options.snapshot()['hide_browser'] and not self.debug_show_browser)
             yield
         finally:
+            self.favorites_page = None
             renderer.close()
             renderer.diagnostics = self.diagnostics
 
@@ -159,11 +170,18 @@ class BrowserRuntime:
 
     def tick(self, force=False):
         from neto_incident_monitor.authentication import manual_handoff
-        if self.window is not None:
-            self.window.is_visible()
+        visible = self.window.is_visible() if self.window is not None else False
         if (not self.session_visibility or self.activity == 'login') and manual_handoff(self.page):
             self.manual_required = True
         options = self.options.snapshot()
+        debug = options['debug_show_browser']
+        debug_changed = debug != self.debug_show_browser
+        self.debug_show_browser = debug
+        if debug_changed:
+            self.override = None
+            force = True
+        show_debug = debug and (debug_changed or self.window is None or
+                                (not visible and self.window.is_hidden()))
         if options != self.previous:
             self.record('browser_options_changed', **options)
             if self.previous and any(options[k] != self.previous[k] for k in ('hide_browser', 'minimize_browser')):
@@ -184,7 +202,7 @@ class BrowserRuntime:
         if self.activity == 'login' or (self.manual_required and not self.session_visibility):
             self.rendering.sync(self.page, False)
             manual = self.manual_required or not options['auto_login'] or self.rendering_failed
-            hidden = (not self.visible_login and not manual and self.override != 'show' and
+            hidden = (not debug and not self.visible_login and not manual and self.override != 'show' and
                       (self.override == 'hide' or options['hide_browser']))
             visibility = (self.activity, self.page, manual, hidden, self.override)
             if not hidden:
@@ -202,9 +220,11 @@ class BrowserRuntime:
                         self.window = self.window_factory()
                         self.window_changed(self.window)
                     self.window.hide()
-                elif not manual:
+                elif not manual and not debug:
                     self.show_window(activate=self.visible_login or self.override == 'show')
                 self.applied_visibility = visibility
+            if show_debug and not manual:
+                self.show_window(activate=debug_changed)
             try:
                 self.login_rendering.sync(self.page, hidden)
             except Exception:
@@ -212,8 +232,9 @@ class BrowserRuntime:
                 self.login_rendering.close('not_needed')
                 self.show_manual()
                 self.applied_visibility = (self.activity, self.page, True, False, self.override)
+            self.finish_debug_toggle(options, debug_changed, hidden and not self.rendering_failed)
             return options
-        hidden = self.override == 'hide' or (self.override is None and options['hide_browser'])
+        hidden = not debug and (self.override == 'hide' or (self.override is None and options['hide_browser']))
         visibility = (self.activity, self.page, hidden, options['minimize_browser'], self.override)
         native_mismatch = hidden and self.window is not None and self.window.is_hidden() is False
         if native_mismatch:
@@ -224,7 +245,7 @@ class BrowserRuntime:
                     self.window = self.window_factory()
                     self.window_changed(self.window)
                 self.window.hide()
-            else:
+            elif not debug:
                 state = 'minimized' if self.activity == 'filters' and self.override is None and options['minimize_browser'] else 'normal'
                 if self.window:
                     if state == 'minimized':
@@ -234,8 +255,20 @@ class BrowserRuntime:
                 else:
                     self.set_state(self.page, state)
             self.applied_visibility = visibility
+        if show_debug:
+            self.show_window(activate=debug_changed)
         self.rendering.sync(self.page, self.activity == 'dashboard' and hidden)
+        self.finish_debug_toggle(options, debug_changed, hidden)
         return options
+
+    def finish_debug_toggle(self, options, changed, hidden):
+        if not changed:
+            return
+        visible = self.window.is_visible() if self.window is not None else None
+        self.record('session_visibility', visibility_reason='debug_browser_toggled', activity=self.activity,
+                    debug_show_browser=self.debug_show_browser, hide_browser=hidden, window_visible=visible)
+        if self.favorites_page is not None:
+            self.favorites_rendering.sync(self.favorites_page, options['hide_browser'] and not self.debug_show_browser)
 
     def complete_login(self):
         from neto_incident_monitor.authentication import finish_authentication

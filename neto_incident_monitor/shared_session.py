@@ -241,14 +241,15 @@ class SharedSession:
                 return False
             for _ in range(20):
                 checkpoint(stop)
-                if self.runtime.window.is_hidden():
+                if self.runtime.debug_show_browser or self.runtime.window.is_hidden():
                     break
                 page.wait_for_timeout(50)
             hidden = self.runtime.window.is_hidden()
-            restore_focus = self.runtime.restore_main_focus
+            debug = self.runtime.debug_show_browser
+            restore_focus = self.runtime.restore_main_focus and not debug
             self.log.record('session_visibility', visibility_reason='session_confirmed', hidden=hidden,
-                            focus_handoff=restore_focus)
-            if not hidden:
+                                focus_handoff=restore_focus, debug_show_browser=debug)
+            if not hidden and not debug:
                 raise BrowserClosedError('Nie udało się ukryć okna Chromium.')
             self.connected = self.ready_once = True
             self.emit('session_ready', restore_focus)

@@ -40,7 +40,7 @@ FIELDS = ('password_count', 'password_filled', 'password_enabled', 'password_aut
 
 # Only explicitly approved structural fields may reach disk. Unknown text is
 # discarded rather than redacted after the fact.
-NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', 'foreground_confirmed', 'keyboard_focus_confirmed', 'focus_handoff', 'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s',
+NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', 'foreground_confirmed', 'keyboard_focus_confirmed', 'focus_handoff', 'auto_login', 'minimize', 'hidden', 'minimize_browser', 'hide_browser', 'elapsed_s', 'debug_show_browser',
     'window_activation_accepted', 'temporarily_raised', 'temporary_raise_released',
     'auto_blocked', 'auto_submitted', 'account_selected', 'blocked', 'supported_origin',
     'password_ready', 'button_count', 'aria_or_class_disabled', 'attempt',
@@ -56,7 +56,7 @@ TEXT_FIELDS = {
     'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled', 'filter_changed'},
     'filter_change': {'add', 'rename', 'replace', 'remove'},
     'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window',
-                          'recovered_main_window', 'main_window_observed'},
+                          'recovered_main_window', 'main_window_observed', 'debug_browser_toggled'},
     'window_exposure': WINDOW_EXPOSURE,
     'previous_window_exposure': WINDOW_EXPOSURE,
     'url_kind': {'direct', 'wrapper', 'short'},
@@ -144,6 +144,8 @@ NUMERIC_FIELDS.update({
     'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 EVENTS.add('alert_delivery')
+EVENTS.add('windows_notification_truncated')
+NUMERIC_FIELDS.update({'title_units', 'message_units', 'title_limit', 'message_limit'})
 EVENTS.add('notification_preference')
 NUMERIC_FIELDS.update({'notify_enabled', 'previous_notify_enabled'})
 EVENTS.add('schedule_interval_change')

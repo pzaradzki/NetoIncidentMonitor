@@ -29,6 +29,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[032 — Podgląd Chromium](032-podglad-chromium.md) opisuje skrót diagnostyczny i jego wpływ na widoczność sesji.
+
 [031 — Automatyczny zapis interwałów](031-automatyczny-zapis-odstepow.md) określa czas zapisu po edycji i przy zamykaniu ustawień.
 
 [030 — Odstępy odczytów podczas monitoringu](030-odstepy-podczas-monitoringu.md) opisuje zapis i przeliczenie następnego terminu bez przerywania rozpoczętej partii.
