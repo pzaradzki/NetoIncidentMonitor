@@ -6,7 +6,7 @@ Oba odczyty działają w kolejce `SharedSession` na tej samej karcie i sesji Ser
 
 Zagrożenia obejmują sześć kategorii. P1–P5 liczą SLA rozwiązania z progami 1, 2, 4, 24 i 48 godzin. Podjęcie liczy SLA odpowiedzi z progiem 5 minut. Każdy próg obejmuje terminy już przekroczone. Przed zapisaniem bieżącej listy, historii i alertów aplikacja potwierdza komplet rekordów. Liczniki dotyczą wierszy SLA, a lista grupuje je według incydentu. Zapis niepełnej listy jest odrzucany z zachowaniem poprzedniej migawki.
 
-Pigułki pokazują kolejkę, odczyt, logowanie, ponowienie i wynik. Diagnostyka REST zapisuje cel i numer wywołania, kod HTTP, czas, wynik walidacji oraz zapis danych. Szczegóły konfiguracji i odbioru opisują [instrukcja REST](../servicenow-api-sesja-przegladarki.md) i [decyzja 032](../decyzje/032-odczyty-analityki-przez-api.md).
+Pigułki pokazują kolejkę, odczyt, logowanie, ponowienie i wynik. Diagnostyka REST zapisuje cel i numer wywołania, kod HTTP, czas, wynik walidacji oraz zapis danych. Szczegóły konfiguracji i odbioru opisują [instrukcja REST](../servicenow-api-sesja-przegladarki.md) i [decyzja 033](../decyzje/033-odczyty-analityki-przez-api.md).
 
 ## Historyczny kontrakt odczytu przez DOM
 

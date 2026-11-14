@@ -1,6 +1,6 @@
 # Neto Incident Monitor
 
-Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych **SCTASK** w ServiceNow. Odczytuje dane przez przeglądarkę Chromium, bez korzystania z API ServiceNow.
+Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. W bieżących źródłach dashboard i Incydenty zagrożone SLA korzystają z REST API w sesji Chromium. Filtry użytkownika nadal odczytują listy przez interfejs ServiceNow.
 
 ## Funkcje
 
@@ -13,14 +13,15 @@ Aplikacja dla Windows do monitorowania incydentów **INC** i zadań katalogowych
 - Osobny widok incydentów zagrożonych SLA, sprawdzany co minutę od zakończenia poprzedniej próby, również pomiędzy odczytami filtrów.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Zmiany w wersji 1.11.2 opisano w [notatkach wydania](docs/wersje/v1.11.2.md). Wcześniejsze opisy są w [indeksie wersji](docs/wersje/README.md).
+Opublikowana paczka [1.11.2](docs/wersje/v1.11.2.md) powstała przed migracją odczytów na REST. Historię paczek opisuje [indeks wersji](docs/wersje/README.md).
 
 ## Uruchomienie
 
 1. Pobierz ZIP z [najnowszego wydania](https://github.com/pzaradzki/NetoIncidentMonitor/releases/latest).
 2. Rozpakuj całe archiwum.
 3. Uruchom `Neto Incident Monitor.exe`.
-4. Dodaj adres listy ServiceNow, wybierz **Uruchom monitoring** i zaloguj się.
+4. Dokończ logowanie w Chromium, jeśli aplikacja tego wymaga. Po zalogowaniu otworzy się główne okno.
+5. Dodaj adres listy ServiceNow i wybierz **Uruchom monitoring**, jeśli monitoring nie wystartował automatycznie.
 
 Katalog `_internal` musi pozostać obok pliku EXE. Pakiet zawiera Chromium i wymagane biblioteki; instalacja Pythona nie jest potrzebna.
 
@@ -44,7 +45,7 @@ Aktualizacja zachowuje dane użytkownika. Nie udostępniaj katalogu danych, poni
 
 Wymagany Python 3.12. Uruchom `start.bat`, aby przygotować środowisko i uruchomić aplikację.
 
-Szczegółowe informacje: [instrukcja użytkownika](docs/instrukcja-uzytkownika.md) oraz [indeks dokumentacji projektu](docs/README.md).
+Konfigurację odczytów REST i sposób uruchomienia źródeł opisuje [dokument ServiceNow API](docs/servicenow-api-sesja-przegladarki.md). Pozostałe materiały znajdziesz w [indeksie dokumentacji projektu](docs/README.md).
 
 ## Weryfikacja źródeł
 
@@ -58,4 +59,4 @@ Runner używa osobnego procesu i tymczasowych danych dla każdego modułu. Testy
 
 `.venv\Scripts\python.exe -B -m tools.preview_ui` tworzy podgląd z danych syntetycznych w `build/ui-preview.png`, bez użycia danych i sesji monitora. Test regresyjny narzędzia sprawdza przepływ z atrapą przechwytywania obrazu, nie stanowi odbioru wizualnego zrzutu.
 
-Naprawy audytu wchodzące do 1.9.1 i granice weryfikacji opisuje [AUDIT.md](AUDIT.md). Testy lokalne i offline nie zastępują nowego odbioru rzeczywistego ServiceNow.
+Naprawy audytu wchodzące do 1.9.1 i granice weryfikacji opisuje [AUDIT.md](docs/archiwum/AUDIT.md). Testy lokalne i offline nie zastępują nowego odbioru rzeczywistego ServiceNow.

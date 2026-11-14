@@ -1,4 +1,4 @@
-# 032 — Dashboard i zagrożenia SLA przez REST API
+# 033 — Dashboard i zagrożenia SLA przez REST API
 
 **Status** — przyjęta i wdrożona w źródłach. Użytkownik potwierdził zgodność dashboardu i zagrożeń z ServiceNow, także dla niepustej listy.
 

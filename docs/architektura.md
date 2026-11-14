@@ -8,7 +8,7 @@ Lista filtrów aktualizuje pełny zestaw kart jedną operacją, bez przejściowe
 
 Import pozostawia naturalny rozmiar strony na czas nawigacji i logowania. Tymczasowe 751×884 obejmuje wyłącznie czytnik menu. Emulacja kończy się przed odzyskiwaniem sesji, po błędzie i przy anulowaniu. [Decyzja 023](decyzje/023-naturalne-logowanie-importu.md).
 
-W bieżących źródłach uruchomienie aplikacji tworzy jeden widoczny Chromium. Po potwierdzeniu sesji na stronie SOW i ukryciu Chromium aplikacja udostępnia główne okno. `SharedSession` pozostaje właścicielem karty i obsługuje cykl monitoringu, ręczne aktualizacje i import. Stop kończy cykl. Import używa tej samej karty i oddaje ją po odczycie, a `favorites_ui.py` odbiera wynik w Tk przez kolejkę z identyfikatorem importu. Zapis wymaga potwierdzenia. Nowe filtry i powiadomienia są wyłączone. [Decyzja 025](decyzje/025-wspolna-sesja-servicenow.md), [stan odbioru](plany/wspolna-sesja-servicenow.md).
+W bieżących źródłach uruchomienie aplikacji tworzy jeden widoczny Chromium. Po potwierdzeniu sesji na stronie SOW i ukryciu Chromium aplikacja udostępnia główne okno. `SharedSession` pozostaje właścicielem karty i obsługuje cykl monitoringu, ręczne aktualizacje i import. Stop kończy cykl. Import używa tej samej karty i oddaje ją po odczycie, a `favorites_ui.py` odbiera wynik w Tk przez kolejkę z identyfikatorem importu. Zapis wymaga potwierdzenia. Nowe filtry i powiadomienia są wyłączone. [Decyzja 025](decyzje/025-wspolna-sesja-servicenow.md), [stan odbioru](plany/zakonczone/wspolna-sesja-servicenow.md).
 
 Jeśli użytkownik wpisał hasło ręcznie przy włączonym autologowaniu, po potwierdzeniu sesji `SharedSession` czeka na jego decyzję w oknie Tk i utrzymuje Chromium widoczne. Tk wyśrodkowuje komunikat na ekranie i aktywuje go po wyświetleniu. Wyłączenie autologowania wymaga zapisu ustawienia przed wznowieniem odczytów. Zdarzenia `password_save_prompt` wiążą oczekiwanie, wynik i potwierdzenie fokusu z przebiegiem logowania. [Decyzja 026](decyzje/026-potwierdzenie-zapisu-poswiadczen.md).
 
@@ -35,7 +35,7 @@ W źródłach po 1.11.1 obserwacja głównego okna i dialogi sprawdzają przechw
 
 ### Źródła po audycie technicznym — 4 listopada 2026
 
-Zwykły log i JSONL używają wspólnego bezpiecznego handlera; błąd IO nie wraca do uszkodzonego handlera przez stderr. `alert_writer` obserwuje każde Future. Tylko odczyt outbox ma ograniczone ponowienia 1/5 s; nie powtarzamy niepewnej wysyłki. Wiadomości są dzielone według rozmiaru końcowego JSON bez obcinania treści. Przed utworzeniem App `data_validation.py` sprawdza lokalne dane bez migracji/zapisu; uszkodzenie lub brak dostępu otwiera ekran informacyjny zamiast monitoringu. DPAPI nadal zachowuje nieczytelny szyfrogram. [Decyzja 017](decyzje/017-odpornosc-lokalnego-io.md), [status i próby](../AUDIT.md).
+Zwykły log i JSONL używają wspólnego bezpiecznego handlera; błąd IO nie wraca do uszkodzonego handlera przez stderr. `alert_writer` obserwuje każde Future. Tylko odczyt outbox ma ograniczone ponowienia 1/5 s; nie powtarzamy niepewnej wysyłki. Wiadomości są dzielone według rozmiaru końcowego JSON bez obcinania treści. Przed utworzeniem App `data_validation.py` sprawdza lokalne dane bez migracji/zapisu; uszkodzenie lub brak dostępu otwiera ekran informacyjny zamiast monitoringu. DPAPI nadal zachowuje nieczytelny szyfrogram. [Decyzja 017](decyzje/017-odpornosc-lokalnego-io.md), [status i próby](archiwum/AUDIT.md).
 
 Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wydania 1.9.1](plany/zakonczone/wydanie-1.9.1.md). Po zamknięciu audytu na osobne zlecenie przebudowano główną paczkę `dist/Neto Incident Monitor/` i sprawdzono ją offline; usunięto starsze paczki audytowe oraz nieaktualny ZIP. Logi źródłowe pozostają w `data/`; rozbieżność z ogólną polityką lokalnego katalogu danych użytkownika jest jawnie odłożona do uzgodnienia, nie rozstrzygnięta przez ten audyt.
 
@@ -56,14 +56,14 @@ Są to poprawki źródeł po wydaniu 1.9.0, objęte późniejszym zleceniem [wyd
 - Historia, stan obecności filtrów i cache dashboardu mają różne role. Nie zastępujemy jednego drugim ani nie dołączamy danych użytkownika do wydania.
 - Paginacja zwraca kompletny, zweryfikowany wynik albo błąd. Odbiór źródeł i wydania 1.9.0 opisuje kontrakt list. Paczki po audycie mają odbiór offline, bez ponownego odczytu rzeczywistego ServiceNow.
 - Czytnik klasycznych list przed odczytem sprawdza `rows_per_page` i próbuje ustawić 100 wierszy tylko przy innej potwierdzonej wartości. Po akcji sprawdza ponownie kontekst i zakres. [Kontrakt odczytu list](kontrakty/kontrakt-odczytu-list.md).
-- Oba widoki używają `analytics_api.py`. Dashboard wykonuje osiem agregacji, a zagrożenia odczytują wymagane kolumny `task_sla` i sprawdzają kompletność stron przed aktualizacją historii. Użytkownik potwierdził zgodność obu wyników. Po odbiorze usunięto czytniki widżetów i listy zagrożeń. [Decyzja 032](decyzje/032-odczyty-analityki-przez-api.md)
+- Oba widoki używają `analytics_api.py`. Dashboard wykonuje osiem agregacji, a zagrożenia odczytują wymagane kolumny `task_sla` i sprawdzają kompletność stron przed aktualizacją historii. Użytkownik potwierdził zgodność obu wyników. Po odbiorze usunięto czytniki widżetów i listy zagrożeń. [Decyzja 033](decyzje/033-odczyty-analityki-przez-api.md)
 - `section_runner.py` jest jedynym właścicielem ponowień sekcji: aktywny budżet 60 s, najwyżej jedno ponowienie błędu odczytu oraz jedno niezależne odzyskanie logowania (łącznie najwyżej trzy odczyty); pierwsza próba najwyżej 39 s, czas logowania rozliczany osobno. Wznowienie zachowuje żądanie i blokady; wyczerpany budżet nie pozwala na kolejny odczyt. [Decyzja 019](decyzje/019-odzyskiwanie-sesji-sekcji.md) zastępuje dawny limit dwóch prób. `read_budget.py` ogranicza podrzędne oczekiwania. Szczegóły i granice: [decyzja 006](decyzje/006-odczyt-sekcji-dashboardu.md).
 - Cache schematu 2 przechowuje kompletne wyniki i czasy poszczególnych sekcji. Błąd nie zmienia daty sukcesu ani nie miesza kafelków z różnych prób; WJRUW używa jednego kompletu SLA. Migrowany stary cache ma niepotwierdzone czasy sekcji.
 - W wersji 1.8.1 aplikacja zamraża okres dashboardu od kolejkowania do końca żądania. Tk blokuje obie listy, a zdarzenia workera mają ID/okres; restart nie zwalnia blokady, stary koniec nie zamyka nowej transakcji. Wyniki sprawdzają również okres i zakończenie żądania. [010](decyzje/010-cykl-zycia-zadania-dashboardu.md).
 
 Nowe rozwiązanie wspólne dopisuj tutaj dopiero po wdrożeniu. Uzasadnienie ważnej zmiany zapisz w [decyzjach](decyzje/README.md), a niezakończoną pracę w planie.
 
-Diagnostyka dashboardu i zagrożeń ma już wspólny kontekst odczytu oraz pomiary etapów. Zakres wdrożenia, kontrakt i pozostałe prace: [dashboard-read-contract.md](kontrakty/kontrakt-odczytu-dashboardu.md).
+Diagnostyka dashboardu i zagrożeń ma już wspólny kontekst odczytu oraz pomiary etapów. Zakres wdrożenia, kontrakt i pozostałe prace: [Kontrakt dashboardu i zagrożeń](kontrakty/kontrakt-odczytu-dashboardu.md).
 
 ## Odczyt analityki w ukrytym Chromium
 
@@ -106,7 +106,7 @@ Kafelki dashboardu i zagrożeń SLA wyświetlają wyniki. `AnimatedMetricTile` a
 
 `normalize_list_url` rozpakowuje długie adresy list z ponownym kodowaniem parametrów i zachowaniem widoku. Nowe opakowane adresy stają się bezpośrednie, a zapis istniejących adresów bezpośrednich pozostaje bez zmian. Sprzeczne parametry są odrzucane przed zapisem. [Decyzja 016](decyzje/016-normalizacja-adresow-list.md).
 
-## Lokalna synchronizacja statusów — 5 listopada 2026
+## Historia zmian statusów i odczytu dashboardu
 
 Lokalna poprawka czytnika po publikacji 1.9.3 oczekuje na aktywację Zastosuj dla zmienionego okresu, zamiast anulować przy chwilowo wyłączonym przycisku. Po pojedynczym kliknięciu potwierdza okres i zamknięcie panelu; niezmieniony zatwierdzony okres pozwala anulować panel. Końcowa kontrola kategorii obserwuje łącznie zaznaczenie i brak stanu pośredniego, ponawiając wyłącznie odczyty w istniejącym budżecie. Diagnostyka rozdziela gotowość, wysłanie i potwierdzenie. [Decyzja 021](decyzje/021-zatwierdzanie-kontekstu-dashboardu.md), [wyniki i granice odbioru](plany/zakonczone/zatwierdzanie-kontekstu-dashboardu.md).
 

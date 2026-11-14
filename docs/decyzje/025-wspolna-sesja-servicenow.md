@@ -1,6 +1,6 @@
 # 025 — Wspólna sesja ServiceNow i kolejka odczytów
 
-12 listopada 2026. **Status: przyjęta, wdrożona w źródłach.** Wyniki i zakres odbioru są w [planie](../plany/wspolna-sesja-servicenow.md).
+12 listopada 2026. **Status: przyjęta, wdrożona w źródłach.** Wyniki i zakres odbioru są w [planie](../plany/zakonczone/wspolna-sesja-servicenow.md).
 
 Regułę ukrycia Chromium po potwierdzeniu sesji w przypadku ręcznego wpisania hasła przy włączonym autologowaniu zastępuje [decyzja 026](026-potwierdzenie-zapisu-poswiadczen.md).
 

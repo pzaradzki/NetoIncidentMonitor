@@ -1,6 +1,6 @@
 # Neto Incident Monitor
 
-Instrukcja dla wersji **1.11.2**. [Opis wydania](wersje/v1.11.2.md).
+Dokument archiwalny z okresu wersji **1.11.2**. [Opis wydania](../wersje/v1.11.2.md)
 
 Poprawka przygotowana później w źródłach: miesiąc i rok dashboardu są niedostępne od zlecenia aktualizacji do jej zakończenia, także podczas oczekiwania na logowanie. Po zakończeniu lub Stop można wybrać nowy okres i kliknąć Aktualizuj. Sama zmiana dat w bezczynności nie uruchamia odczytu. Ta poprawka wymaga jeszcze przebudowy EXE.
 
@@ -164,7 +164,7 @@ Przycisk **Aktualizuj** jest nieaktywny, gdy jego odczyt czeka w kolejce lub trw
 
 Przycisk **Aktualizuj** odczytuje wybrany filtr także wtedy, gdy jego przełącznik jest wyłączony. To jednorazowy odczyt z wynikiem w tabeli i zapisem do historii, bez powiadomień dla wyłączonego filtra. Harmonogram i **Sprawdź teraz** obejmują filtry z włączonym przełącznikiem.
 
-Gotowe puste pole otrzymuje 5 sekund na autofill; później udostępniane jest okno, bez założenia, że hasła nie ma w magazynie. Dostarczone lub niepewne zatwierdzenie nie jest powtarzane. Przy wylogowaniu lub problemie sieciowym monitoring kontrolowanie oczekuje/odzyskuje sesję; **Zatrzymaj** kończy oczekiwanie. Szczegóły limitów, diagnostyki i ograniczeń opisuje [kontrakt logowania](kontrakty/diagnostyka-logowania.md).
+Gotowe puste pole otrzymuje 5 sekund na autofill; później udostępniane jest okno, bez założenia, że hasła nie ma w magazynie. Dostarczone lub niepewne zatwierdzenie nie jest powtarzane. Przy wylogowaniu lub problemie sieciowym monitoring kontrolowanie oczekuje/odzyskuje sesję; **Zatrzymaj** kończy oczekiwanie. Szczegóły limitów, diagnostyki i ograniczeń opisuje [kontrakt logowania](../kontrakty/diagnostyka-logowania.md).
 
 Powiadomienia Microsoft Teams wymagają skonfigurowania adresu webhook w Power Automate. Procedurę opisuje [film instruktażowy konfiguracji powiadomień Teams](https://netology-my.sharepoint.com/:v:/g/personal/piotr_zaradzki_netology_com_pl/IQCv86cQd-JrTLpRyIrcA8ZPAVtyK6Ya9HGxTT4NMxRQ8S0?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=wLs9Sr), dostępna także przez przycisk **Instrukcja** w oknie konfiguracji. Przy włączonych i skonfigurowanych powiadomieniach aplikacja może również wysłać alert o wygaśnięciu sesji.
 

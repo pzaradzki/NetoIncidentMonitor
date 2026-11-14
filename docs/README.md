@@ -1,10 +1,9 @@
 # Dokumentacja Neto Incident Monitor
 
-Stan bieżący opisuje [wydanie 1.10.0](wersje/v1.10.0.md).
+Ostatnie wydanie odnotowane w projekcie to [1.11.2](wersje/v1.11.2.md). Bieżące źródła obejmują też migrację dashboardu i Incydentów zagrożonych SLA na REST. [Architektura](architektura.md)
 
 | Cel | Dokument |
 | --- | --- |
-| Obsługa aplikacji | [Instrukcja użytkownika](instrukcja-uzytkownika.md) |
 | Zmiana kodu: najpierw stan systemu | [Architektura](architektura.md) → właściwa [decyzja](decyzje/README.md) → [plan i pozostałe prace](plany/README.md) |
 | Dokładne zasady działania | [Kontrakty](kontrakty/README.md): odczyt sekcji, logowanie i diagnostyka |
 | Migracja odczytów ServiceNow | [REST API w zalogowanej sesji Chromium](servicenow-api-sesja-przegladarki.md) |

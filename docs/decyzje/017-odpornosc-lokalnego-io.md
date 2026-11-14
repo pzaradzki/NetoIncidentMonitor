@@ -12,4 +12,4 @@ Przed App, executorami, migracją konfiguracji i uzgodnieniem autostartu wykonyw
 
 Wiadomości obu kanałów dzielone są według końcowego JSON, bez obcinania treści i przecinania wygenerowanych linków. Cała partia jest sprawdzana przed transportem. Zbyt duży nagłówek Teams daje bezpieczny błąd przed POST.
 
-**Ograniczenia:** brak retencji outbox i zmiany ścieżek źródłowych; brak gwarancji dostarczenia przez zewnętrzny kanał. Nie zmieniono DOM/selektorów ServiceNow ani produkcyjnej paczki EXE. Wyniki etapów i granice odbioru: [AUDIT.md](../../AUDIT.md).
+**Ograniczenia:** brak retencji outbox i zmiany ścieżek źródłowych; brak gwarancji dostarczenia przez zewnętrzny kanał. Nie zmieniono DOM/selektorów ServiceNow ani produkcyjnej paczki EXE. Wyniki etapów i granice odbioru: [AUDIT.md](../archiwum/AUDIT.md).

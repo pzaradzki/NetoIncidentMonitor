@@ -76,7 +76,7 @@ Dla zmiany sortowania wystarczy bezpieczne zdarzenie UI: alias widoku/kolumny, k
 - [x] Uznać niepusty wynik za kompletny, gdy zakres i przycisk następnej strony potwierdzają jedną stronę, a zweryfikowane wiersze SLA odpowiadają licznikom według kategorii. Potwierdzoną pustkę rozpoznawać osobno.
 - [x] Przy aktywnej następnej stronie, niespójnym zakresie lub niepewnej kompletności zgłaszać niepełny odczyt szczegółów. Zachować poprzednią listę i historię oraz nie generować zdarzeń pojawienia ani zniknięcia. Odczyt sześciu liczników ma własny wynik.
 - [x] Sprawdzono odrzucenie niepełnej strony na syntetycznym widżecie.
-Wdrożenie i odbiór przejścia dalej przeniesiono do [osobnego zadania paginacji](../paginacja-listy-zagrozen-sla.md). Odbiór tego planu obejmuje pojedynczą stronę.
+Wdrożenie i odbiór przejścia dalej przeniesiono do [osobnego planu paginacji](paginacja-listy-zagrozen-sla.md), później zastąpionego przez REST. Odbiór tego planu obejmuje pojedynczą stronę.
 
 - [x] Zapis bieżącej listy, historii i alertów w jednej transakcji SQLite. Wspólna kolejka respektuje globalne kanały i rewizję konfiguracji.
 - [x] Dwie zakładki, sortowanie nagłówkami lub Alt+numer kolumny, porcjowanie wierszy i otwieranie INC dwuklikiem.

@@ -2,7 +2,7 @@
 
 Data: 1 listopada 2026. **Status: przyjęta; wdrożona w źródłach, bez nowego EXE.**
 
-**Aktualizacja** — [032](032-odczyty-analityki-przez-api.md) zastąpiła czytnik widżetów. Zasada niezależnych, kompletnych migawek sekcji została zachowana.
+**Aktualizacja** — [033](033-odczyty-analityki-przez-api.md) zastąpiła czytnik widżetów. Zasada niezależnych, kompletnych migawek sekcji została zachowana.
 
 **Uaktualnienie, 5 listopada 2026:** ograniczenie dwóch łącznych prób zostało zastąpione przez [019](019-odzyskiwanie-sesji-sekcji.md). Poniższy opis i uzasadnienie zachowują historyczny stan; pozostałe zasady nadal obowiązują.
 

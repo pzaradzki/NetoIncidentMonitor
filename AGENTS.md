@@ -3,12 +3,22 @@
 ## Pamięć projektu
 
 - Przed zmianą przeczytaj [architekturę](docs/architektura.md), powiązane [decyzje](docs/decyzje/README.md) i właściwy [plan](docs/plany/README.md). Czytaj materiały dotyczące zadania, nie całą historię.
-- Wykorzystuj lub rozszerzaj istniejące mechanizmy. Uzasadnij tworzenie alternatywy, szczególnie dla odczytu strony, ponowień, harmonogramu, diagnostyki, statusów i zapisu.
-- Weryfikuj dokumentację z kodem. Rzeczywistą stronę ServiceNow sprawdzaj, gdy zadanie dotyczy zachowania integracji UI. Poprawiaj rozbieżności. Rozróżniaj stan wdrożony, plan i hipotezę. Dokumentacja nie stanowi zgody na wdrożenie.
+- Wykorzystuj lub rozszerzaj istniejące mechanizmy. Uzasadnij tworzenie alternatywy, szczególnie dla transportu REST, odczytu strony, ponowień, harmonogramu, diagnostyki, statusów i zapisu.
+- Weryfikuj dokumentację z kodem i poprawiaj rozbieżności. Rozróżniaj stan bieżących źródeł, opublikowaną wersję, plan i hipotezę. Dokumentacja nie stanowi zgody na wdrożenie.
 - Istotną zmianę kończ z odpowiednimi testami i aktualizacją dokumentacji: architektura opisuje stan, decyzja — wybór i powód, plan — pozostałe prace.
 - Zapisuj decyzje przekrojowe lub trudne do odtworzenia z kodu, nie drobiazgi. Format: status, decyzja, powód, realizacja i ograniczenia. Zmianę decyzji zapisz jako nową; poprzednią oznacz jako zastąpioną i połącz odnośnikami, zachowując uzasadnienie.
 
-## ServiceNow: obserwacja → potwierdzenie → implementacja → weryfikacja
+## Integracja ServiceNow
+
+Sprawdź w kodzie, z którego źródła korzysta dana funkcja. Dashboard i Incydenty zagrożone SLA używają REST. Filtry użytkownika odczytują listy z interfejsu, a import Ulubionych korzysta z menu ServiceNow.
+
+### REST
+
+- Zacznij od [opisu integracji REST](docs/servicenow-api-sesja-przegladarki.md) i właściwego [kontraktu odczytu](docs/kontrakty/README.md). Korzystaj z istniejącej sesji, karty i kolejki `SharedSession` oraz wspólnych mechanizmów anulowania, ponowień i odzyskiwania sesji.
+- Przed zmianą zapytania ustal tabelę, warunki, pola oraz oczekiwany wynik. Oceniaj zgodność z ServiceNow na koncie o uprawnieniach zwykłego użytkownika. Stosuj odczytowe żądania do właściwej instancji, a logowanie pozostaw użytkownikowi. Oddziel wyniki rzeczywistego odbioru od testów lokalnych i zaznacz, które zachowania nadal wymagają potwierdzenia.
+- Sprawdzaj status HTTP, schemat odpowiedzi i kompletność stron przed zapisem. Rozróżniaj potwierdzone zero, brak uprawnień, utratę sesji i niepełny wynik. Po nieudanym odczycie zachowaj ostatni poprawny stan. Zmiany obecności i alerty zatwierdzaj tylko na podstawie kompletnego wyniku.
+
+### Odczyt przez interfejs
 
 Przed zmianą integracji UI sprawdź aktualną stronę w przeglądarce Codex. Nie zgaduj DOM ani selektorów ze zrzutu, nazwy lub wcześniejszej wersji strony.
 
@@ -31,7 +41,7 @@ Gdy dostęp jest niemożliwy, wskaż brak weryfikacji i przyczynę; oddziel fakt
 
 - Planuj ją razem z funkcją/poprawką. Korzystaj ze wspólnego logowania i korelacji; nie twórz niespójnych loggerów. Sam „Błąd odczytu” lub typ wyjątku nie wystarcza: log ma wyjaśniać działanie, etap, oczekiwany i zaobserwowany stan oraz wynik.
 - Rejestruj start, istotne etapy, koniec i czasy; rozróżniaj sukces, wynik częściowy, błąd, anulowanie i oczekiwanie na użytkownika. Zapisuj limity, numery/przyczyny ponowień, działania naprawcze i ich wyniki; odróżniaj problem naprawiony od końcowej awarii.
-- Wiąż zdarzenia identyfikatorem uruchomienia i, zależnie od potrzeby, operacji/odczytu/próby. Nie wyprowadzaj identyfikatorów z poświadczeń. Dodawaj bezpieczny kontekst: np. zakres i rozmiar strony, licznik rekordów, stan widżetu, kategorię błędu.
+- Wiąż zdarzenia identyfikatorem uruchomienia i, zależnie od potrzeby, operacji, odczytu lub próby. Nie wyprowadzaj identyfikatorów z poświadczeń. Bezpieczny kontekst może obejmować alias celu API, kod HTTP, zakres i rozmiar strony, licznik rekordów albo stan elementu interfejsu.
 - Dopuszczaj wyłącznie świadomie wybrane pola i stałe kategorie; preferuj aliasy celów zamiast pełnych URL. Aktualizuj zdarzenia i listy dozwolonych wartości przy zmianie funkcji; sprawdzaj, czy pola faktycznie są zapisywane.
 - Stosuj spójne kody, pola strukturalne i poziomy ważności oraz zrozumiałe komunikaty UI. Loguj zmiany stanów i okresowe podsumowania zamiast każdego odpytywania; zachowuj pierwszą przyczynę i końcowy wynik. Ogranicz obciążenie UI, dysku i przeglądarki.
 - Awaria diagnostyki nie może przerywać funkcji ani maskować pierwotnego błędu. Sygnalizuj ją bezpiecznie, bez rekurencji i zalewania wpisami.

@@ -6,7 +6,7 @@ Status: zakończono w źródłach 4 listopada 2026, bez publikacji i bez zmiany 
 
 Zakres zaakceptowany 4 listopada 2026: A01 → A02 → A03/A04 → A05 → A06/A09 i dokumentacyjna część A10. Schematy danych, selektory ServiceNow i publiczne sygnatury pozostają bez zmian. A07 odłożone do decyzji o retencji; A08 do pomiarów; lokalizacja logów źródłowych bez zmian.
 
-Każdy etap: test regresyjny przed poprawką, testy zakresowe, pełna regresja w izolowanych procesach, osobny build w `build/audit-stageN` i `dist/audit-stageN`, smoke EXE z odrębnym LOCALAPPDATA. Wyniki i statusy: [AUDIT.md](../../../AUDIT.md).
+Każdy etap: test regresyjny przed poprawką, testy zakresowe, pełna regresja w izolowanych procesach, osobny build w `build/audit-stageN` i `dist/audit-stageN`, smoke EXE z odrębnym LOCALAPPDATA. Wyniki i statusy: [AUDIT.md](../../archiwum/AUDIT.md).
 
 - [x] Etap 1: odporność logów; zakresowe, pełna regresja z udokumentowanymi ponowieniami, build i smoke OK.
 - [x] Etap 2: obserwowane zadania outbox i bezpieczne ponowienia odczytu; 473 testy/2 pominięcia, build i smoke OK.

@@ -3,7 +3,7 @@
 Data: 4 listopada 2026. Badany stan źródeł: commit `20c6540`, wersja aplikacji `1.9.0`.
 Zakres zmian audytu: wyłącznie ten raport. Nie naprawiano aplikacji, nie instalowano zależności, nie wykonywano buildu ani publikacji.
 
-Późniejsza publikacja napraw ma osobne zlecenie i raport [wydania 1.9.1](docs/plany/zakonczone/wydanie-1.9.1.md). Poniższe zapisy o braku publikacji opisują granice pierwotnych etapów audytu.
+Późniejsza publikacja napraw ma osobne zlecenie i raport [wydania 1.9.1](../plany/zakonczone/wydanie-1.9.1.md). Poniższe zapisy o braku publikacji opisują granice pierwotnych etapów audytu.
 
 ## Realizacja napraw po audycie — 4 listopada 2026
 
@@ -17,7 +17,7 @@ Powyższy zakres dotyczy pierwotnego audytu. Użytkownik następnie zatwierdził
 | 4 | A05 | Naprawione. Zakresowe 37/37 oraz 7/7 rozszerzonych testów ekranu/SQLite. Pełna regresja 484 testy, 2 pominięcia, bez niezaliczonych modułów. Build i offline smoke z kontrolą uszkodzonej konfiguracji OK (`dist/audit-stage4`). Odczyt danych bez migracji; błędy danych/IO poprzedzają App, executory i autostart. |
 | 5 | A06, A09, A10 częściowo | Zakończone. Zakresowe 13/13. Końcowa regresja 486 testów: 484 zaliczone, 2 pominięte, 0 failures/errors i błędów callbacków. Build i offline smoke OK (`dist/audit-stage5`). Preview sprawdzony z atrapą przechwycenia obrazu; bez nowego odbioru wizualnego. Dokumentacja stanu odbioru uzupełniona; lokalizacja logów pozostaje bez zmian. |
 
-A07 odłożone zgodnie z decyzją użytkownika. A08 odłożone do pomiarów. Lokalizacja logów źródłowych wymaga osobnego uzgodnienia. [Wykonany plan](docs/plany/zakonczone/naprawy-audytu.md).
+A07 odłożone zgodnie z decyzją użytkownika. A08 odłożone do pomiarów. Lokalizacja logów źródłowych wymaga osobnego uzgodnienia. [Wykonany plan](../plany/zakonczone/naprawy-audytu.md).
 
 Etap 1 objął także wąską poprawkę A09: anulowanie timera geometrii dialogu dużej listy po jego zniszczeniu. Runner przygotowuje pusty katalog danych, anuluje timery przez właściwego właściciela i opróżnia zadania bezczynności przed zniszczeniem Tk. Błędy wykryte przez runner nie zostały wyciszone. JSON-y wyników znajdują się w ignorowanym `build/`, poza wydaniem. `pip check`: poprawny.
 
