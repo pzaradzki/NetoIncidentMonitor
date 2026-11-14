@@ -184,9 +184,10 @@ class ActivityStatusTests(unittest.TestCase):
         app = self.app
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        with patch('neto_incident_monitor.dashboard.read_dashboard', return_value=dict.fromkeys(TITLES, 0)), \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES, 0)), \
-                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES, 0)):
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', return_value=dict.fromkeys(TITLES, 0)), \
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)):
             app.read_dashboard_request(Mock())
         app.drain()
         panel = app.dashboard_view

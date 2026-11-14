@@ -22,37 +22,23 @@ class LoginTransitionTests(unittest.TestCase):
         runtime = BrowserRuntime(Mock(), options, Mock(return_value=window), state, Mock(), Mock())
         return runtime, options, window, state
 
-    def test_login_visible_but_dashboard_respects_hiding(self):
+    def test_login_visible_but_reading_respects_hiding(self):
         runtime, options, window, state = self.runtime({'hide_browser': True, 'minimize_browser': True})
         runtime.set_activity('login')
         window.hide.assert_not_called()
         runtime.page.bring_to_front.assert_called_once()  # Auto off means immediate manual handoff.
         runtime.complete_login()
+        window.hide.assert_called_once()
         runtime.page.bring_to_front.reset_mock()
         window.reset_mock()
-        runtime.set_activity('dashboard')
-        window.hide.assert_called_once()
+        runtime.set_activity('filters')
+        window.hide.assert_not_called()
         window.show.assert_not_called()
         runtime.page.bring_to_front.assert_not_called()
 
-    def test_dashboard_option_changes_apply_without_stealing_focus(self):
-        runtime, options, window, state = self.runtime({})
-        runtime.set_activity('dashboard')
-        options.update(hide_browser=True)
-        runtime.tick()
-        runtime.tick()
-        window.hide.assert_called_once()
-        runtime.page.bring_to_front.assert_not_called()
-        options.update(hide_browser=False, minimize_browser=True)
-        runtime.tick()
-        window.show.assert_called_with(activate=False)
-        window.minimize.assert_not_called()
-        runtime.set_activity('filters')
-        window.minimize.assert_called_once()
-
     def test_explicit_show_persists_across_activity_changes(self):
         runtime, _, window, _ = self.runtime({'hide_browser': True})
-        runtime.set_activity('dashboard')
+        runtime.set_activity('filters')
         runtime.commands.put('show')
         runtime.tick()
         runtime.page.bring_to_front.assert_called_once()
@@ -60,22 +46,23 @@ class LoginTransitionTests(unittest.TestCase):
         runtime.page.bring_to_front.assert_called_once()
         window.reset_mock()
         runtime.set_activity('filters')
-        runtime.set_activity('dashboard')
+        runtime.tick()
         window.hide.assert_not_called()
 
-    def test_reauthentication_remains_visible_until_dashboard_resumes(self):
+    def test_reauthentication_remains_visible_until_reading_resumes(self):
         runtime, options, window, state = self.runtime({'hide_browser': True})
         runtime.set_activity('login')
         runtime.manual_required = True
         runtime.tick()
         runtime.page.bring_to_front.assert_called_once()
         runtime.complete_login()
-        window.reset_mock()
-        runtime.set_activity('dashboard')
         window.hide.assert_called_once()
+        window.reset_mock()
+        runtime.set_activity('filters')
+        window.hide.assert_not_called()
         window.show.assert_not_called()
 
-    def test_dashboard_requests_scope_visibility_for_every_section(self):
+    def test_dashboard_api_needs_no_rendering_scope(self):
         from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
         app = App.__new__(App)
         app.stop = threading.Event()
@@ -86,15 +73,16 @@ class LoginTransitionTests(unittest.TestCase):
         for request in (1, 2):
             app.dashboard_requests.put((request, 2026, 10))
             def values(titles):
-                self.assertEqual(runtime.activity, 'dashboard')
-                self.assertIsNotNone(runtime.window)
+                self.assertEqual(runtime.activity, 'filters')
+                self.assertIsNone(runtime.favorites_rendering.client)
                 return dict.fromkeys(titles, 0)
-            with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=lambda *args: values(TITLES)), \
-                    patch('neto_incident_monitor.dashboard.read_held_dashboard', side_effect=lambda *args: values(HELD_TITLES)), \
-                    patch('neto_incident_monitor.dashboard.read_requests_dashboard', side_effect=lambda *args: values(REQUEST_TITLES)):
+            with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                    patch('neto_incident_monitor.dashboard_api.read_month', side_effect=lambda *args: values(TITLES)), \
+                    patch('neto_incident_monitor.dashboard_api.read_held', side_effect=lambda *args: values(HELD_TITLES)), \
+                    patch('neto_incident_monitor.dashboard_api.read_requests', side_effect=lambda *args: values(REQUEST_TITLES)):
                 app.read_dashboard_request(runtime.page)
             self.assertEqual(runtime.activity, 'filters')
-            self.assertIsNone(runtime.rendering.client)
+            self.assertIsNone(runtime.favorites_rendering.client)
         window.reset_mock()
         app.read_dashboard_request(runtime.page)
         window.show.assert_not_called()

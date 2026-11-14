@@ -2,6 +2,8 @@
 
 Data: 5 listopada 2026. **Status: przyjęta; wdrożona w źródłach i głównej lokalnej paczce EXE 1.9.3.**
 
+**Aktualizacja** — zatwierdzanie kontrolek strony zastąpione w źródłach przez [032](032-odczyty-analityki-przez-api.md).
+
 **Decyzja:** zmiana okresu czeka na gotowość przycisku Zastosuj, wysyła jedno kliknięcie i obserwuje oczekiwany okres oraz zamknięcie panelu. Anulowanie jest dopuszczalne, gdy żądany okres jest już zatwierdzony. Chwilowo wyłączony przycisk nie oznacza braku zmiany. Po zatwierdzeniu kategorii wspólna obserwacja wymaga jednocześnie zaznaczenia checkboxa i braku stanu pośredniego.
 
 **Powód:** rzeczywisty ServiceNow wykazał opóźnioną aktywację Zastosuj mimo poprawnych dat. Dawna gałąź Anuluj mogła wycofać zmianę i czekać na nieosiągalny okres. Osobna końcowa kontrola stanu pośredniego miała nieponawiany timeout 300 ms. Ten drugi przypadek odtworzono syntetycznie, nie na rzeczywistej stronie. Log historycznej awarii nie dowodzi dokładnego miejsca obu usterek.

@@ -61,10 +61,12 @@ class StatusPill(tk.Canvas):
             self.status_tooltip.text = text
         colors = {
             "Zaktualizowany": ("#244b37", "#8ee2ac"),
+            "Dane aktualne": ("#244b37", "#8ee2ac"),
             "Błąd odczytu": ("#472c33", "#ff929e"),
             "W trakcie aktualizacji": ("#27364a", "#9ac4f4"),
             "Ponawianie odczytu": ("#433923", "#efc778"),
             "Dane nieaktualne": ("#433923", "#efc778"),
+            "Aktualizacja częściowa": ("#433923", "#efc778"),
             "Oczekuje": ("#343942", "#c8cdd6"),
             "Monitoring aktywny": ("#243d33", "#85d6aa"),
             "Oczekiwanie na logowanie": ("#433923", "#efc778"),

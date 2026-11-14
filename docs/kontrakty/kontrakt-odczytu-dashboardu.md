@@ -1,5 +1,15 @@
 # Kontrakt odczytu dashboardu i zagrożeń
 
+## Obowiązujący kontrakt REST
+
+Oba odczyty działają w kolejce `SharedSession` na tej samej karcie i sesji ServiceNow. Konfiguracja lokalna powstaje z arkusza. Dashboard wykonuje jedną grupowaną agregację SLA dla wybranego okresu, dwie agregacje Wstrzymanych L1 i pięć agregacji Wniosków L1. WJRUW powstaje z tej samej migawki SLA. Odczyty L1 pokazują stan bieżący. Cache przechowuje trzy niezależne migawki i czas ostatniego pełnego sukcesu.
+
+Zagrożenia obejmują sześć kategorii. P1–P5 liczą SLA rozwiązania z progami 1, 2, 4, 24 i 48 godzin. Podjęcie liczy SLA odpowiedzi z progiem 5 minut. Każdy próg obejmuje terminy już przekroczone. Przed zapisaniem bieżącej listy, historii i alertów aplikacja potwierdza komplet rekordów. Liczniki dotyczą wierszy SLA, a lista grupuje je według incydentu. Zapis niepełnej listy jest odrzucany z zachowaniem poprzedniej migawki.
+
+Pigułki pokazują kolejkę, odczyt, logowanie, ponowienie i wynik. Diagnostyka REST zapisuje cel i numer wywołania, kod HTTP, czas, wynik walidacji oraz zapis danych. Szczegóły konfiguracji i odbioru opisują [instrukcja REST](../servicenow-api-sesja-przegladarki.md) i [decyzja 032](../decyzje/032-odczyty-analityki-przez-api.md).
+
+## Historyczny kontrakt odczytu przez DOM
+
 Stan kontraktu: 1 listopada 2026; lokalny build 1.8.0 z 2 listopada zawiera wdrożenie i przeszedł offline smoke-test. Nie jest to pełny rzeczywisty test odczytu z EXE. Odbiór: [raport](../weryfikacja/odbior-stabilizacji-dashboardu.md).
 
 | Sekcja | Wymagane dane | Ustawienia |

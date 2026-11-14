@@ -35,7 +35,8 @@ class RiskTile(AnimatedMetricTile):
 
 def remaining_seconds(value):
     units = {'d': 86400, 'g': 3600, 'h': 3600, 'm': 60, 's': 1}
-    pattern = r'(\d+)\s*(dni|dzień|godziny|godzin|godzina|godz\.?|h|minuty|minuta|minut|min|sekund[ay]?|sek\.?|s)'
+    pattern = (r'(\d+)\s*(dni|dzień|days?|godziny|godzin|godzina|godz\.?|hours?|h|'
+               r'minuty|minuta|minut|min|minutes?|sekund[ay]?|sek\.?|seconds?|s)(?!\w)')
     parts = re.findall(pattern, value, re.I)
     if not parts or re.sub(pattern, '', value.removeprefix('-'), flags=re.I).strip():
         return None
@@ -270,8 +271,8 @@ def add_threatened_tables(content, app):
         try:
             render_details(app.history.threatened_snapshot())
         except (OSError, ValueError, sqlite3.Error):
-            return render_details, True
-    return render_details, False
+            return render_details, True, False
+    return render_details, False, bool(snapshot)
 
 
 def build_threatened_view(parent, app):
@@ -309,7 +310,7 @@ def build_threatened_view(parent, app):
     heading.grid(row=0, column=0, sticky='sw')
     tk.Label(heading, text='Incydenty zagrożone SLA', bg=BG, fg=TEXT, font=VIEW_TITLE_FONT).pack(side='left')
     pill = StatusPill(heading, compact=True)
-    pill.set_status('Dane nieaktualne')
+    pill.set_status('Brak danych')
     pill.pack(side='left', padx=(12, 0))
     panel.status_pill = pill
     def update_button():
@@ -327,7 +328,7 @@ def build_threatened_view(parent, app):
             return
         panel.request_id += 1
         panel.pending = True
-        set_state(panel.request_id, 'Oczekuje')
+        set_state(panel.request_id, 'W kolejce')
         if enqueue:
             app.threatened_requests.put(panel.request_id)
         if automatic:
@@ -357,10 +358,13 @@ def build_threatened_view(parent, app):
         tile = RiskTile(tiles, title, description, accent)
         tile.grid(row=index // 3, column=index % 3, sticky='nsew', padx=(0, 12 if index % 3 != 2 else 0), pady=(0, 12))
         panel.tiles.append(tile)
-    panel.message = tk.StringVar(value='Uruchom monitoring i kliknij Aktualizuj.')
-    render_details, history_error = add_threatened_tables(content, app)
+    panel.message = tk.StringVar(value='Kliknij Aktualizuj, aby pobrać zagrożenia z ServiceNow.')
+    render_details, history_error, restored_history = add_threatened_tables(content, app)
     if history_error:
         panel.message.set('Nie udało się odczytać zapisanej historii zagrożeń.')
+    elif restored_history:
+        pill.set_status('Dane nieaktualne')
+        panel.message.set('Wyświetlono zapisaną listę. Kliknij Aktualizuj, aby pobrać bieżące zagrożenia.')
     tk.Label(content, textvariable=panel.message, wraplength=700, justify='left',
              bg=BG, fg=MUTED, font=('Segoe UI', 10), anchor='w').pack(side='bottom', fill='x', pady=(6, 0))
     def set_state(request_id, state):
@@ -368,26 +372,30 @@ def build_threatened_view(parent, app):
             return
         button = app.threatened_incidents_button
         button.set_updating(state in ('W trakcie aktualizacji', 'Ponawianie odczytu'))
-        if state in ('Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
+        if state in ('W kolejce', 'Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
             panel.pending = True
             update_button()
         if state in ('Błąd odczytu', 'Dane nieaktualne'):
             button.set_alert(button.alert, confirmed=False)
-        pill.set_status(state)
+        label = {'Oczekuje': 'Oczekiwanie na logowanie', 'Zaktualizowany': 'Dane aktualne',
+                 'Niepełny odczyt': 'Aktualizacja częściowa'}.get(state, state)
+        pill.set_status(label)
         timestamp = time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(panel.last_full_read)) if panel.last_full_read else '—'
-        descriptions = {'Ponawianie odczytu': 'Ponawianie odczytu po przejściowym problemie.', 'Oczekuje': 'Oczekiwanie na zakończenie bieżącej pracy przeglądarki.',
+        descriptions = {'Ponawianie odczytu': 'Ponawianie odczytu po przejściowym problemie.',
+                        'W kolejce': 'Oczekiwanie na zakończenie bieżącej pracy przeglądarki.',
+                        'Oczekuje': 'Oczekiwanie na zalogowanie do ServiceNow.',
                         'W trakcie aktualizacji': 'Trwa odczyt zagrożeń z ServiceNow.',
                         'Zaktualizowany': 'Odczytano liczniki i listę zagrożeń.',
                         'Niepełny odczyt': 'Odczytano liczniki. Zachowano ostatnią poprawną listę.',
                         'Błąd odczytu': 'Nie udało się odczytać kompletu danych. Zachowano ostatni poprawny wynik.',
-                        'Dane nieaktualne': 'Odczyt nie jest aktualny. Uruchom monitoring i kliknij Aktualizuj.'}
+                        'Dane nieaktualne': 'Dane mogą być nieaktualne. Kliknij Aktualizuj.'}
         description = descriptions[state]
         if panel.simulated:
             description = ('Nie udało się odczytać danych z ServiceNow.' if state == 'Błąd odczytu' else description)
             description += ' Wyświetlane dane testowe — zastąpi je następny poprawny odczyt.'
         panel.message.set(f'Ostatni pełny odczyt: {timestamp} • {description}')
     panel.set_state = set_state
-    def apply_result(request_id, values, timestamp):
+    def apply_result(request_id, values, timestamp, error_detail=None):
         if request_id != panel.request_id:
             return
         from neto_incident_monitor.threatened import KEYS
@@ -404,6 +412,8 @@ def build_threatened_view(parent, app):
         panel.pending = False
         if values is None:
             set_state(request_id, 'Błąd odczytu')
+            if error_detail:
+                panel.message.set(f'{panel.message.get()} {error_detail}')
         update_button()
     panel.apply_result = apply_result
 

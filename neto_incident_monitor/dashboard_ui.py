@@ -78,15 +78,16 @@ def build_dashboard(parent, app, cache_path=None):
         tk.Label(frame, text=section, bg=BG, fg=TEXT, font=VIEW_TITLE_FONT).pack(side='left')
         pill = StatusPill(frame, compact=True)
         pill.pack(side='left', padx=(12, 0))
-        pill.set_status('Dane nieaktualne')
+        pill.set_status('Brak danych')
         panel.section_pills[section] = pill
-        panel.section_states[section] = 'Dane nieaktualne'
+        panel.section_states[section] = 'Brak danych'
         return frame
 
     def set_section_state(request_id, section, state):
         if request_id == panel.request_id and section in panel.section_pills:
             panel.section_states[section] = state
-            panel.section_pills[section].set_status(state)
+            label = {'Oczekuje': 'Oczekiwanie na logowanie', 'Zaktualizowany': 'Dane aktualne'}.get(state, state)
+            panel.section_pills[section].set_status(label)
     panel.set_section_state = set_section_state
 
     def set_section_activity(request_id, section, state):
@@ -120,8 +121,10 @@ def build_dashboard(parent, app, cache_path=None):
 
     def finish_pending():
         for section, state in panel.section_states.items():
-            if state in ('Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
-                set_section_state(panel.request_id, section, 'Dane nieaktualne')
+            if state in ('W kolejce', 'Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
+                alias = next(alias for alias, name in NAMES.items() if name == section)
+                set_section_state(panel.request_id, section,
+                                  'Dane nieaktualne' if alias in panel.section_snapshots else 'Brak danych')
     panel.finish_pending = finish_pending
     panel.message = tk.StringVar(panel)
     panel.month = tk.StringVar(panel, value="")
@@ -156,9 +159,8 @@ def build_dashboard(parent, app, cache_path=None):
                    request_state='blocked')
             return
         panel.request_id += 1
-        if hasattr(app, 'dashboard_progress'):
-            app.dashboard_progress.hide()
-        set_section_state(panel.request_id, 'Dashboard SLA', 'Dane nieaktualne')
+        state = 'Dane nieaktualne' if 'sla' in panel.section_snapshots else 'Brak danych'
+        set_section_state(panel.request_id, 'Dashboard SLA', state)
         year, month = int(panel.year.get()), months.index(panel.month.get()) + 1
         record('dashboard_period_state', request_id=panel.request_id, year=year, month=month,
                request_state='idle_changed')
@@ -237,17 +239,13 @@ def build_dashboard(parent, app, cache_path=None):
             combo.configure(state='disabled')
         record('dashboard_period_state', request_id=panel.request_id, year=year, month=month,
                request_state='locked')
-        if hasattr(app, 'dashboard_progress'):
-            app.dashboard_progress.start(panel.request_id)
         for section in panel.section_pills:
-            set_section_state(panel.request_id, section, 'Oczekuje')
+            set_section_state(panel.request_id, section, 'W kolejce')
         try:
             if enqueue:
                 app.dashboard_requests.put(panel.active_request)
         except Exception:
             set_updating(*panel.active_request, 'queue_error')
-            if hasattr(app, 'dashboard_progress'):
-                app.dashboard_progress.hide()
             set_message('Nie udało się zlecić aktualizacji')
             return False
         record('dashboard_request_state', request_id=panel.request_id, year=year, month=month,
@@ -433,6 +431,8 @@ def build_dashboard(parent, app, cache_path=None):
             panel.month.set(months[sla['month'] - 1])
             panel.year.set(str(sla['year']))
         render_snapshots()
+        for alias in panel.section_snapshots:
+            set_section_state(panel.request_id, NAMES[alias], 'Dane nieaktualne')
         panel.restored_snapshot = True
         set_message('Dane mogą być nieaktualne')
     notice_text = tk.Label(content, textvariable=panel.message, wraplength=700,
@@ -442,8 +442,6 @@ def build_dashboard(parent, app, cache_path=None):
     panel.notice = notice_text
     notice_text.bind('<Configure>', lambda event:
                      notice_text.configure(wraplength=max(100, event.width - 6)))
-    panel.progress_host = tk.Frame(content, bg=BG)
-    panel.progress_host.grid(row=7, column=0, sticky='ew', pady=(6, 0))
     def scroll_wheel(event):
         if content.winfo_reqheight() > canvas.winfo_height():
             canvas.yview_scroll(-int(event.delta / 120), 'units')

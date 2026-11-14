@@ -25,16 +25,15 @@ Po każdym wykonanym i sprawdzonym kroku zaznacz jego checkbox i dopisz wynik we
   - [ ] Zweryfikuj dotychczasowe kryteria kompletności, budżety i ponowienia. Potwierdź, że poprawne zero wymaga pozytywnego dowodu, po błędzie zachowana jest ostatnia poprawna lista z czasem i historią, a wynik częściowy nie trafia do kolejki alertów.
 
 - [ ] **3. Rozpoznawanie przyczyn błędów dashboardu**
-  - [ ] Rozszerz pomiary dla okresu, kategorii i odświeżenia o znalezienie kontrolki, gotowość do akcji, wysłanie kliknięcia i potwierdzenie skutku. Oznacz kliknięcie jako niepewne, jeśli wywołanie zakończyło się błędem bez dowodu jego skutku. Wykorzystaj istniejące obserwacje i próby gotowości.
-  - [ ] W podsumowaniu podaj sekcję, ostatni etap, kategorię, numer próby, czas etapu oraz pozostały budżet próby i całej sekcji. Rozróżnij lokalny limit oczekiwania od wyczerpania budżetu.
-  - [ ] Jeżeli odczyt doszedł do widżetów, podaj ostatni stan gotowości, np. `3/11`, oraz indeksy i stany brakujących widżetów w JSONL. Resetuj obserwacje przy każdej nowej próbie i traktuj potwierdzone 0 jako poprawną wartość.
+  - [ ] Oprzyj podsumowanie o istniejące zdarzenia REST. Podaj sekcję, alias celu, ostatnie żądanie, próbę, kod HTTP, czas, pozostały budżet oraz wynik zapisu migawki. [Decyzja 032](../decyzje/032-odczyty-analityki-przez-api.md)
+  - [ ] Rozróżnij potwierdzone zero, odmowę dostępu, wadliwy schemat i niepełną paginację zagrożeń. Zachowaj pierwszą przyczynę i końcowy wynik po ponowieniu.
 
 - [ ] **4. Odbiór i dokumentacja**
   - [ ] Przetestuj syntetycznie zakres 20 przy zerze rozpoznanych wierszy, brak nagłówka, ukryte wiersze, wiersze bez linku, dodatkowy wiersz techniczny, poprawną pustkę i ponowienie od pierwszej strony.
-  - [ ] Dla dashboardu sprawdź opóźnioną kontrolkę, kliknięcie bez potwierdzenia, częściowo gotowe widżety i wyczerpanie budżetu. Sprawdź także Stop, utratę sesji i awarię zapisu logu.
+  - [ ] Dla dashboardu i zagrożeń sprawdź błąd HTTP, zły schemat, niepełną odpowiedź i wyczerpanie budżetu. Sprawdź także Stop, utratę sesji i awarię zapisu logu.
   - [ ] Na Windows z izolowanymi danymi potwierdź, że `monitor.log` rozróżnia wymienione przypadki, a identyfikatory prowadzą do właściwej próby w JSONL.
   - [ ] Wykonaj odczytowy odbiór na ServiceNow w osobnym profilu, także przy ukrytym Chromium. Zapisz wyniki lokalne i obserwacje rzeczywiste, zaktualizuj kontrakty odczytu i architekturę.
 
 ## Ochrona danych i granice
 
-Do logów trafiają wyłącznie dozwolone kody, liczniki, flagi, czasy i techniczne identyfikatory. Diagnostyka pomija treść zgłoszeń, nazwy filtrów użytkownika, pełne adresy, warunki zapytań, wartości kafelków, HTML i dane logowania. Pomiary korzystają z bieżących odczytów DOM. Zakres obejmuje zmiany w źródłach i ich weryfikację. Konkretne poprawki czytników będą wynikały z zebranych dowodów.
+Do logów trafiają wyłącznie dozwolone kody, liczniki, flagi, czasy i techniczne identyfikatory. Diagnostyka pomija treść zgłoszeń, nazwy filtrów użytkownika, pełne adresy, warunki zapytań, wartości kafelków, HTML i dane logowania. Pomiary obejmują REST dla analityki i DOM dla zwykłych list.

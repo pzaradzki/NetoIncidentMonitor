@@ -34,7 +34,7 @@ class RefreshRequestsTests(unittest.TestCase):
                     self.assertTrue(app.refresh_coordinator().busy)
                     order.append('threatened')
                     clock[0] += 5
-                    return dict.fromkeys(('P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'), 0)
+                    return dict.fromkeys(('P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'), 0), {}
                 def read(page, url, *args, **kwargs):
                     order.append(urls.index(url))
                     clock[0] += 35
@@ -44,12 +44,13 @@ class RefreshRequestsTests(unittest.TestCase):
                 context = Mock(pages=[page])
                 playwright = MagicMock()
                 playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-                with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
+                with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                        patch('playwright.sync_api.sync_playwright', return_value=playwright), \
                         patch('neto_incident_monitor.browser_window.BrowserWindow'), \
                         patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
                         patch('neto_incident_monitor.app.navigate'), \
                         patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                        patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=threats), \
+                        patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
                         patch('neto_incident_monitor.app.read_all', side_effect=read), \
                         patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True) as wait:
                     app.monitor(dict(urls=urls, filters=app.filters, interval=3600, task_interval=3600))
@@ -65,8 +66,9 @@ class RefreshRequestsTests(unittest.TestCase):
         def fail(*args):
             clock[0] += 20
             raise ValueError('fixture')
-        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=fail) as read:
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
+                patch('neto_incident_monitor.threatened_api.read_threats', side_effect=fail) as read:
             app.threatened_requests.put(1)
             app.read_threatened_request(Mock())
             self.assertEqual(app.threatened_next_read, 180)

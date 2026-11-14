@@ -1,8 +1,8 @@
-"""Bounded rendering support for hidden analytics pages, owned by the worker."""
+"""Bounded rendering support for hidden sign-in and Favorites pages."""
 from time import monotonic
 from urllib.parse import urlparse
 
-from neto_incident_monitor.dashboard_context import DASHBOARD_ID, DashboardReadError
+from neto_incident_monitor.dashboard_context import DashboardReadError
 
 
 class LoginRenderingUnavailable(RuntimeError):
@@ -10,33 +10,20 @@ class LoginRenderingUnavailable(RuntimeError):
     pass
 
 
-def dashboard_target(url):
-    if not isinstance(url, str):
-        return False
-    try:
-        parsed = urlparse(url)
-        return (parsed.scheme == 'https' and parsed.hostname == 'adeo.service-now.com'
-                and parsed.port in (None, 443) and not parsed.username and not parsed.password
-                and parsed.path.startswith('/now/platform-analytics-workspace/dashboards/')
-                and '/sys-id/' + DASHBOARD_ID + '/' in parsed.path + '/')
-    except ValueError:
-        return False
-
-
 class HiddenRendering:
-    def __init__(self, diagnostics, scope='dashboard'):
-        if scope not in ('dashboard', 'login', 'favorites'):
+    def __init__(self, diagnostics, scope):
+        if scope not in ('login', 'favorites'):
             raise ValueError('Unknown rendering scope')
         self.scope = scope
         self.diagnostics = diagnostics
         self.page = self.client = None
         self.failed = False
-        self.frames = self.acks = self.payload_bytes = 0
+        self.frames = self.acks = 0
         self.started = None
 
     def record(self, event, **facts):
         try:
-            self.diagnostics.record(event, **({'rendering_scope': self.scope} if self.scope != 'dashboard' else {}), **facts)
+            self.diagnostics.record(event, rendering_scope=self.scope, **facts)
         except Exception:
             pass  # Diagnostics must never change browser behavior.
 
@@ -71,7 +58,7 @@ class HiddenRendering:
         if self.scope != 'login' and not authenticated_session(page, 'https://adeo.service-now.com/'):
             self.record('rendering_deferred', rendering_reason='session_unconfirmed')
             return
-        self.frames = self.acks = self.payload_bytes = 0
+        self.frames = self.acks = 0
         self.started = monotonic()
         self.record('rendering_start')
         try:
@@ -103,9 +90,6 @@ class HiddenRendering:
             return
         # Discard payload without decoding or retaining it. No per-frame log.
         self.frames += 1
-        # Authentication payloads are never even inspected for byte length.
-        if self.scope == 'dashboard':
-            self.payload_bytes += len(event.get('data', ''))
         try:
             client.send('Page.screencastFrameAck', {'sessionId': event['sessionId']})
             self.acks += 1
@@ -122,8 +106,6 @@ class HiddenRendering:
     def target(self, url):
         if not isinstance(url, str):
             return False
-        if self.scope == 'dashboard':
-            return dashboard_target(url)
         if self.scope == 'favorites':
             from neto_incident_monitor.favorites import HOME
             return url == HOME
@@ -160,7 +142,6 @@ class HiddenRendering:
             self.record('rendering_stop', rendering_reason=reason,
                         duration_ms=round((monotonic() - started) * 1000) if started is not None else 0,
                         frame_count=self.frames, ack_count=self.acks,
-                        **({'payload_bytes': self.payload_bytes} if self.scope == 'dashboard' else {}),
                         cleanup_errors=errors)
 
     def close(self, reason='read_finished'):

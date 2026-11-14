@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import Mock
 
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, diagnostic_read, _logger
-from neto_incident_monitor.dashboard import diagnostic_steps, operation, observation, _diagnostics
+from neto_incident_monitor.dashboard import diagnostic_steps, operation, _diagnostics
 from neto_incident_monitor.pagination import Cancelled
 
 
@@ -15,8 +15,7 @@ class MeasurementTests(unittest.TestCase):
                 log = LoginDiagnostics(source='dashboard', section=section, request_id=3)
                 log.record('section_read_attempt', attempt=2)
                 with diagnostic_steps(log):
-                    operation('read_scores')
-                    observation('loading', 0, 2)
+                    operation('api_request')
                 log.record('section_read_complete', arbitrary='PRIVATE_TOKEN')
         with self.assertLogs(_logger, level='INFO') as captured:
             execute()
@@ -35,7 +34,7 @@ class MeasurementTests(unittest.TestCase):
         for error, outcome in ((Cancelled(), 'cancelled'), (ValueError('PRIVATE_PASSWORD'), 'error')):
             with self.assertLogs(_logger, level='INFO') as captured:
                 with self.assertRaises(type(error)), diagnostic_steps(LoginDiagnostics(section='threatened')):
-                    operation('navigate')
+                    operation('api_document')
                     raise error
             rows = [json.loads(r.getMessage()) for r in captured.records]
             self.assertEqual(rows[-1]['outcome'], outcome)
@@ -47,6 +46,5 @@ class MeasurementTests(unittest.TestCase):
         log.record.side_effect = OSError('PRIVATE_TOKEN')
         log.attach.return_value.side_effect = OSError('PRIVATE_TOKEN')
         with diagnostic_steps(log, page=Mock()):
-            operation('navigate')
-            observation('missing', 0, 6)
+            operation('api_document')
         log.attach.return_value.assert_called_once()

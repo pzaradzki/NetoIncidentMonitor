@@ -45,7 +45,6 @@ class BrowserRuntime:
         self.commands = Queue()
         self.activity = 'filters'
         from neto_incident_monitor.browser_rendering import HiddenRendering
-        self.rendering = HiddenRendering(diagnostics)
         self.login_rendering = HiddenRendering(diagnostics, scope='login')
         self.favorites_rendering = HiddenRendering(diagnostics, scope='favorites')
         self.favorites_page = None
@@ -66,25 +65,9 @@ class BrowserRuntime:
         except Exception:
             pass
 
-    @contextmanager
-    def dashboard_read(self, page, diagnostics):
-        self.page = page
-        self.rendering.diagnostics = diagnostics
-        try:
-            self.set_activity('dashboard')
-            yield
-        finally:
-            self.rendering.close()
-            try:
-                self.set_activity('filters')
-            except Exception:
-                self.rendering.record('browser_cleanup_error')
-            self.rendering.diagnostics = self.diagnostics
-
     def close(self):
         from neto_incident_monitor.authentication import clear_login_activity
         clear_login_activity(self.page)
-        self.rendering.close('runtime_closed')
         self.login_rendering.close('runtime_closed')
         self.favorites_rendering.close('runtime_closed')
 
@@ -102,7 +85,7 @@ class BrowserRuntime:
             renderer.diagnostics = self.diagnostics
 
     def set_activity(self, activity):
-        if activity not in ('login', 'dashboard', 'filters'):
+        if activity not in ('login', 'filters'):
             raise ValueError('Unknown browser activity')
         from neto_incident_monitor.authentication import set_login_activity, clear_login_activity
         if activity == 'login':
@@ -200,7 +183,6 @@ class BrowserRuntime:
                     self.manual_key = None
                 force = True
         if self.activity == 'login' or (self.manual_required and not self.session_visibility):
-            self.rendering.sync(self.page, False)
             manual = self.manual_required or not options['auto_login'] or self.rendering_failed
             hidden = (not debug and not self.visible_login and not manual and self.override != 'show' and
                       (self.override == 'hide' or options['hide_browser']))
@@ -246,7 +228,7 @@ class BrowserRuntime:
                     self.window_changed(self.window)
                 self.window.hide()
             elif not debug:
-                state = 'minimized' if self.activity == 'filters' and self.override is None and options['minimize_browser'] else 'normal'
+                state = 'minimized' if self.override is None and options['minimize_browser'] else 'normal'
                 if self.window:
                     if state == 'minimized':
                         self.window.minimize()
@@ -257,7 +239,6 @@ class BrowserRuntime:
             self.applied_visibility = visibility
         if show_debug:
             self.show_window(activate=debug_changed)
-        self.rendering.sync(self.page, self.activity == 'dashboard' and hidden)
         self.finish_debug_toggle(options, debug_changed, hidden)
         return options
 

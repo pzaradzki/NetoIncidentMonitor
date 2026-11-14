@@ -4,6 +4,7 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 ## Pozostałe tematy
 
+
 - [Diagnostyka błędów odczytu list i dashboardu ServiceNow](diagnostyka-odczytow-servicenow.md) — uzgodniony plan stałych podsumowań. Wdrożenie odłożone.
 - [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](wspolna-sesja-servicenow.md) — plan wdrożenia i bieżący stan prac.
 
@@ -14,7 +15,7 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu.
-- [Paginacja listy zagrożeń SLA](paginacja-listy-zagrozen-sla.md) jest odłożona do czasu pojawienia się rzeczywistej listy z co najmniej dwiema stronami.
+- [Paginację listy zagrożeń przez DOM](paginacja-listy-zagrozen-sla.md) zastąpiła paginacja REST. Odbiór wyniku wielostronicowego opisuje plan migracji.
 - Potencjalny kanał e-mail: [rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md) — jednorazowa wysyłka i dostarczenie potwierdzone; brak zatwierdzonego planu implementacji, konieczna weryfikacja zasad relay i innych komputerów.
 - Przy publikacji kolejnych wersji tworzyć nowy ZIP i sprawdzać zgodność ze źródłami; nie używać starszego archiwum.
 
@@ -30,6 +31,7 @@ W źródłach monitor naprawia wpis autostartu po przeniesieniu i usuwa go przy 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Dashboard i Incydenty zagrożone SLA przez REST API](zakonczone/dashboard-servicenow-api.md) | Zgodność potwierdzona przez użytkownika. 538 testów zaliczonych, 1 pominięty. |
 | [Wydanie 1.11.2](zakonczone/wydanie-1.11.2.md) | Opublikowano. 599 zaliczonych testów, 2 pominięcia, dwie próby offline i zgodność publicznie pobranego ZIP-a. |
 | [Lokalne wydanie 1.11.1](zakonczone/wydanie-1.11.1-lokalne.md) | 81 testów, zgodność 1444 plików i dwie próby offline. Kopia 1.11.0 zachowana. |
 | [Lokalne wydanie 1.11.0](zakonczone/wydanie-1.11.0-lokalne.md) | 19 testów, zgodność 1444 plików ZIP i dwie próby offline. Kopia 1.10.0 zachowana. |

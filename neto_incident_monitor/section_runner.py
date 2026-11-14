@@ -29,7 +29,7 @@ def run_section(page, stop, read, diagnostics, restore, state, validate):
                 checkpoint(stop)
                 attempt_budget.check()
                 if not validate(result):
-                    raise DashboardReadError('incomplete_widgets')
+                    raise DashboardReadError('api_incomplete')
             diagnostics.record('section_read_complete',
                 active_ms=max(0, round((ACTIVE_SECONDS - total.end + monotonic()) * 1000)),
                 login_wait_ms=login_wait_ms)
@@ -79,10 +79,9 @@ def run_section(page, stop, read, diagnostics, restore, state, validate):
                 'timeout', 'document_changed', 'navigation_interrupted', 'network_connection', 'network_dns', 'element_unavailable'}
             final_failure = not retryable or read_retry_used or monotonic() >= total.end
             diagnostics.record('section_read_error', read_reason=reason, final_failure=final_failure,
-                operation=getattr(diagnostics, 'operation', None),
-                category=getattr(diagnostics, 'category', None), **facts)
+                operation=getattr(diagnostics, 'operation', None), **facts)
             if final_failure:
                 raise
             read_retry_used = True
             measured_record(diagnostics, 'section_read_retry', attempt=attempt, read_reason=reason)
-    raise DashboardReadError('incomplete_widgets')
+    raise DashboardReadError('api_incomplete')

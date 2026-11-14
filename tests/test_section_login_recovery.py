@@ -158,8 +158,9 @@ class SectionLoginRecoveryTests(unittest.TestCase):
         app.dashboard_requests.put(request)
         app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
         app.restore_login = Mock(side_effect=BrowserClosedError('PRIVATE_SECRET'))
-        with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=AuthenticationRequired()), \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard') as held, \
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=AuthenticationRequired()), \
+                patch('neto_incident_monitor.dashboard_api.read_held') as held, \
                 self.assertRaises(BrowserClosedError):
             app.read_dashboard_request(Mock())
         self.assertEqual(app.dashboard_requests.get_nowait(), request)
@@ -176,10 +177,11 @@ class SectionLoginRecoveryTests(unittest.TestCase):
         app.dashboard_requests.put((41, 2026, 11))
         app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
         app.restore_login = Mock(return_value=True)
-        with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=[
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=[
                 TimeoutError('synthetic'), AuthenticationRequired(), dict.fromkeys(TITLES, 0)]) as sla, \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES, 0)) as held, \
-                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES, 0)) as requests:
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)) as held, \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)) as requests:
             app.read_dashboard_request(Mock())
         self.assertEqual(sla.call_count, 3)
         app.restore_login.assert_called_once()

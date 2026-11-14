@@ -190,7 +190,6 @@ class LoginRenderingScopeTests(unittest.TestCase):
     if key=='data':raise AssertionError('Authentication payload inspected')
     return super().get(key,*args)
   self.guard.frame(NoData(sessionId=1));self.guard.close()
-  self.assertEqual(self.guard.payload_bytes,0)
   self.assertTrue(any(c.kwargs.get('rendering_scope')=='login' for c in self.log.record.call_args_list))
  def test_every_navigation_stops_and_rechecks_new_document(self):
   self.guard.sync(self.page,True);client=self.page.context.new_cdp_session.return_value

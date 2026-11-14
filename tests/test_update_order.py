@@ -1,4 +1,3 @@
-from contextlib import nullcontext
 from concurrent.futures import Future
 import json
 from pathlib import Path
@@ -41,7 +40,7 @@ class UpdateOrderTests(unittest.TestCase):
             def sla(*args):
                 order.append('dashboard')
                 self.assertTrue(app.refresh_coordinator().busy)
-                clock[0] += 130
+                clock[0] += 5 if mode == 'recovery' else 130
                 if mode == 'recovery':
                     from playwright.sync_api import TimeoutError
                     from neto_incident_monitor.pagination import AuthenticationRequired
@@ -57,24 +56,24 @@ class UpdateOrderTests(unittest.TestCase):
             def threatened(*args):
                 order.append('threatened')
                 self.assertTrue(app.refresh_coordinator().busy)
-                return dict.fromkeys(KEYS, 0)
+                return dict.fromkeys(KEYS, 0), {}
             def filters(*args, **kwargs):
                 order.append('filter')
                 self.assertTrue(app.refresh_coordinator().busy)
                 return {}, 1
             with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                    patch('neto_incident_monitor.browser_policy.BrowserRuntime') as runtime, \
+                    patch('neto_incident_monitor.browser_policy.BrowserRuntime'), \
                     patch('neto_incident_monitor.app.navigate'), \
                     patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
                     patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                    patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=sla), \
-                    patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES, 0)), \
-                    patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES, 0)), \
-                    patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=threatened), \
+                    patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                    patch('neto_incident_monitor.dashboard_api.read_month', side_effect=sla), \
+                    patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
+                    patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)), \
+                    patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threatened), \
                     patch('neto_incident_monitor.app.read_all', side_effect=filters), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True), \
                     self.assertLogs('neto.login_diagnostics', level='INFO') as logs:
-                runtime.return_value.dashboard_read.side_effect = lambda *args: nullcontext()
                 app.monitor(dict(urls=[url], filters=app.filters, interval=60, task_interval=60))
             self.assertFalse(app.refresh_coordinator().busy)
             return order, [json.loads(record.getMessage()) for record in logs.records]

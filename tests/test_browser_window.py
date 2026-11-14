@@ -155,7 +155,7 @@ class BrowserWindowTests(unittest.TestCase):
             finally:
                 context.close()
 
-    def test_activity_keeps_login_visible_and_hides_dashboard_and_filters(self):
+    def test_activity_keeps_login_visible_and_hides_reading(self):
         from unittest.mock import Mock
         from neto_incident_monitor.browser_policy import BrowserOptions, BrowserRuntime
         from neto_incident_monitor.app import set_chromium_window_state
@@ -167,8 +167,7 @@ class BrowserWindowTests(unittest.TestCase):
                 options = BrowserOptions({'hide_browser': True, 'minimize_browser': True})
                 runtime = BrowserRuntime(page, options, lambda: window,
                                          set_chromium_window_state, Mock(), Mock())
-                for activity, visible in (('login', True), ('dashboard', False),
-                                          ('filters', False), ('dashboard', False),
+                for activity, visible in (('login', True), ('filters', False),
                                           ('login', True), ('filters', False)):
                     runtime.set_activity(activity)
                     page.wait_for_timeout(200)

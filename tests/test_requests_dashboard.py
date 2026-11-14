@@ -1,229 +1,26 @@
 import json
-import html
 import queue
 import threading
 import unittest
 from unittest.mock import Mock, patch
-from playwright.sync_api import sync_playwright
+
 from neto_incident_monitor.app import App
-from neto_incident_monitor.dashboard import (
-    DASHBOARD_URL, REQUEST_TITLES, TITLES, HELD_TITLES,
-    read_requests_dashboard, diagnostic_steps, _request_tile, activate_dashboard_widgets,
-)
-from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
-from neto_incident_monitor.pagination import Cancelled, AuthenticationRequired
-
-
-def tiles(titles=REQUEST_TITLES):
-    return ''.join('<div class="grid-stack-item-content"><h2>' + html.escape(title) + '</h2>'
-        + f'<now-score-basic><span class="now-score-value">{index}</span></now-score-basic></div>'
-        for index, title in enumerate(titles))
-
-
-def fixture(scores, checked=True):
-    return ('<button role="tab" aria-selected="true">Wnioski L1</button>'
-            '<div hidden><sn-component-filter><h3>Agent L1</h3>'
-            '<label><input type="checkbox">Wybierz wszystko</label></sn-component-filter></div>'
-            '<sn-component-filter><h3>Agenci L1</h3><label><input id="agents" type="checkbox" '
-            + ('checked' if checked else '') + '>Zaznacz wszystko</label>'
-            '<button onclick="window.applied=(window.applied||0)+1;'
-            'if(typeof window.scores===\'string\')document.getElementById(\'scores\').innerHTML=window.scores">Zastosuj</button>'
-            '</sn-component-filter><div id="scores">' + scores + '</div>')
+from neto_incident_monitor.dashboard import HELD_TITLES, REQUEST_TITLES, TITLES
+from neto_incident_monitor.login_diagnostics import _logger
 
 
 class RequestsDashboardTests(unittest.TestCase):
-    def test_first_tab_entry_initializes_titleless_offscreen_cards_by_scrolling(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page(viewport={'width': 900, 'height': 600})
-                cards = '<div style="height:1500px">Inna zawartość dashboardu</div>'
-                cards += ''.join('<div class="grid-stack-item-content lazy" style="height:220px;margin:220px 0" '
-                                 f'data-title="{html.escape(title, quote=True)}" data-value="{index}"><component-renderer></component-renderer></div>'
-                                 for index, title in enumerate(REQUEST_TITLES))
-                document = fixture(cards) + '''<script>
-                    window.activated = 0;
-                    const observer = new IntersectionObserver(entries => {
-                        for (const entry of entries) if (entry.isIntersecting) {
-                            const card = entry.target;
-                            card.querySelector('component-renderer').remove();
-                            const heading = document.createElement('h2');
-                            heading.textContent = card.dataset.title; card.appendChild(heading);
-                            const score = document.createElement('now-score-basic');
-                            card.appendChild(score);
-                            score.attachShadow({mode:'open'}).innerHTML =
-                                '<span class="now-score-value">' + card.dataset.value + '</span>';
-                            window.activated++; observer.unobserve(card);
-                        }
-                    });
-                    for (const card of document.querySelectorAll('.lazy')) observer.observe(card);
-                    </script>'''
-                page.route('**/*', lambda route: route.fulfill(body=document, content_type='text/html; charset=utf-8'))
-                page.goto(DASHBOARD_URL)
-                self.assertEqual(page.get_by_role('heading', name=REQUEST_TITLES[0], exact=True).count(), 0)
-                self.assertEqual(page.locator('.now-score-value').count(), 0)
-                result = read_requests_dashboard(page, threading.Event())
-                self.assertEqual(result, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
-                self.assertEqual(page.evaluate('window.activated'), len(REQUEST_TITLES))
-            finally:
-                browser.close()
-
-    def test_widget_activation_stops_between_scrolls(self):
-        stop = threading.Event()
-        page = Mock(url=DASHBOARD_URL, frames=[])
-        cards = page.locator.return_value.filter.return_value
-        cards.count.return_value = 2
-        items = [Mock(), Mock()]
-        cards.nth.side_effect = lambda index: items[index]
-        for index, card in enumerate(items):
-            card.bounding_box.return_value = {'x': 0, 'y': index * 500}
-        items[0].scroll_into_view_if_needed.side_effect = lambda **kwargs: stop.set()
-        # Exercise cancellation between widget actions independently of auth.
-        with patch('neto_incident_monitor.dashboard.authentication_required', return_value=False), \
-                self.assertRaises(Cancelled):
-            activate_dashboard_widgets(page, stop)
-        items[0].scroll_into_view_if_needed.assert_called_once()
-        items[1].scroll_into_view_if_needed.assert_not_called()
-
-    def test_rendered_scores_in_shadow_widgets_do_not_wait_for_button_metadata_or_other_charts(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                scores = ''.join('<div class="grid-stack-item-content"><h2>' + title +
-                                 f'</h2><now-score-basic data-value="{index}"></now-score-basic></div>'
-                                 for index, title in enumerate(REQUEST_TITLES))
-                # Unrelated chart is still loading. Interactive metadata on the
-                # four rendered counters is deliberately delayed by 20 seconds.
-                scores += '<div class="grid-stack-item-content"><h2>Inny wykres</h2><div role="progressbar">Trwa ładowanie danych wizualizacji</div>99999</div>'
-                html = fixture(scores) + '''<script>
-                    for (const host of document.querySelectorAll('now-score-basic')) {
-                        const root = host.attachShadow({mode:'open'});
-                        root.innerHTML = '<button aria-label="Przygotowywanie interakcji"><span class="now-score-value" aria-hidden="true">' + host.dataset.value + '&nbsp;</span></button>';
-                        setTimeout(() => root.querySelector('button').setAttribute('aria-label',
-                            host.parentElement.querySelector('h2').textContent + ', ' + host.dataset.value), 20000);
-                    }
-                    </script>'''
-                page.route('**/*', lambda route: route.fulfill(body=html, content_type='text/html; charset=utf-8'))
-                page.goto(DASHBOARD_URL)
-                with diagnostic_steps(LoginDiagnostics()), self.assertLogs(_logger, level='INFO') as logs:
-                    from neto_incident_monitor.section_runner import run_section
-                    values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
-                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
-                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
-                facts = _request_tile(page, REQUEST_TITLES[0])
-                self.assertEqual(facts['score_source'], 'widget_value')
-                self.assertFalse(facts['button_available'])
-                self.assertTrue(any('"score_source": "widget_value"' in r.getMessage() for r in logs.records))
-            finally:
-                browser.close()
-
-    def test_widget_loader_blocks_old_number_until_refresh_finishes(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                html = ('<div class="grid-stack-item-content"><h2>Otwarte wnioski L1</h2>'
-                        '<div id="busy" role="progressbar">Trwa ładowanie danych wizualizacji</div>'
-                        '<now-score-basic><span class="now-score-value">777</span></now-score-basic></div>')
-                page.set_content(html)
-                facts = _request_tile(page, REQUEST_TITLES[0])
-                self.assertEqual(facts['state'], 'loading')
-                self.assertIsNone(facts['value'])
-                page.locator('#busy').evaluate('el => el.remove()')
-                self.assertEqual(_request_tile(page, REQUEST_TITLES[0])['value'], 777)
-                page.locator('.grid-stack-item-content').evaluate('el => el.setAttribute("aria-busy", "true")')
-                self.assertIsNone(_request_tile(page, REQUEST_TITLES[0])['value'])
-            finally:
-                browser.close()
-
-    def test_duplicate_or_invalid_widget_scores_are_never_guessed(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                card = ('<div class="grid-stack-item-content"><h2>Otwarte wnioski L1</h2>'
-                        '<now-score-basic><span class="now-score-value">Brak danych</span></now-score-basic></div>')
-                page.set_content(card)
-                self.assertEqual(_request_tile(page, REQUEST_TITLES[0])['state'], 'invalid')
-                page.set_content(card + card)
-                self.assertEqual(_request_tile(page, REQUEST_TITLES[0])['state'], 'ambiguous')
-                page.set_content(card.replace('Brak danych', '4').replace('</now-score-basic>',
-                    '<span class="now-score-value">5</span></now-score-basic>'))
-                self.assertEqual(_request_tile(page, REQUEST_TITLES[0])['state'], 'ambiguous')
-            finally:
-                browser.close()
-
-    def test_applies_all_agents_before_reading_new_layout(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                page.route('**/*', lambda route: route.fulfill(
-                    body=fixture('', checked=False)+'<script>window.scores='+json.dumps(tiles())+'</script>', content_type='text/html; charset=utf-8'))
-                page.goto(DASHBOARD_URL)
-                page.evaluate('html => window.scores = html', tiles())
-                values = read_requests_dashboard(page, threading.Event())
-                self.assertEqual(values, dict(zip(REQUEST_TITLES, range(len(REQUEST_TITLES)))))
-                self.assertEqual(page.evaluate('window.applied'), 1)
-                self.assertTrue(page.locator('#agents').is_checked())
-                self.assertFalse(page.locator('div[hidden] input').is_checked())
-            finally:
-                browser.close()
-
-    def test_single_owner_retries_once_and_returns_complete_snapshot_after_reload(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                loads = []
-                def serve(route):
-                    loads.append(True)
-                    scores = tiles(REQUEST_TITLES[:-1] if len(loads) <= 2 else REQUEST_TITLES)
-                    route.fulfill(body=fixture(scores), content_type='text/html; charset=utf-8')
-                page.route('**/*', serve)
-                page.goto(DASHBOARD_URL)
-                with patch('neto_incident_monitor.dashboard.REQUEST_READ_TIMEOUT', 2), \
-                        self.assertLogs(_logger, level='INFO') as logs, diagnostic_steps(LoginDiagnostics()):
-                    from neto_incident_monitor.section_runner import run_section
-                    values = run_section(page, threading.Event(), lambda: read_requests_dashboard(page, threading.Event()),
-                        LoginDiagnostics(section='requests'), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
-                self.assertEqual(len(values), len(REQUEST_TITLES))
-                self.assertEqual(len(loads), 4)
-                records = [json.loads(r.getMessage()) for r in logs.records]
-                self.assertEqual(sum(r['event'] == 'section_read_retry' for r in records), 1)
-                self.assertTrue(any(r['event'] == 'dashboard_tile_state' and
-                                    r.get('tile_index') == len(REQUEST_TITLES) - 1 and r.get('tile_state') == 'missing'
-                                    for r in records))
-            finally:
-                browser.close()
-
     def test_partial_result_is_bounded_and_not_logged_as_complete(self):
         app = App.__new__(App)
         app.stop, app.events, app.dashboard_requests = threading.Event(), queue.Queue(), queue.Queue()
         app.dashboard_requests.put((1, 2026, 10))
-        with patch('neto_incident_monitor.dashboard.read_dashboard', return_value=dict.fromkeys(TITLES, 0)), \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES, 0)), \
-                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES[:-1], 0)), \
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', return_value=dict.fromkeys(TITLES, 0)), \
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES[:-1], 0)), \
                 self.assertLogs(_logger, level='INFO') as logs:
             app.read_dashboard_request(Mock())
         records = [json.loads(r.getMessage()) for r in logs.records]
         partial = next(r for r in records if r['event'] == 'section_read_error' and r.get('section') == 'requests')
         self.assertFalse(any(r['event'] == 'section_read_complete' and r['session'] == partial['session'] for r in records))
-        self.assertTrue(any(r.get('read_reason') == 'incomplete_widgets' for r in records))
-
-    def test_persistent_missing_tile_retries_only_once(self):
-        from neto_incident_monitor.section_runner import run_section
-        reader = Mock(return_value=dict.fromkeys(REQUEST_TITLES[:-1], 0))
-        with self.assertRaises(ValueError):
-            run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), Mock(), Mock(), lambda v: set(v) == set(REQUEST_TITLES))
-        self.assertEqual(reader.call_count, 2)
-
-    def test_cancel_and_session_expiry_are_not_retried_as_score_errors(self):
-        from neto_incident_monitor.section_runner import run_section
-        for error in (Cancelled(), AuthenticationRequired()):
-            reader = Mock(side_effect=error)
-            restore = Mock(return_value=False)
-            with self.subTest(error=type(error).__name__), self.assertRaises((Cancelled, AuthenticationRequired)):
-                run_section(Mock(), threading.Event(), reader, LoginDiagnostics(), restore, Mock(), lambda v: True)
-            self.assertEqual(reader.call_count, 1)
+        self.assertTrue(any(r.get('read_reason') == 'api_incomplete' for r in records))

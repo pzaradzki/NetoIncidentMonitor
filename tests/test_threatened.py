@@ -5,110 +5,9 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
-from playwright.sync_api import sync_playwright, TimeoutError
 from neto_incident_monitor.app import App
-from neto_incident_monitor.threatened import KEYS, THREATENED_URL, read_threatened_dashboard
+from neto_incident_monitor.threatened import KEYS, THREATENED_URL
 from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
-
-TITLES = ('P1 – < 1 h / po terminie', 'P2 – < 2 h / po terminie',
-          'P3 – < 4 h / po terminie', 'P4 – < 1 dzień / po terminie',
-          'P5 – < 2 dni / po terminie', 'Podjęcie – < 5 min / po terminie')
-
-
-def document(values):
-    return '<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button>' + ''.join('<div class="grid-stack-item-content"><h2>' + title.replace('<', '&lt;') + '</h2>'
-                   '<now-score-basic><span class="now-score-value">' + str(value) + '</span></now-score-basic></div>'
-                   for title, value in zip(TITLES, values))
-
-
-class ThreatenedReaderTests(unittest.TestCase):
-    def test_six_scores_ignore_additional_table_and_hidden_duplicate(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                html = document(range(6)) + '<div hidden>' + document([999] * 6) + '</div>'
-                html += '<div class="grid-stack-item-content"><h2>Inna tabela</h2><span>999</span></div>'
-                page.route('**/*', lambda r: r.fulfill(body=html, content_type='text/html; charset=utf-8'))
-                with patch('neto_incident_monitor.dashboard.activate_dashboard_widgets', side_effect=AssertionError('Ready counters must not scroll')):
-                    self.assertEqual(read_threatened_dashboard(page, threading.Event()), dict(zip(KEYS, range(6))))
-            finally:
-                browser.close()
-
-    def test_missing_invalid_and_duplicate_score_never_return_partial_or_zero(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                for html in (document([0] * 5), document([0, 0, '...', 0, 0, 0]),
-                             document([0] * 6) + document([0])):
-                    with self.subTest(html_length=len(html)), patch('neto_incident_monitor.dashboard.REQUEST_READ_TIMEOUT', 0.1):
-                        page.route('**/*', lambda r, *, html=html: r.fulfill(body=html, content_type='text/html; charset=utf-8'))
-                        with self.assertRaises(ValueError):
-                            read_threatened_dashboard(page, threading.Event())
-                        page.unroute('**/*')
-            finally:
-                browser.close()
-
-    def test_cancelled_before_navigation(self):
-        stop = threading.Event()
-        stop.set()
-        page = Mock()
-        with self.assertRaises(Cancelled):
-            read_threatened_dashboard(page, stop)
-        page.goto.assert_not_called()
-
-    def test_card_replacement_timeout_retries_preparation_without_reloading(self):
-        from neto_incident_monitor.dashboard import diagnostic_steps
-        from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
-        import json
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                loads = []
-                def serve(route):
-                    loads.append(True)
-                    route.fulfill(body='<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button><div class="grid-stack-item-content">Loading</div>', content_type='text/html; charset=utf-8')
-                page.route('**/*', serve)
-                attempts = []
-                def prepare(page, stop, **kwargs):
-                    attempts.append(True)
-                    if len(attempts) == 1:
-                        raise TimeoutError('Synthetic replaced widget')
-                    page.set_content(document([0] * 6))
-                with patch('neto_incident_monitor.dashboard.activate_dashboard_widgets', side_effect=prepare), \
-                        self.assertLogs(_logger, level='INFO') as logs, diagnostic_steps(LoginDiagnostics(source='dashboard', section='threatened')):
-                    result = read_threatened_dashboard(page, threading.Event())
-                self.assertEqual(result, dict.fromkeys(KEYS, 0))
-                self.assertEqual(len(attempts), 2)
-                self.assertEqual(len(loads), 1)
-                events = [json.loads(r.getMessage()) for r in logs.records]
-                self.assertEqual(sum(r['event'] == 'dashboard_widgets_retry' for r in events), 1)
-                self.assertTrue(any(r.get('risk_tile') == 'P1' and r.get('tile_state') == 'ready' for r in events))
-                self.assertNotIn('Synthetic replaced widget', str(logs.records))
-            finally:
-                browser.close()
-
-    def test_lazy_widgets_are_rendered_before_reading(self):
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page(viewport={'width': 800, 'height': 500})
-                cards = ''.join(f'<div class="grid-stack-item-content" data-id="{i}" style="height:220px;margin-top:500px"></div>' for i in range(6))
-                import json
-                html = '<button role="tab" aria-selected="true">L1 – Incydenty zagrożone SLA</button>' + cards + '<script>const titles=' + json.dumps(TITLES) + ''';
-                const observer=new IntersectionObserver(entries=>{for(const e of entries) if(e.isIntersecting){
-                  const card=e.target; const i=+card.dataset.id; const h=document.createElement('h2');
-                  h.textContent=titles[i]; card.appendChild(h); const s=document.createElement('now-score-basic');
-                  card.appendChild(s); s.attachShadow({mode:'open'}).innerHTML='<span class="now-score-value">0</span>';
-                  observer.unobserve(card); }});
-                document.querySelectorAll('.grid-stack-item-content').forEach(c=>observer.observe(c));</script>'''
-                page.route('**/*', lambda r: r.fulfill(body=html, content_type='text/html; charset=utf-8'))
-                self.assertEqual(read_threatened_dashboard(page, threading.Event()), dict.fromkeys(KEYS, 0))
-            finally:
-                browser.close()
-
 
 class ThreatenedPresentationTests(unittest.TestCase):
     def test_sidebar_activity_badge_fits_with_warning_icons(self):
@@ -322,8 +221,6 @@ class ThreatenedWorkerTests(unittest.TestCase):
         app.stop, app.events, app.threatened_requests = threading.Event(), queue.Queue(), queue.Queue()
         app.threatened_requests.put(4)
         app.browser_runtime = Mock()
-        from contextlib import nullcontext
-        app.browser_runtime.dashboard_read.side_effect = lambda *args: nullcontext()
         app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
         app.restore_login = Mock(return_value=True)
         return app
@@ -331,7 +228,8 @@ class ThreatenedWorkerTests(unittest.TestCase):
     def test_session_recovery_retries_once_and_emits_complete_result(self):
         app = self.app()
         values = dict.fromkeys(KEYS, 0)
-        with patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=[AuthenticationRequired(), values]) as read:
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.threatened_api.read_threats', side_effect=[AuthenticationRequired(), (values, {})]) as read:
             app.read_threatened_request(Mock())
         self.assertEqual(read.call_count, 2)
         app.restore_login.assert_called_once()
@@ -339,7 +237,7 @@ class ThreatenedWorkerTests(unittest.TestCase):
         self.assertEqual(states, [(4, 'W trakcie aktualizacji'), (4, 'Oczekuje'), (4, 'Ponawianie odczytu')])
         results = [v for k,v in app.events.queue if k == 'threatened_result']
         self.assertEqual(results[0][:2], (4, values))
-        app.browser_runtime.set_activity.assert_called_with('filters')
+        app.browser_runtime.set_activity.assert_not_called()
 
     def test_startup_read_runs_after_dashboard_before_filters_only_once(self):
         from neto_incident_monitor.history import History
@@ -362,15 +260,16 @@ class ThreatenedWorkerTests(unittest.TestCase):
             app.read_dashboard_request = Mock(side_effect=lambda page: order.append('dashboard'))
             def threats(*args):
                 order.append('threatened')
-                return dict.fromkeys(KEYS, 0)
+                return dict.fromkeys(KEYS, 0), {}
             def filters(*args, **kwargs):
                 order.append('filter')
                 return {}, 1
-            with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
+            with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                    patch('playwright.sync_api.sync_playwright', return_value=playwright), \
                     patch('neto_incident_monitor.browser_window.BrowserWindow'), \
                     patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
                     patch('neto_incident_monitor.app.navigate'), \
-                    patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=threats), \
+                    patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
                     patch('neto_incident_monitor.app.read_all', side_effect=filters), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, True]):
                 app.monitor(settings)
@@ -382,7 +281,8 @@ class ThreatenedWorkerTests(unittest.TestCase):
         for error in (ValueError('fixture'), Cancelled()):
             with self.subTest(error=type(error).__name__):
                 app = self.app()
-                with patch('neto_incident_monitor.threatened.read_threatened_dashboard', side_effect=error):
+                with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                        patch('neto_incident_monitor.threatened_api.read_threats', side_effect=error):
                     app.read_threatened_request(Mock())
                 results = [v for k,v in app.events.queue if k == 'threatened_result']
                 self.assertEqual(results, [] if isinstance(error, Cancelled) else [(4, None, None)])

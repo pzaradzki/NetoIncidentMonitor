@@ -2,6 +2,8 @@
 
 Data: 1 listopada 2026. **Status: przyjęta; wdrożona w źródłach, odbiór D5 zakończony, bez nowego EXE.**
 
+**Aktualizacja** — mechanizm renderowania analityki zastąpiony w źródłach przez [032](032-odczyty-analityki-przez-api.md).
+
 **Decyzja:** podczas ukrytego odczytu analityki `BrowserRuntime` zarządza jednym `HiddenRendering` w istniejącym workerze. Lokalny DevTools podtrzymuje renderowanie (`Page.startScreencast`, JPEG jakość 0, maks. 1×1, co 60. klatkę); ramki są jedynie potwierdzane i odrzucane. Nie tworzymy drugiego czytnika, wątku Playwright ani właściciela ponowień.
 
 **Powód:** [badania A–C](../archiwum/analizy/ukryte-chromium-rozwiazanie.md) wykazały ograniczenie klatek przy ukryciu. Prototyp przeszedł 40/40 odczytów oraz 4/4 po minimalizacji; mediana mieściła się w przyjętym progu. Nie jest to gwarancja dla każdej przyszłej wersji Chromium.

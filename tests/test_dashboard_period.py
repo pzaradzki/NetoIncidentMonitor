@@ -94,9 +94,10 @@ class DashboardPeriodTests(unittest.TestCase):
             if failure:
                 raise failure
             return dict.fromkeys(TITLES, 10)
-        with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=sla), \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES, 20)), \
-                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES, 30)):
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=sla), \
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 20)), \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 30)):
             self.app.read_dashboard_request(Mock())
         if drain:
             self.app.drain()
@@ -121,9 +122,10 @@ class DashboardPeriodTests(unittest.TestCase):
             self.assertEqual(self.panel.active_request, request)
             return True
         self.app.restore_login = Mock(side_effect=restore)
-        with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=[AuthenticationRequired(),dict.fromkeys(TITLES,10)]), \
-                patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value=dict.fromkeys(HELD_TITLES,20)), \
-                patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value=dict.fromkeys(REQUEST_TITLES,30)):
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=[AuthenticationRequired(),dict.fromkeys(TITLES,10)]), \
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES,20)), \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES,30)):
             self.app.read_dashboard_request(Mock())
         self.app.restore_login.assert_called_once()
         self.app.drain()
@@ -142,7 +144,6 @@ class DashboardPeriodTests(unittest.TestCase):
         self.assertEqual(self.panel.active_request, request)
         self.assertEqual((self.panel.year.get(), self.panel.month.get()), ('2026', 'Październik'))
         self.assertEqual(self.panel.request_id, request[0])
-        self.assertEqual(self.app.dashboard_progress.request_id, request[0])
         self.assertEqual(self.app.dashboard_requests.qsize(), 1)
 
     def test_actual_worker_results_and_cache_survive_selection_attempt(self):
@@ -154,7 +155,6 @@ class DashboardPeriodTests(unittest.TestCase):
         self.assertEqual(self.panel.section_states['Dashboard SLA'], 'Zaktualizowany')
         self.assertEqual(load_snapshot(Path(self.temp.name)/'dashboard-cache.json')['sections']['sla']['month'], 10)
         self.assertIsNone(self.panel.active_request)
-        self.assertEqual(self.app.dashboard_progress.percent, 100)
         self.assert_controls('readonly')
         self.assertEqual(self.panel.request_id, request[0])
 
@@ -244,7 +244,6 @@ class DashboardPeriodTests(unittest.TestCase):
         self.assertIsNone(self.panel.active_request)
         self.assertFalse(self.app.refresh_coordinator().busy)
         self.assert_controls('readonly')
-        self.assertIsNone(self.app.dashboard_progress.request_id)
         self.assertNotIn('SYNTHETIC_SECRET', self.panel.message.get())
 
     def test_startup_request_locks_before_worker_and_failed_thread_releases_it(self):

@@ -1,6 +1,6 @@
 # Paginacja listy zagrożeń SLA
 
-**Odłożone.** Wznowić, gdy w rzeczywistym ServiceNow pojawi się lista zagrożeń z co najmniej dwiema stronami. Zadanie wydzielone z [planu listy zagrożeń i powiadomień](zakonczone/lista-zagrozonych-i-powiadomienia.md).
+**Zastąpione w źródłach.** Paginację listy zagrożeń obsługuje REST. Odbiór na rzeczywistym wyniku wielostronicowym jest odnotowany w [planie migracji](zakonczone/dashboard-servicenow-api.md). Poniższe kroki dokumentują wcześniejszą propozycję dla DOM.
 
 - [ ] Na rzeczywistej liście ServiceNow z co najmniej dwiema stronami potwierdzić zachowanie przycisku „Następna strona”, zmianę zakresu oraz stabilność identyfikatorów SLA.
 - [ ] Dodać odczyt kolejnych stron do bieżącego czytnika. Zweryfikować ciągłość zakresów, stałą liczbę wyników, unikatowość SLA i zgodność z licznikami kategorii przed zapisem.

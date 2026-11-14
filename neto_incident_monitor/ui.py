@@ -262,14 +262,11 @@ def build_ui(app, settings):
     from neto_incident_monitor.dashboard_ui import build_dashboard
     app.dashboard_view = build_dashboard(content_host, app)
     app.dashboard_view.grid(row=0, column=0, sticky="nsew")
-    from neto_incident_monitor.dashboard_progress import DashboardProgressBar
-    app.dashboard_progress = DashboardProgressBar(app.dashboard_view.progress_host)
     from neto_incident_monitor.threatened_ui import build_threatened_view
     app.threatened_view = build_threatened_view(content_host, app)
     app.threatened_view.grid(row=0, column=0, sticky='nsew')
     def select_view(view):
         app.active_view = view
-        app.dashboard_progress.set_view_active(view == 'dashboard')
         app.dashboard_button.selected = view == 'dashboard'
         app.dashboard_button.redraw()
         app.threatened_incidents_button.selected = view == 'threatened'

@@ -229,9 +229,10 @@ class AuthenticationHardeningTests(unittest.TestCase):
                 app.restore_login = Mock(return_value=True)
                 result = {t: 0 for t in TITLES}
                 attempts = [AuthenticationRequired(), AuthenticationRequired() if repeated_failure else result]
-                with patch('neto_incident_monitor.dashboard.read_dashboard', side_effect=attempts) as read, \
-                        patch('neto_incident_monitor.dashboard.read_held_dashboard', return_value={t: 0 for t in HELD_TITLES}), \
-                        patch('neto_incident_monitor.dashboard.read_requests_dashboard', return_value={t: 0 for t in REQUEST_TITLES}):
+                with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                        patch('neto_incident_monitor.dashboard_api.read_month', side_effect=attempts) as read, \
+                        patch('neto_incident_monitor.dashboard_api.read_held', return_value={t: 0 for t in HELD_TITLES}), \
+                        patch('neto_incident_monitor.dashboard_api.read_requests', return_value={t: 0 for t in REQUEST_TITLES}):
                     app.read_dashboard_request(Mock())
                 self.assertEqual(read.call_count, 2)
                 app.restore_login.assert_called_once()

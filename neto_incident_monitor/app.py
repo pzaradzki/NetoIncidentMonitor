@@ -2921,17 +2921,18 @@ class App(DynamicColumns, TableLoading):
             return
         deadline = getattr(self, 'threatened_next_read', None)
         self.threatened_last_request = request
-        from neto_incident_monitor.threatened import read_threatened_dashboard, read_threatened_details
+        from neto_incident_monitor.analytics_config import load_config
+        from neto_incident_monitor.analytics_api import READ_MESSAGES
+        from neto_incident_monitor.threatened_api import read_threats
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
-        from neto_incident_monitor.dashboard import diagnostic_steps
         diagnostics = LoginDiagnostics(source='dashboard', section='threatened', request_id=request)
-        runtime = getattr(self, 'browser_runtime', None)
         if periodic and deadline is not None:
             diagnostics.record('threatened_schedule', lateness_ms=max(0, round((time.monotonic()-deadline)*1000)),
                 delay_reason=getattr(self, 'threatened_delay_reason', 'idle'))
         restarting = False
         try:
             from neto_incident_monitor.section_runner import run_section
+            from neto_incident_monitor.browser_actions import checkpoint
             from neto_incident_monitor.threatened import KEYS
             settings = getattr(self, 'monitor_settings', {})
             def restore():
@@ -2941,40 +2942,31 @@ class App(DynamicColumns, TableLoading):
                 self.events.put(('threatened_state', (request, value)))
                 self.events.put(('activity', ('Pobieranie danych: Incydenty zagrożone', 'working', 'threatened')))
             import sqlite3
-            details = None
-            def read():
-                nonlocal details
-                details = None
-                with runtime.dashboard_read(page, diagnostics) if runtime else nullcontext():
-                    scores = read_threatened_dashboard(page, stop)
-                    if hasattr(self, 'alert_writer') and set(scores) == set(KEYS):
-                        try:
-                            details = read_threatened_details(page, stop, scores)
-                        except (Cancelled, AuthenticationRequired, TargetClosedError, BrowserClosedError):
-                            raise
-                        except Exception as exc:
-                            diagnostics.record('section_read_error', **error_facts(exc))
-                    return scores
-            values = run_section(page, stop, read, diagnostics, restore, state,
-                lambda values: set(values) == set(KEYS) and all(type(v) is int and v >= 0 for v in values.values()))
-            self.events.put(('threatened_result', (request, values, time.time())))
+            checkpoint(stop)
+            config = load_config()
+            values, details = run_section(page, stop,
+                lambda: read_threats(page, stop, diagnostics, config), diagnostics, restore, state,
+                lambda result: set(result[0]) == set(KEYS)
+                and all(type(v) is int and v >= 0 for v in result[0].values())
+                and isinstance(result[1], dict))
+            checkpoint(stop)
+            timestamp = time.time()
+            saved = None
             if hasattr(self, 'alert_writer'):
-                from neto_incident_monitor.browser_actions import checkpoint
-                saved = None
-                if details is not None:
-                    try:
-                        saved, arrivals = self.history.commit_threatened(
-                            details, time.time(), lambda: checkpoint(stop),
-                            lambda incidents: self.prepare_threatened_alerts(incidents, request))
-                        diagnostics.record('threatened_details_complete', records_read=len(details), row_count=arrivals)
-                        if arrivals:
-                            self.submit_alert_delivery()
-                    except (OSError, ValueError, sqlite3.Error) as exc:
-                        diagnostics.record('section_read_error', **error_facts(exc))
-                if saved is None:
-                    diagnostics.record('threatened_details_incomplete')
-                self.events.put(('threatened_details', (request, saved)))
-            return True
+                try:
+                    saved, arrivals = self.history.commit_threatened(
+                        details, timestamp, lambda: checkpoint(stop),
+                        lambda incidents: self.prepare_threatened_alerts(incidents, request))
+                    diagnostics.record('threatened_details_complete', records_read=len(details), row_count=arrivals)
+                    if arrivals:
+                        self.submit_alert_delivery()
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    diagnostics.record('section_read_error', **error_facts(exc))
+            if saved is None:
+                diagnostics.record('threatened_details_incomplete')
+            self.events.put(('threatened_result', (request, values, timestamp)))
+            self.events.put(('threatened_details', (request, saved)))
+            return saved is not None
         except (TargetClosedError, BrowserClosedError):
             restarting = own_request
             if restarting:
@@ -2985,19 +2977,17 @@ class App(DynamicColumns, TableLoading):
         except Cancelled:
             self.events.put(('threatened_state', (request, 'Dane nieaktualne')))
         except Exception as exc:
-            diagnostics.record('section_read_error', **error_facts(exc))
+            reason = getattr(exc, 'reason', None)
+            diagnostics.record('section_read_error', read_reason=reason, **error_facts(exc))
             LOG.warning('Nie odczytano zagrożeń SLA (%s).', type(exc).__name__)
-            self.events.put(('threatened_result', (request, None, None)))
+            message = READ_MESSAGES.get(reason)
+            result = (request, None, None)
+            self.events.put(('threatened_result', (*result, message) if message else result))
         finally:
             # Count from completion, including failed reads; never accumulate overdue runs.
             if not restarting:
                 self.threatened_next_read = time.monotonic() + 60
                 self.events.put(('threatened_finished', request))
-            if runtime:
-                try:
-                    runtime.set_activity('filters')
-                except Exception as exc:
-                    diagnostics.record('browser_cleanup_error', **error_facts(exc))
 
     @diagnostic_read
     def read_dashboard_request(self, page, *, request=None, stop=None):
@@ -3013,42 +3003,47 @@ class App(DynamicColumns, TableLoading):
         if request is None:
             return
         request_id, year, month = request
-        from neto_incident_monitor.dashboard_progress import DashboardProgress, progress_steps
-        from neto_incident_monitor.dashboard import read_dashboard, read_held_dashboard, read_requests_dashboard, TITLES, HELD_TITLES, REQUEST_TITLES
+        from neto_incident_monitor.analytics_config import load_config
+        from neto_incident_monitor.analytics_api import READ_MESSAGES
+        from neto_incident_monitor.dashboard_api import read_month, read_held, read_requests
+        from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
+        from neto_incident_monitor.browser_actions import checkpoint
+        from neto_incident_monitor.dashboard_context import DashboardReadError
         from neto_incident_monitor.section_runner import run_section
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
         from datetime import datetime
-        progress = DashboardProgress(lambda percent, text, state:
-            self.events.put(('dashboard_progress', (request_id, percent, text, state))))
         self.events.put(('dashboard_updating', (request_id, year, month, 'running')))
         success, values, failures = False, {}, []
         restarting = False
         section = 'Dashboard SLA'
         try:
+            try:
+                config = load_config()
+            except DashboardReadError:
+                config = None
             for section, alias, expected, reader in (
-                ('Dashboard SLA', 'sla', TITLES, lambda: read_dashboard(page, year, month, stop)),
-                ('Wstrzymane L1', 'held', HELD_TITLES, lambda: read_held_dashboard(page, stop)),
-                ('Wnioski L1', 'requests', REQUEST_TITLES, lambda: read_requests_dashboard(page, stop))):
-                if stop.is_set():
-                    raise Cancelled()
-                diagnostics = LoginDiagnostics(source='dashboard', section=alias, request_id=request_id)
+                ('Dashboard SLA', 'sla', TITLES, read_month),
+                ('Wstrzymane L1', 'held', HELD_TITLES, read_held),
+                ('Wnioski L1', 'requests', REQUEST_TITLES, read_requests)):
+                checkpoint(stop)
+                context = {'year': year, 'month': month} if alias == 'sla' else {}
+                diagnostics = LoginDiagnostics(source='dashboard', section=alias, request_id=request_id, **context)
+                completed = {}
                 def state(value):
                     self.events.put(('dashboard_section_status', (request_id, section, value)))
                 def read():
-                    runtime = getattr(self, 'browser_runtime', None)
-                    with runtime.dashboard_read(page, diagnostics) if runtime else nullcontext():
-                        with progress_steps(progress, section):
-                            return reader()
+                    if config is None:
+                        raise DashboardReadError('api_configuration', retryable=False)
+                    if alias == 'sla':
+                        return reader(page, stop, diagnostics, config, year, month)
+                    return reader(page, stop, diagnostics, config, completed)
                 def restore():
-                    state('Oczekuje')
-                    progress.waiting()
                     settings = self.monitor_settings
                     return self.restore_operation_login(page, settings, stop)
                 try:
                     result = run_section(page, stop, read, diagnostics, restore, state,
                         lambda v: set(v) == set(expected) and all(type(n) is int and n >= 0 for n in v.values()))
                     values.update(result)
-                    progress.section_done(section)
                     state('Zaktualizowany')
                     metadata = {'section': alias, 'read_at': datetime.now().astimezone().isoformat(timespec='seconds'),
                                 'diagnostics': diagnostics, 'values': dict(result)}
@@ -3056,11 +3051,15 @@ class App(DynamicColumns, TableLoading):
                     raise
                 except Exception as exc:
                     state('Błąd odczytu')
-                    failures.append(section)
+                    reason = READ_MESSAGES.get(getattr(exc, 'reason', None))
+                    failures.append(f'{section} ({reason.rstrip(".")})' if reason else section)
                     LOG.warning('Dashboard: sekcja %s nie powiodła się (%s).', alias, type(exc).__name__)
                     metadata = {'section': alias, 'error': True, 'diagnostics': diagnostics}
                 self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, '', metadata)))
-            message = 'Nie udało się odczytać: ' + ', '.join(failures) if failures else ''
+            message = ''
+            if failures:
+                summary = 'Aktualizacja częściowa' if values else 'Nie udało się odczytać'
+                message = summary + ': ' + ', '.join(failures)
             self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, message)))
             success = not failures and not stop.is_set()
         except (TargetClosedError, BrowserClosedError):
@@ -3069,12 +3068,11 @@ class App(DynamicColumns, TableLoading):
             restarting = True
             raise
         except Cancelled:
-            self.events.put(('dashboard_section_status', (request_id, section, 'Dane nieaktualne')))
+            self.events.put(('dashboard_updating', (request_id, year, month, 'cancelled')))
         except Exception as exc:
             self.events.put(('dashboard_section_status', (request_id, section, 'Błąd odczytu')))
             self.events.put(('dashboard_result', (request_id, year, month, None, True)))
         finally:
-            progress.finish(success)
             self.events.put(('dashboard_updating', (request_id, year, month,
                              'retrying' if restarting else 'finished')))
 
@@ -3351,10 +3349,6 @@ class App(DynamicColumns, TableLoading):
                 if kind == 'activity':
                     self.set_activity(*value)
                     continue
-                if kind == 'dashboard_progress':
-                    if value[0] == self.dashboard_view.request_id:
-                        self.dashboard_progress.apply(*value)
-                    continue
                 if kind == 'dashboard_section_status':
                     activity = self.dashboard_view.set_section_activity(*value)
                     if activity is not None:
@@ -3533,7 +3527,6 @@ class App(DynamicColumns, TableLoading):
                     self.dashboard_view.finish_pending()
                     self.dashboard_view.refresh_button.configure(state='disabled')
                     self.dashboard_view.request_id += 1
-                    self.dashboard_progress.hide()
                     self.dashboard_view.set_message('Monitoring zatrzymany')
                     while not self.dashboard_requests.empty():
                         try:

@@ -9,8 +9,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [003](003-poprawnosc-i-aktualnosc.md) | Brak danych i błąd nie oznaczają zera ani świeżego sukcesu. |
 | [004](004-bezpieczna-diagnostyka.md) | Wspólna, ograniczona diagnostyka bez danych wrażliwych. |
 | [005](005-kompletny-odczyt-listy.md) | Pełna walidacja listy przed zapisaniem; ograniczone ponowienie od początku. |
-| [006](006-odczyt-sekcji-dashboardu.md) | Wspólny czytnik, jeden budżet odzyskiwania i osobna aktualność każdej sekcji dashboardu. |
-| [007](007-ukryty-dashboard.md) | Ukryty odczyt analityki z kontrolowanym renderowaniem i potwierdzaniem spóźnionych kategorii. |
+| [006](006-odczyt-sekcji-dashboardu.md) | Niezależna aktualność sekcji. Czytnik zastąpiła 032. |
+| [007](007-ukryty-dashboard.md) | Historyczne renderowanie ukrytej analityki, zastąpione przez 032. |
 | [008](008-obserwacja-logowania.md) | Wspólne stany logowania; konflikt i nieudana obserwacja wykluczają potwierdzenie sesji. |
 | [009](009-renderowanie-ukrytego-logowania.md) | Przyjęte i wdrożone ograniczone renderowanie 1×1 ukrytego logowania, z odrębną granicą zaufania i obsługą ręczną. |
 | [010](010-cykl-zycia-zadania-dashboardu.md) | Zamrożony okres i blokada kontrolek przez cały cykl żądania dashboardu; zakończenie i wyniki powiązane z ID. |
@@ -32,6 +32,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 [032 — Podgląd Chromium](032-podglad-chromium.md) opisuje skrót diagnostyczny i jego wpływ na widoczność sesji.
 
 [031 — Automatyczny zapis interwałów](031-automatyczny-zapis-odstepow.md) określa czas zapisu po edycji i przy zamykaniu ustawień.
+
+[032 — Dashboard i zagrożenia SLA przez REST API](032-odczyty-analityki-przez-api.md) wprowadza wspólny transport oraz weryfikację kompletnej listy zagrożeń.
 
 [030 — Odstępy odczytów podczas monitoringu](030-odstepy-podczas-monitoringu.md) opisuje zapis i przeliczenie następnego terminu bez przerywania rozpoczętej partii.
 
