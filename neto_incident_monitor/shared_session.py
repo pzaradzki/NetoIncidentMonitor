@@ -117,7 +117,8 @@ class SharedSession:
 
     def submit(self, scope, parts):
         job_id, merged = self.work.submit(scope, parts)
-        LoginDiagnostics(source='monitor', request_id=job_id).record(
+        context = {'import_id': parts[0].target} if scope == 'favorites' else {}
+        LoginDiagnostics(source='monitor', request_id=job_id, **context).record(
             'refresh_queue', queue_scope=scope, queue_state='merged' if merged else 'queued')
         self.app.schedule.request()
         return job_id, merged
@@ -126,7 +127,8 @@ class SharedSession:
         job_id = self.work.cancel_pending(part)
         if job_id is None:
             return False
-        LoginDiagnostics(source='monitor', request_id=job_id).record(
+        context = {'import_id': part.target} if part.scope == 'favorites' else {}
+        LoginDiagnostics(source='monitor', request_id=job_id, **context).record(
             'refresh_queue', queue_scope=part.scope, queue_state='cancelled', outcome='cancelled')
         return True
 
@@ -318,8 +320,29 @@ class SharedSession:
             self.app.browser_runtime = self.app.browser_window = self.runtime = None
 
     def record_job(self, job, state, **fields):
+        if job.scope == 'favorites':
+            fields['import_id'] = job.requested[0].target
         self.log.record('refresh_queue', request_id=job.id, queue_scope=job.scope, queue_state=state,
                         duration_ms=round((monotonic() - job.submitted_at) * 1000), **fields)
+
+    def finish_manual_job(self, cycle, outcome=None):
+        job = self.active_job
+        if outcome is None:
+            outcome = 'error' if not self.active_job_success else 'partial' if job.skipped_filters else 'returned'
+        state = 'cancelled' if outcome == 'cancelled' else 'finished'
+        self.record_job(job, state, outcome=outcome, item_count=job.skipped_filters)
+        if cycle and job.scope == 'all':
+            cycle.finish_full_read(job.requested, self.filter_parts)
+        self.work.finish()
+        self.active_job = None
+        self.after_manual = True
+        self.emit('session_job_finished', (job.scope, self.active_job_success, job.skipped_filters))
+
+    def finish_interrupted_import(self, part, cycle, outcome, message):
+        self.active_job_success = False
+        self.work.complete_part(part, manual=True, success=False)
+        self.finish_manual_job(cycle, outcome)
+        part.data['events'].put((part.target, 'result', (outcome, message)))
 
     def serve(self, page):
         from neto_incident_monitor.app import BrowserClosedError, wait_for_browser_cycle
@@ -355,13 +378,23 @@ class SharedSession:
             try:
                 checkpoint(stop)
                 if not self.connected or authentication_required(page, HOME):
+                    if part.scope == 'favorites':
+                        part.data['events'].put((part.target, 'status', 'Oczekiwanie na logowanie do ServiceNow…'))
                     if not self.authenticate(page, stop):
                         raise Cancelled()
                 success = self.app.execute_session_part(page, part, stop, source)
             except Cancelled:
                 if part.scope == 'favorites':
-                    part.data['events'].put((part.target, 'result', ('cancelled', 'Import anulowany.')))
+                    self.finish_interrupted_import(part, cycle, 'cancelled', 'Import anulowany.')
+                    continue
                 success = False
+            except Exception as error:
+                if part.scope == 'favorites':
+                    message = ('Chromium zostało zamknięte. Połącz się ponownie i uruchom import.'
+                               if isinstance(error, (BrowserClosedError, TargetClosedError)) else
+                               'Połączenie z ServiceNow zostało przerwane podczas importu.')
+                    self.finish_interrupted_import(part, cycle, 'error', message)
+                raise
             skipped = is_filter and not self.filter_is_current(part)
             self.work.complete_part(part, manual=source == 'manual', success=success)
             if source == 'initial':
@@ -393,14 +426,7 @@ class SharedSession:
                         not any(part.scope == 'threatened' for part in job.parts)):
                     return ReadPart('threatened'), 'threatened'
                 return job.parts[0], 'manual'
-            outcome = 'error' if not self.active_job_success else 'partial' if job.skipped_filters else 'returned'
-            self.record_job(job, 'finished', outcome=outcome, item_count=job.skipped_filters)
-            if cycle and job.scope == 'all':
-                cycle.finish_full_read(job.requested, self.filter_parts)
-            self.work.finish()
-            self.active_job = None
-            self.after_manual = True
-            self.emit('session_job_finished', (job.scope, self.active_job_success, job.skipped_filters))
+            self.finish_manual_job(cycle)
         if cycle and cycle.initial:
             return cycle.initial[0], 'initial'
         if threats_due:

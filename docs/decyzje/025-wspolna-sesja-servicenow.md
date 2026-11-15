@@ -6,6 +6,8 @@ Regułę ukrycia Chromium po potwierdzeniu sesji w przypadku ręcznego wpisania 
 
 Zapis odstępów dla działającego harmonogramu i sposób liczenia nowego terminu opisuje [decyzja 030](030-odstepy-podczas-monitoringu.md).
 
+Źródło odczytu i tymczasowy rozmiar menu importu zastąpiła [decyzja 036](036-import-ulubionych-przez-rest.md).
+
 **Decyzja.** Wejście aplikacji tworzy jeden wątek Playwright i jedną kartę roboczą. Chromium jest widoczne podczas pierwszego logowania. Po potwierdzeniu sesji i natywnego ukrycia okna Tk udostępnia główny widok. Akcje **Otwórz w SNOW** pozostają w domyślnej przeglądarce. Po awarii procesu dostępne jest świadome ponowne połączenie, ponieważ bazowy restart Chromium nie gwarantuje ukrycia.
 
 **Powód.** Logowanie i sesja mają działać niezależnie od harmonogramu. Jeden właściciel karty zapobiega kolizjom nawigacji i profilu, a kolejka pozwala wykonać odczyt ręczny lub import także przy zatrzymanym monitoringu.

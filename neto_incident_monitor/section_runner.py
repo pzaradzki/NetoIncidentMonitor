@@ -1,4 +1,4 @@
-"""The single retry owner for analytics sections; login time is separate."""
+"""Bounded ServiceNow reads with a separate login wait budget."""
 from time import monotonic
 
 from neto_incident_monitor.browser_actions import checkpoint
@@ -10,9 +10,9 @@ from neto_incident_monitor.login_diagnostics import error_facts
 ACTIVE_SECONDS = 60
 
 
-def run_section(page, stop, read, diagnostics, restore, state, validate):
+def run_section(page, stop, read, diagnostics, restore, state, validate=None, *, active_seconds=ACTIVE_SECONDS):
     from neto_incident_monitor.dashboard import diagnostic_steps, measured_record
-    total = Budget(ACTIVE_SECONDS)
+    total = Budget(active_seconds)
     login_wait_ms = 0
     read_retry_used = login_recovery_used = False
     for attempt in range(1, 4):
@@ -20,7 +20,7 @@ def run_section(page, stop, read, diagnostics, restore, state, validate):
         diagnostics.record('section_read_attempt', attempt=attempt)
         state('W trakcie aktualizacji' if attempt == 1 else 'Ponawianie odczytu')
         # Reserve time for recovery; never restart a full independent budget.
-        attempt_seconds = min((total.end - monotonic()), ACTIVE_SECONDS * .65 if attempt == 1 else ACTIVE_SECONDS)
+        attempt_seconds = min(total.end - monotonic(), active_seconds * .65 if attempt == 1 else active_seconds)
         try:
             attempt_budget = Budget(attempt_seconds)
             with budget_scope(attempt_budget, recovery=attempt > 1), diagnostic_steps(diagnostics, page=page):
@@ -28,10 +28,10 @@ def run_section(page, stop, read, diagnostics, restore, state, validate):
                 result = read()
                 checkpoint(stop)
                 attempt_budget.check()
-                if not validate(result):
+                if validate is not None and not validate(result):
                     raise DashboardReadError('api_incomplete')
             diagnostics.record('section_read_complete',
-                active_ms=max(0, round((ACTIVE_SECONDS - total.end + monotonic()) * 1000)),
+                active_ms=max(0, round((active_seconds - total.end + monotonic()) * 1000)),
                 login_wait_ms=login_wait_ms)
             return result
         except AuthenticationRequired as error:

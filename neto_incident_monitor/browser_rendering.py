@@ -12,7 +12,7 @@ class LoginRenderingUnavailable(RuntimeError):
 
 class HiddenRendering:
     def __init__(self, diagnostics, scope):
-        if scope not in ('login', 'favorites', 'filter_definition'):
+        if scope not in ('login', 'filter_definition'):
             raise ValueError('Unknown rendering scope')
         self.scope = scope
         self.diagnostics = diagnostics
@@ -106,9 +106,6 @@ class HiddenRendering:
     def target(self, url):
         if not isinstance(url, str):
             return False
-        if self.scope == 'favorites':
-            from neto_incident_monitor.favorites import HOME
-            return url == HOME
         if self.scope == 'filter_definition':
             from neto_incident_monitor.service_now_urls import normalize_list_url
             try:

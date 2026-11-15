@@ -2180,16 +2180,13 @@ class App(DynamicColumns, TableLoading):
     def import_favorites(self):
         if self.quitting or getattr(self, 'favorites_import', None) is not None:
             return
-        if getattr(self, 'session', None):
-            if not self.session.ready_once or self.session_state not in ('ready', 'waiting'):
-                self.status.set('Import jest dostępny po potwierdzeniu sesji ServiceNow.')
-                return
-        elif self.worker and self.worker.is_alive():
+        session = getattr(self, 'session', None)
+        if not session or not session.ready_once or self.session_state not in ('ready', 'waiting'):
+            self.status.set('Import jest dostępny po potwierdzeniu sesji ServiceNow.')
             return
         from neto_incident_monitor.favorites_ui import FavoritesImport
         self.favorites_import = FavoritesImport(self)
-        if getattr(self, 'session', None):
-            self.update_refresh_controls()
+        self.update_refresh_controls()
 
     def start(self):
         if getattr(self, 'session', None):
@@ -3458,8 +3455,6 @@ class App(DynamicColumns, TableLoading):
                     self.task_interval_entry.configure(state="normal")
                     for button in self.filter_buttons:
                         button.configure(state="normal")
-                    if getattr(self, 'favorites_import', None) is not None:
-                        self.favorites_import.lock_controls()
         except queue.Empty:
             pass
         now = time.monotonic()

@@ -67,7 +67,7 @@ TEXT_FIELDS = {
     'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
                       'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
                       'stale_id', 'period_mismatch'},
-    'rendering_scope': {'login', 'favorites', 'filter_definition'},
+    'rendering_scope': {'login', 'filter_definition'},
     'recovery_reason': {'logout', 'network', 'stalled', 'popup_closed'},
     'login_state': {'authentication', 'session', 'target', 'unknown', 'logout'},
     'previous_login_state': {'authentication', 'session', 'target', 'unknown', 'logout', 'initial'},
@@ -137,7 +137,8 @@ EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 EVENTS.update({'analytics_api_request', 'analytics_api_snapshot'})
 NUMERIC_FIELDS.add('api_call')
-TEXT_FIELDS['api_target'] = {'sla', 'held', 'requests', 'threatened', 'incident', 'sc_request', 'sc_req_item', 'sc_task'}
+TEXT_FIELDS['api_target'] = {'sla', 'held', 'requests', 'threatened', 'incident', 'sc_request', 'sc_req_item', 'sc_task',
+                             'favorites'}
 TEXT_FIELDS['read_reason'].update({'api_configuration', 'api_document', 'api_schema',
     'api_access', 'api_rate_limit', 'api_timeout', 'api_network', 'api_service',
     'api_http', 'api_incomplete', 'api_filter_mismatch', 'api_filter_limit'})
@@ -156,13 +157,7 @@ TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})
 NUMERIC_FIELDS.add('accepted_parts')
 NUMERIC_FIELDS.update({'item_count', 'group_count', 'duplicate_count', 'rejected_count'})
 TEXT_FIELDS['source'].add('favorites')
-TEXT_FIELDS['import_stage'] = {'page', 'open', 'snapshot', 'complete', 'cleanup', 'viewport_read', 'viewport_natural'}
-TEXT_FIELDS['import_reason'] = {'unsupported', 'incomplete', 'empty_unconfirmed', 'context',
-    'search_changed', 'timeout', 'document_changed', 'navigation_interrupted',
-    'network_connection', 'network_dns', 'element_unavailable', 'unexpected'}
-EVENTS.update({'browser_cleanup_error', 'favorites_stage', 'favorites_attempt',
-    'favorites_login_start', 'favorites_login_end', 'favorites_read_error',
-    'favorites_error', 'favorites_end', 'favorites_preview', 'favorites_save_error',
+EVENTS.update({'favorites_api_result', 'favorites_error', 'favorites_end', 'favorites_preview', 'favorites_save_error',
     'favorites_saved', 'favorites_dialog_end'})
 TEXT_FIELDS.update({
     'delivery_stage': {'read', 'route', 'claim', 'send', 'finish', 'worker'},

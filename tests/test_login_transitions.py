@@ -74,7 +74,7 @@ class LoginTransitionTests(unittest.TestCase):
             app.dashboard_requests.put((request, 2026, 10))
             def values(titles):
                 self.assertEqual(runtime.activity, 'filters')
-                self.assertIsNone(runtime.favorites_rendering.client)
+                self.assertIsNone(runtime.definition_rendering.client)
                 return dict.fromkeys(titles, 0)
             with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
                     patch('neto_incident_monitor.dashboard_api.read_month', side_effect=lambda *args: values(TITLES)), \
@@ -82,7 +82,7 @@ class LoginTransitionTests(unittest.TestCase):
                     patch('neto_incident_monitor.dashboard_api.read_requests', side_effect=lambda *args: values(REQUEST_TITLES)):
                 app.read_dashboard_request(runtime.page)
             self.assertEqual(runtime.activity, 'filters')
-            self.assertIsNone(runtime.favorites_rendering.client)
+            self.assertIsNone(runtime.definition_rendering.client)
         window.reset_mock()
         app.read_dashboard_request(runtime.page)
         window.show.assert_not_called()

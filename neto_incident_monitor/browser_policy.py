@@ -46,8 +46,6 @@ class BrowserRuntime:
         self.activity = 'filters'
         from neto_incident_monitor.browser_rendering import HiddenRendering
         self.login_rendering = HiddenRendering(diagnostics, scope='login')
-        self.favorites_rendering = HiddenRendering(diagnostics, scope='favorites')
-        self.favorites_page = None
         self.definition_rendering = HiddenRendering(diagnostics, scope='filter_definition')
         self.definition_page = None
         self.debug_show_browser = False
@@ -71,21 +69,7 @@ class BrowserRuntime:
         from neto_incident_monitor.authentication import clear_login_activity
         clear_login_activity(self.page)
         self.login_rendering.close('runtime_closed')
-        self.favorites_rendering.close('runtime_closed')
         self.definition_rendering.close('runtime_closed')
-
-    @contextmanager
-    def favorites_read(self, page, diagnostics):
-        renderer = self.favorites_rendering
-        renderer.diagnostics = diagnostics
-        self.favorites_page = page
-        try:
-            renderer.sync(page, self.options.snapshot()['hide_browser'] and not self.debug_show_browser)
-            yield
-        finally:
-            self.favorites_page = None
-            renderer.close()
-            renderer.diagnostics = self.diagnostics
 
     @contextmanager
     def definition_read(self, page, diagnostics):
@@ -263,8 +247,6 @@ class BrowserRuntime:
         visible = self.window.is_visible() if self.window is not None else None
         self.record('session_visibility', visibility_reason='debug_browser_toggled', activity=self.activity,
                     debug_show_browser=self.debug_show_browser, hide_browser=hidden, window_visible=visible)
-        if self.favorites_page is not None:
-            self.favorites_rendering.sync(self.favorites_page, options['hide_browser'] and not self.debug_show_browser)
         if self.definition_page is not None:
             self.definition_rendering.sync(self.definition_page, options['hide_browser'] and not self.debug_show_browser)
 

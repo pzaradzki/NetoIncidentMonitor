@@ -1,6 +1,6 @@
 # 022 — Import ulubionych w sesji na żądanie
 
-6 listopada 2026. **Status: zastąpiona przez [025](025-wspolna-sesja-servicenow.md) w zakresie osobnego wątku, karty i wyłączności importu.** Kontrakt odczytu i zatwierdzania opisany niżej zachowuje zastosowanie.
+6 listopada 2026. **Status.** Układ sesji zastąpiła [025](025-wspolna-sesja-servicenow.md), a źródło odczytu [036](036-import-ulubionych-przez-rest.md). Zasady klasyfikacji, podglądu i jawnego zatwierdzenia pozostają w użyciu.
 
 **Uaktualnienie:** [023](023-naturalne-logowanie-importu.md) zastąpiła wymuszanie rozmiaru przez całą sesję i bezwarunkowe tworzenie nowej karty. Poniższy opis zachowuje historyczne uzasadnienie.
 

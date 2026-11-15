@@ -14,6 +14,38 @@ from neto_incident_monitor.shared_session import SharedSession
 
 
 class ReadQueueTests(unittest.TestCase):
+    def test_browser_closure_completes_active_import_without_discarding_other_work(self):
+        from queue import Queue
+        from playwright._impl._errors import TargetClosedError
+
+        app = Mock(threatened_next_read=None)
+        session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        session.connected = True
+        page = Mock()
+        page.is_closed.return_value = False
+        events = Queue()
+        token = 'a' * 32
+        part = ReadPart('favorites', token, {'events': events, 'stop': threading.Event()})
+        dashboard = ReadPart('dashboard', (2026, 11))
+        import_job, _ = session.work.submit('favorites', [part])
+        session.work.submit('dashboard', [dashboard])
+        app.execute_session_part.side_effect = TargetClosedError('PRIVATE_DETAIL')
+
+        with patch('neto_incident_monitor.shared_session.authentication_required', return_value=False):
+            with self.assertRaises(TargetClosedError):
+                session.serve(page)
+
+        token_in_result, kind, (outcome, message) = events.get_nowait()
+        self.assertEqual((token_in_result, kind, outcome), (token, 'result', 'error'))
+        self.assertIn('Chromium zostało zamknięte', message)
+        self.assertNotIn('PRIVATE_DETAIL', message)
+        self.assertIsNone(session.active_job)
+        self.assertEqual(session.work.pending_refreshes(), (False, {dashboard}))
+        session.log.record.assert_any_call('refresh_queue', request_id=import_job, import_id=token,
+            queue_scope='favorites', queue_state='finished', outcome='error', duration_ms=unittest.mock.ANY,
+            item_count=0)
+
     def test_full_refresh_after_filter_change_uses_new_scope(self):
         queue = ReadQueue()
         dashboard, threats = ReadPart('dashboard', (2026, 11)), ReadPart('threatened')
@@ -1141,6 +1173,9 @@ root.mainloop()
         page = Mock(url='https://adeo.service-now.com/now/sow/home')
         page.is_closed.return_value = False
         page.wait_for_timeout.side_effect = lambda ms: time.sleep(ms / 1000)
+        page.evaluate.return_value = {'status': 200, 'result': {'favorites': [
+            {'id': 'example', 'title': 'Przykład', 'url': '/sc_task_list.do'},
+        ]}, 'next': False, 'total': None}
         context = Mock(pages=[page])
         runtime = Mock()
         runtime.debug_show_browser = False
@@ -1162,8 +1197,7 @@ root.mainloop()
                 patch('neto_incident_monitor.shared_session.sync_playwright'), \
                 patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
                 patch('neto_incident_monitor.app.open_login_target', return_value=True), \
-                patch('neto_incident_monitor.app.wait_for_login', return_value=True), \
-                patch('neto_incident_monitor.favorites_worker.collect_with_recovery', return_value=[]) as favorites:
+                patch('neto_incident_monitor.app.wait_for_login', return_value=True):
             app = App(root, history_path=Path(directory.name) / 'history.json', enable_tray=False,
                       apply_startup=False, shared_session=True)
             app.read_dashboard_request = reader('dashboard')
@@ -1194,11 +1228,15 @@ root.mainloop()
             wait_for(lambda: app.favorites_import.result is not None)
             self.assertEqual([item[0] for item in calls], ['dashboard', 'threatened', 'filter'])
             self.assertTrue(all(item[1] is page and item[2] == app.session.thread.ident for item in calls))
-            self.assertIs(favorites.call_args.args[0], page)
+            self.assertEqual(app.favorites_import.rows[0]['name'], 'Przykład')
+            page.evaluate.assert_called_once()
+            self.assertEqual(page.evaluate.call_args.args[1]['route'], '/api/now/ui/navigator/favorites')
             self.assertFalse(app.cycle_active)
             launch.assert_called_once()
             self.assertTrue(launch.call_args.kwargs['visible'])
             context.new_page.assert_not_called()
+            self.assertTrue(app.request_refresh('dashboard'))
+            wait_for(lambda: len(calls) == 4)
             app.favorites_import.cancel()
             app.submit_alert_delivery = Mock()
             app.dashboard_auto_refresh.set(True)
@@ -1212,6 +1250,8 @@ root.mainloop()
             self.assertFalse(app.import_button.enabled)
             wait_for(lambda: app.favorites_import.result is not None)
             self.assertTrue(app.cycle_active)
+            self.assertEqual(page.evaluate.call_count, 2)
+            context.new_page.assert_not_called()
             app.favorites_import.cancel()
             app.stop_monitoring()
             self.assertFalse(app.cycle_active)

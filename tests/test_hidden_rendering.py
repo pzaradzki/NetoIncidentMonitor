@@ -3,17 +3,16 @@ from unittest.mock import Mock, patch
 
 from playwright.sync_api import Error
 from neto_incident_monitor.browser_rendering import HiddenRendering
-from neto_incident_monitor.favorites import HOME
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.browser_policy import BrowserRuntime, BrowserOptions
 
 
 class RenderingTests(unittest.TestCase):
     def setUp(self):
-        self.page = Mock(url=HOME)
+        self.page = Mock(url='https://adeo.service-now.com/incident_list.do')
         self.page.is_closed.return_value = False
         self.log = Mock()
-        self.guard = HiddenRendering(self.log, scope='favorites')
+        self.guard = HiddenRendering(self.log, scope='filter_definition')
         self.client = self.page.context.new_cdp_session.return_value
         self.auth = patch('neto_incident_monitor.authentication.authentication_required', return_value=False)
         self.auth.start()
@@ -40,7 +39,7 @@ class RenderingTests(unittest.TestCase):
         self.guard.close()
         self.client.detach.assert_called_once()
         self.assertNotIn('SYNTHETIC_SECRET', str(self.log.record.call_args_list))
-        self.log.record.assert_any_call('rendering_stop', rendering_scope='favorites', rendering_reason='read_finished',
+        self.log.record.assert_any_call('rendering_stop', rendering_scope='filter_definition', rendering_reason='read_finished',
             duration_ms=unittest.mock.ANY, frame_count=1, ack_count=1, cleanup_errors=0)
 
     def test_reentrant_stop_retains_its_own_start_time(self):
@@ -102,18 +101,18 @@ class RenderingTests(unittest.TestCase):
         self.client.detach.assert_called_once()
         self.assertIsNone(self.guard.client)
 
-    def test_debug_toggle_keeps_manual_login_visible_and_updates_import_rendering(self):
+    def test_debug_toggle_keeps_manual_login_visible_and_updates_definition_rendering(self):
         options = BrowserOptions({'hide_browser': True, 'auto_login': True})
         window = Mock()
         runtime = BrowserRuntime(self.page, options, lambda: window, Mock(), self.log, Mock())
-        runtime.favorites_rendering = Mock()
-        with runtime.favorites_read(self.page, self.log):
+        runtime.definition_rendering = Mock()
+        with runtime.definition_read(self.page, self.log):
             options.toggle_debug_browser()
             runtime.tick()
             options.toggle_debug_browser()
             runtime.tick()
-            self.assertEqual([call.args[1] for call in runtime.favorites_rendering.sync.call_args_list],
-                             [True, False, True])
+            self.assertEqual([call.args[1] for call in runtime.definition_rendering.sync.call_args_list],
+                             [False, True])
 
         options.toggle_debug_browser()
         runtime.set_activity('login')

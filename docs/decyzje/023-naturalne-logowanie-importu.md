@@ -1,6 +1,6 @@
 # 023 — Naturalny rozmiar logowania, ograniczony viewport odczytu
 
-6 listopada 2026. **Status: zasady wyboru osobnej karty zastąpiła [025](025-wspolna-sesja-servicenow.md).** Tymczasowy viewport odczytu i jego przywracanie pozostają w mocy.
+6 listopada 2026. **Status.** Wybór karty zastąpiła [025](025-wspolna-sesja-servicenow.md), a tymczasowy rozmiar czytnika menu wycofała [036](036-import-ulubionych-przez-rest.md).
 
 **Decyzja:** import nie ustawia stałego viewportu przy uruchomieniu sesji. Po nawigacji najpierw sprawdza uwierzytelnienie, a dopiero przy wejściu w czytnik menu tymczasowo wymusza 751×884 przez CDP Emulation. W finally usuwa override i odłącza sesję CDP. Sukces, błąd, Stop i AuthenticationRequired opuszczają ten sam zakres; odzyskiwanie logowania korzysta z naturalnego rozmiaru. Jeśli wywołujący miał jawny viewport, przywraca się jego ustawienie zamiast naturalnego trybu.
 

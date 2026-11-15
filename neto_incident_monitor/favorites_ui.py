@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from neto_incident_monitor.favorites import classify, commit_selection
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics
+from neto_incident_monitor.monitoring import ReadPart
 from neto_incident_monitor.widgets import RoundedButton, checkbox_images
 from neto_incident_monitor.theme import BG
 
@@ -14,7 +15,7 @@ from neto_incident_monitor.theme import BG
 class FavoritesImport:
     def __init__(self, app):
         self.app = app
-        self.session = getattr(app, 'session', None)
+        self.session = app.session
         self.import_id = uuid4().hex
         self.log = LoginDiagnostics(source='favorites', import_id=self.import_id)
         self.events = queue.Queue()
@@ -30,7 +31,7 @@ class FavoritesImport:
         self.checkbox_images = checkbox_images(self.window, background=None)
         self.window.columnconfigure(0, weight=1)
         self.window.rowconfigure(3, weight=1)
-        self.status = tk.StringVar(value='Otwieranie ServiceNow…')
+        self.status = tk.StringVar(value='Import oczekuje w kolejce…')
         self.status_label = ttk.Label(self.window, textvariable=self.status, wraplength=900)
         self.status_label.grid(row=0, column=0, sticky='ew', padx=12, pady=12)
         self.search = tk.StringVar()
@@ -82,34 +83,11 @@ class FavoritesImport:
         y = max(0, (self.window.winfo_screenheight() - height) // 2)
         self.window.geometry(f'{width}x{height}+{x}+{y}')
         self.window.deiconify()
-        if self.session:
-            from neto_incident_monitor.monitoring import ReadPart
-            self.stop = threading.Event()
-            self.part = ReadPart('favorites', self.import_id,
-                                 {'id': self.import_id, 'events': self.events, 'stop': self.stop})
-            self.status.set('Import oczekuje w kolejce…')
-            self.session.submit('favorites', [self.part])
-        else:
-            self.window.grab_set()
-            self.lock_controls()
-            app.stop.clear()
-            self.stop = app.stop
-            settings = {'auto_login': bool(app.auto_login.get())}
-            from neto_incident_monitor.favorites_worker import run_import
-            from neto_incident_monitor.runtime_paths import DATA
-            self.worker = threading.Thread(target=run_import,
-                args=(self.events, app.stop, settings, DATA/'browser-profile', self.import_id), daemon=True)
-            app.worker = self.worker
-            try:
-                self.worker.start()
-            except RuntimeError:
-                self.result = ('error', 'Nie udało się uruchomić importu.')
+        self.stop = threading.Event()
+        self.part = ReadPart('favorites', self.import_id,
+                             {'id': self.import_id, 'events': self.events, 'stop': self.stop})
+        self.session.submit('favorites', [self.part])
         self.timer = self.window.after(100, self.poll)
-
-    def lock_controls(self):
-        self.app.start_button.configure(state='disabled')
-        for button in self.app.filter_buttons:
-            button.configure(state='disabled')
 
     def poll(self):
         self.timer = None
@@ -133,13 +111,12 @@ class FavoritesImport:
         if self.cancelled or self.app.quitting:
             self.finish()
             return
-        if self.result is None:
-            self.result = ('error', 'Import zakończył się bez kompletnego wyniku.')
         outcome, value = self.result
         if outcome == 'success':
             self.items = value
             self.rows = classify(self.items, self.app.filters)
-            self.status.set(f'Odczytano pozycji: {len(self.rows)}. Wybierz filtry do dodania. Nowe filtry i powiadomienia będą wyłączone.')
+            self.status.set(f'Odczytano pozycji: {len(self.rows)}. Wybierz filtry do dodania. Nowe filtry i powiadomienia będą wyłączone.'
+                            if self.rows else 'W ServiceNow nie ma zapisanych Ulubionych.')
             self.log.record('favorites_preview', item_count=len(self.rows),
                 ready_count=sum(r['status']=='ready' for r in self.rows),
                 duplicate_count=sum(r['status']=='existing' for r in self.rows),
@@ -246,7 +223,7 @@ class FavoritesImport:
     def cancel(self):
         self.cancelled = True
         self.stop.set()
-        if self.session and self.session.cancel_pending(self.part):
+        if self.session.cancel_pending(self.part):
             self.finish()
             return
         self.status.set('Anulowanie odczytu Ulubionych…')
@@ -254,7 +231,7 @@ class FavoritesImport:
             self.finish()
 
     def is_reading(self):
-        return self.result is None if self.session else self.worker.is_alive()
+        return self.result is None
 
     def finish(self):
         if self.timer is not None:
@@ -262,10 +239,6 @@ class FavoritesImport:
             self.timer = None
         self.log.record('favorites_dialog_end', outcome='cancelled' if self.cancelled else 'returned')
         self.app.favorites_import = None
-        if self.session and not self.app.quitting:
+        if not self.app.quitting:
             self.app.update_refresh_controls()
-        if not self.app.quitting and not self.session:
-            self.app.start_button.configure(state='normal')
-            for button in self.app.filter_buttons:
-                button.configure(state='normal')
         self.window.destroy()

@@ -16,15 +16,15 @@ class FavoritesSessionTests(unittest.TestCase):
             app.start()
         load.assert_not_called()
 
-    def test_import_during_monitor_does_not_open_dialog(self):
+    def test_import_without_confirmed_shared_session_does_not_open_dialog(self):
         app = App.__new__(App)
         app.quitting = False
-        app.worker = Mock()
-        app.worker.is_alive.return_value = True
+        app.status = Mock()
         app.favorites_import = None
         with patch('neto_incident_monitor.favorites_ui.FavoritesImport') as dialog:
             app.import_favorites()
         dialog.assert_not_called()
+        app.status.set.assert_called_once()
 
     def test_context_cleanup_does_not_mask_primary_error(self):
         from neto_incident_monitor.browser_session import close_session

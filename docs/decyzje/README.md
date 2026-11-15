@@ -29,6 +29,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[036 — Import Ulubionych przez API nawigatora](036-import-ulubionych-przez-rest.md) opisuje odczyt drzewa z bieżącej sesji i wycofanie czytnika menu.
+
 [035 — Limit 1000 rekordów w odczycie filtra](035-limit-odczytu-filtrow.md) opisuje pojedyncze żądanie i obsługę filtrów przekraczających limit.
 
 [034 — Filtry użytkownika przez Table API](034-odczyt-filtrow-przez-rest.md) opisuje trwałą definicję filtra, wspólną kartę i warunki zatwierdzania pełnego wyniku.
@@ -53,9 +55,9 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 [024 — Kafelki informacyjne](024-kafelki-informacyjne.md) usuwa nawigację z kafelków dashboardu i zagrożeń SLA, zachowując animację najechania.
 
-[023 — Naturalny rozmiar logowania importu](023-naturalne-logowanie-importu.md): viewport tylko podczas odczytu i wykorzystanie jedynej startowej pustej karty; częściowo zastępuje 022.
+[023 — Naturalny rozmiar logowania importu](023-naturalne-logowanie-importu.md) zachowuje motywację dawnego viewportu. Własność karty opisuje 025, a migrację odczytu 036.
 
-[022 — Import ulubionych w sesji na żądanie](022-import-ulubionych-na-zadanie.md): wyłączność profilu, zbiorczy odczyt i wybór przed zapisem; wdrożone tylko w źródłach.
+[022 — Import ulubionych w sesji na żądanie](022-import-ulubionych-na-zadanie.md) opisuje pierwotną realizację oraz zachowane zasady podglądu i zapisu.
 
 [021 — Gotowość i potwierdzenie kontekstu dashboardu](021-zatwierdzanie-kontekstu-dashboardu.md): oczekiwanie na Zastosuj i wspólna obserwacja stanu kategorii bez ponawiania kliknięć.
 

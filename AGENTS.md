@@ -10,7 +10,7 @@
 
 ## Integracja ServiceNow
 
-Sprawdź w kodzie, z którego źródła korzysta dana funkcja. Dashboard, Incydenty zagrożone SLA i filtry użytkownika pobierają dane przez REST. Przy brakującej definicji filtra lub jej ręcznym odświeżeniu klasyczna lista dostarcza warunki i nagłówki. Import Ulubionych korzysta z menu ServiceNow.
+Sprawdź w kodzie, z którego źródła korzysta dana funkcja. Dashboard, Incydenty zagrożone SLA i filtry użytkownika pobierają dane przez REST. Przy brakującej definicji filtra lub jej ręcznym odświeżeniu klasyczna lista dostarcza warunki i nagłówki. Import Ulubionych korzysta z odczytowej trasy nawigatora ServiceNow przez tę samą sesję. [Kontrakt importu Ulubionych](docs/kontrakty/kontrakt-importu-ulubionych.md).
 
 ### REST
 

@@ -1,12 +1,12 @@
 # Architektura Neto Incident Monitor
 
-Ostatnia opublikowana wersja to [1.11.2](wersje/v1.11.2.md). Bieżące źródła obejmują również migrację analityki i filtrów użytkownika na REST.
+Ostatnia opublikowana wersja to [1.11.2](wersje/v1.11.2.md). Bieżące źródła obejmują również migrację analityki, filtrów użytkownika i importu Ulubionych na REST.
 
 Lista filtrów aktualizuje pełny zestaw kart jedną operacją, bez przejściowego pustego obszaru przewijania. Przełącznik zmienia stan istniejącej listy po udanym zapisie, bez jej odbudowy; zachowuje rewizje filtrów i budzenie harmonogramu. Grafiki kart są współdzielone według szerokości i stanu (najwyżej osiem wariantów), a skrócone etykiety są pamiętane do zmiany danych lub szerokości. Zapis konfiguracji nadal jest natychmiastowy i wycofuje stan po błędzie. [Próby listy](plany/zakonczone/plynnosc-listy-filtrow.md).
 
 ## Przepływ i odpowiedzialności
 
-Import pozostawia naturalny rozmiar strony na czas nawigacji i logowania. Tymczasowe 751×884 obejmuje wyłącznie czytnik menu. Emulacja kończy się przed odzyskiwaniem sesji, po błędzie i przy anulowaniu. [Decyzja 023](decyzje/023-naturalne-logowanie-importu.md).
+Import odczytuje Ulubione jednym GET z API nawigatora. `favorites_api.py` sprawdza strukturę zakładek i grup przed podglądem. Żądanie nie zmienia rozmiaru strony ani widoczności Chromium. Odzyskiwanie sesji obsługuje `section_runner.py`, a renderowanie pozostaje dostępne dla logowania i definicji filtrów. [Decyzja 036](decyzje/036-import-ulubionych-przez-rest.md) · [Kontrakt importu](kontrakty/kontrakt-importu-ulubionych.md)
 
 W bieżących źródłach uruchomienie aplikacji tworzy jeden widoczny Chromium. Po potwierdzeniu sesji na stronie SOW i ukryciu Chromium aplikacja udostępnia główne okno. `SharedSession` pozostaje właścicielem karty i obsługuje cykl monitoringu, ręczne aktualizacje i import. Stop kończy cykl. Import używa tej samej karty i oddaje ją po odczycie, a `favorites_ui.py` odbiera wynik w Tk przez kolejkę z identyfikatorem importu. Zapis wymaga potwierdzenia. Nowe filtry i powiadomienia są wyłączone. [Decyzja 025](decyzje/025-wspolna-sesja-servicenow.md), [stan odbioru](plany/zakonczone/wspolna-sesja-servicenow.md).
 

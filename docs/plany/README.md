@@ -2,10 +2,6 @@
 
 Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
-## Plany do wdrożenia
-
-- [Migracja importu Ulubionych ServiceNow na REST API](migracja-importu-ulubionych-na-api.md) · Do potwierdzenia dostęp do zakładek zwykłego użytkownika w instancji ADEO.
-
 ## Pozostałe tematy
 
 - Ustalić retencję outbox i lokalizację logów uruchomień ze źródeł. Pomiary opóźnień Tk odłożono do osobnej pracy. [Wyniki audytu](zakonczone/naprawy-audytu.md)
@@ -16,6 +12,7 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Migracja importu Ulubionych ServiceNow na REST API](zakonczone/migracja-importu-ulubionych-na-api.md) | ADEO: 37 zakładek zgodnych z menu, w tym 34 obsługiwane filtry. 506 zaliczonych testów, 2 pominięte. |
 | [Migracja odczytu filtrów ServiceNow na REST API](zakonczone/migracja-odczytu-filtrow-na-api.md) | 515 zaliczonych testów, 2 pominięte. Usunięto czytnik wierszy i paginację DOM. Szczegółowy odbiór na ServiceNow celowo pominięto. |
 | [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](zakonczone/wspolna-sesja-servicenow.md) | Pozostałe próby odbiorowe zaliczone według potwierdzenia użytkownika z 14 listopada 2026. |
 | [Dashboard i Incydenty zagrożone SLA przez REST API](zakonczone/dashboard-servicenow-api.md) | Zgodność potwierdzona przez użytkownika. 538 testów zaliczonych, 1 pominięty. |

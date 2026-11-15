@@ -7,13 +7,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from playwright.sync_api import TimeoutError
 from neto_incident_monitor.app import App
 from neto_incident_monitor.favorites import classify, commit_selection
-from neto_incident_monitor.favorites_worker import collect_with_recovery, run_import
-from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
-from neto_incident_monitor.read_budget import CURRENT, BudgetExpired
-from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
+from neto_incident_monitor.favorites_worker import read_on_session
+from neto_incident_monitor.read_errors import Cancelled
+from neto_incident_monitor.login_diagnostics import _logger
 
 
 def item(name='Filtr A', href='/incident_list.do?sysparm_query=active%3Dtrue'):
@@ -50,6 +48,22 @@ class FavoritesModelTests(unittest.TestCase):
         self.assertEqual(app.filters[0], old[0])
         for key in ('enabled','notify_windows','notify_teams','notify_google_chat'):
             self.assertIs(app.filters[-1][key],False)
+        app.persist_filters.assert_called_once()
+
+    def test_commit_rechecks_duplicates_added_after_preview(self):
+        app = Mock(filters=[])
+        items = [item(), item('Filtr B', '/sc_task_list.do')]
+        preview = classify(items, app.filters)
+        self.assertEqual([row['status'] for row in preview], ['ready', 'ready'])
+        existing = {'name': 'Dodany podczas podglądu', 'url': preview[0]['url'], 'enabled': True}
+        app.filters = [existing]
+
+        with patch('neto_incident_monitor.app.read_json', return_value={}):
+            self.assertEqual(commit_selection(app, items, {0, 1}), 1)
+
+        self.assertEqual(app.filters[0], existing)
+        self.assertEqual(app.filters[1]['url'], preview[1]['url'])
+        self.assertFalse(app.filters[1]['enabled'])
         app.persist_filters.assert_called_once()
 
     def test_failed_save_preserves_memory_and_allows_retry(self):
@@ -91,96 +105,55 @@ class FavoritesModelTests(unittest.TestCase):
 
 
 class FavoritesRecoveryTests(unittest.TestCase):
-    def test_shared_budget_is_not_reset_and_login_time_is_excluded(self):
-        clock=[0];budgets=[];attempt=[0]
-        def read(*args):
-            budgets.append(CURRENT.get());attempt[0]+=1;clock[0]+=2
-            if attempt[0]==1:raise TimeoutError('synthetic')
-            if attempt[0]==2:raise AuthenticationRequired()
-            return [item()]
-        def restore():clock[0]+=100;return True
-        with patch('neto_incident_monitor.read_budget.monotonic',side_effect=lambda:clock[0]), \
-             patch('neto_incident_monitor.favorites_worker.monotonic',side_effect=lambda:clock[0]), \
-             patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=read):
-            collect_with_recovery(Mock(),threading.Event(),Mock(),restore,Mock())
-        self.assertTrue(all(b is budgets[0] for b in budgets))
-        self.assertEqual(budgets[0].end,130)
-        self.assertEqual(clock[0],106)
+    def setUp(self):
+        self.page = Mock()
+        self.stop = threading.Event()
+        self.session = Mock(active_job=Mock(id=17))
+        self.request = {'id': 'a' * 32, 'events': queue.Queue()}
+        self.favorites = {'status': 200, 'result': {'favorites': [
+            {'id': 'synthetic', 'title': 'Filtr A', 'url': '/incident_list.do'},
+        ]}, 'next': False, 'total': None}
 
-    def test_exhausted_budget_does_not_start_another_attempt(self):
-        clock=[0]
-        def read(*args):clock[0]=31;return [item()]
-        with patch('neto_incident_monitor.read_budget.monotonic',side_effect=lambda:clock[0]), \
-             patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=read) as reader:
-            with self.assertRaises(BudgetExpired):
-                collect_with_recovery(Mock(),threading.Event(),Mock(),Mock(),Mock())
-        self.assertEqual(reader.call_count,1)
+    def read(self):
+        return read_on_session(self.page, self.request, self.session, self.stop)
 
-    def test_timeout_then_login_then_success_has_three_reads_one_restore(self):
-        stop=threading.Event();restore=Mock(return_value=True)
-        with patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=[TimeoutError('SYNTHETIC_SECRET'),AuthenticationRequired(),[item()]]) as read:
-            rows=collect_with_recovery(Mock(),stop,Mock(),restore,Mock())
-        self.assertEqual(rows,[item()]);self.assertEqual(read.call_count,3)
-        restore.assert_called_once()
+    def test_transient_failure_and_expired_session_share_one_retry_budget(self):
+        self.page.evaluate.side_effect = [{'status': 503}, {'status': 401}, self.favorites]
+        self.session.authenticate.return_value = True
+        with self.assertLogs(_logger, level='INFO') as captured:
+            self.assertTrue(self.read())
+        self.session.authenticate.assert_called_once_with(self.page, self.stop)
+        self.assertEqual(self.page.evaluate.call_count, 3)
+        events = list(self.request['events'].queue)
+        self.assertIn(('a' * 32, 'status', 'Oczekiwanie na logowanie do ServiceNow…'), events)
+        self.assertEqual(events[-1][2][0], 'success')
+        records = [json.loads(record.getMessage()) for record in captured.records]
+        self.assertTrue(all(row.get('import_id') == 'a' * 32 and row.get('request_id') == 17 for row in records))
+        self.assertTrue(any(row.get('read_reason') == 'api_service' for row in records))
+        self.assertTrue(any(row['event'] == 'favorites_end' and row['outcome'] == 'returned' for row in records))
 
-    def test_repeated_login_is_final(self):
-        with patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=AuthenticationRequired()) as read:
-            restore=Mock(return_value=True)
-            with self.assertRaises(AuthenticationRequired):
-                collect_with_recovery(Mock(),threading.Event(),Mock(),restore,Mock())
-        self.assertEqual(read.call_count,2);restore.assert_called_once()
+    def test_access_denial_and_rate_limit_finish_without_retry(self):
+        for status, message in ((403, 'odmówił dostępu'), (429, 'ograniczył liczbę żądań')):
+            with self.subTest(status=status):
+                self.page.evaluate.reset_mock(return_value=True)
+                self.page.evaluate.return_value = {'status': status}
+                self.assertFalse(self.read())
+                self.page.evaluate.assert_called_once()
+                token, kind, (outcome, text) = list(self.request['events'].queue)[-1]
+                self.assertEqual((token, kind, outcome), ('a' * 32, 'result', 'error'))
+                self.assertIn(message, text)
+        self.session.authenticate.assert_not_called()
 
-    def test_stop_during_login(self):
-        stop=threading.Event()
-        def restore():stop.set();return True
-        with patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=AuthenticationRequired()) as read:
-            with self.assertRaises(Cancelled):
-                collect_with_recovery(Mock(),stop,Mock(),restore,Mock())
-        self.assertEqual(read.call_count,1)
-
-    def test_two_timeouts_are_final(self):
-        with patch('neto_incident_monitor.favorites_worker.navigate_page'), \
-             patch('neto_incident_monitor.favorites_worker.read_favorites',side_effect=TimeoutError('SYNTHETIC_SECRET')) as reader:
-            with self.assertRaises(TimeoutError):
-                collect_with_recovery(Mock(),threading.Event(),Mock(),Mock(),Mock())
-        self.assertEqual(reader.call_count,2)
-
-    def test_run_import_closes_resources_before_publishing_result(self):
-        context,page,runtime=Mock(),Mock(),Mock()
-        context.pages=[]
-        context.new_page.return_value=page
-        events=Mock()
-        def emit(value):
-            if value[1]=='result':
-                context.close.assert_called_once();runtime.close.assert_called_once()
-                page.close.assert_called_once()
-        events.put.side_effect=emit
-        with patch('playwright.sync_api.sync_playwright'), \
-             patch('neto_incident_monitor.browser_session.open_context',return_value=context), \
-             patch('neto_incident_monitor.browser_session.create_runtime',return_value=runtime), \
-             patch('neto_incident_monitor.favorites_worker.collect_with_recovery',return_value=[item()]), \
-             patch('neto_incident_monitor.favorites_worker.LoginDiagnostics'):
-            run_import(events,threading.Event(),{},Path('synthetic-profile'),'a'*32)
-        context.new_page.assert_called_once()
-        page.set_viewport_size.assert_not_called()
-
-    def test_diagnostics_serialize_only_allowed_context(self):
-        with self.assertLogs(_logger,level='INFO') as captured:
-            log=LoginDiagnostics(source='favorites',import_id='a'*32)
-            log.record('favorites_stage',import_stage='complete',item_count=36,group_count=5,
-                       name='SYNTHETIC_SECRET',href='https://example.com/SYNTHETIC_SECRET')
-            log.record('favorites_error',import_reason='unsupported',outcome='error')
-        rows=[json.loads(r.getMessage()) for r in captured.records]
-        row=next(r for r in rows if r['event']=='favorites_stage')
-        self.assertEqual(row['import_id'],'a'*32)
-        self.assertEqual(row['item_count'],36)
-        self.assertEqual(row['import_stage'],'complete')
-        self.assertNotIn('SYNTHETIC_SECRET',str(captured.output))
+    def test_cancellation_during_login_cannot_publish_partial_or_successful_preview(self):
+        self.page.evaluate.return_value = {'status': 401}
+        def cancel(*_):
+            self.stop.set()
+            return True
+        self.session.authenticate.side_effect = cancel
+        with self.assertRaises(Cancelled):
+            self.read()
+        self.assertEqual(self.page.evaluate.call_count, 1)
+        self.assertTrue(all(event[1] == 'status' for event in self.request['events'].queue))
 
 
 class FavoritesUITests(unittest.TestCase):
@@ -196,22 +169,28 @@ class FavoritesUITests(unittest.TestCase):
             self.app=App(self.root,history_path=Path(self.temp.name)/'history.json',enable_tray=False,apply_startup=False)
         self.app.filters=[]
         self.app.persist_filters=Mock()
+        self.app.session = Mock(ready_once=True)
+        self.app.session.cancel_pending.return_value = False
+        self.app.session_state = 'ready'
+        self.app.update_refresh_controls = Mock()
+
+    def deliver(self, view, outcome):
+        view.events.put((view.import_id, 'result', outcome))
+        view.window.after_cancel(view.timer)
+        view.timer = None
+        view.poll()
 
     def open(self):
-        def run(events,stop,settings,profile,token):
-            events.put((token,'result',('success',[item(),item(href='/sc_task_list.do')])) )
-        with patch('neto_incident_monitor.favorites_worker.run_import',side_effect=run):
-            self.app.import_favorites()
-            view=self.app.favorites_import
-            view.worker.join(timeout=3)
-        view.window.after_cancel(view.timer);view.timer=None
-        view.poll()
+        self.app.import_favorites()
+        view = self.app.favorites_import
+        self.app.session.submit.assert_called_once_with('favorites', [view.part])
+        self.deliver(view, ('success', [item(), item(href='/sc_task_list.do')]))
         return view
 
     def test_preview_starts_unselected_and_search_selection_preserves_order(self):
         view=self.open()
         self.assertEqual(view.chosen,set())
-        self.app.start()  # The completed preview still reserves the operation.
+        self.app.import_favorites()  # The completed preview still reserves the importer.
         self.assertIs(self.app.favorites_import,view)
         view.toggle('1');view.toggle('0')
         with patch('neto_incident_monitor.app.read_json',return_value={}):
@@ -312,18 +291,31 @@ class FavoritesUITests(unittest.TestCase):
         self.assertEqual(self.app.filters,[])
         view.cancel()
 
-    def test_cancel_waits_until_worker_releases_profile(self):
-        entered=threading.Event();released=threading.Event()
-        self.addCleanup(released.set)
-        def run(events,stop,*args):entered.set();stop.wait(3);released.wait(3)
-        with patch('neto_incident_monitor.favorites_worker.run_import',side_effect=run):
-            self.app.import_favorites();view=self.app.favorites_import
-            self.assertTrue(entered.wait(2))
-            view.cancel()
-            self.assertIs(self.app.favorites_import,view)
-            released.set()
-            view.worker.join(3)
-            view.window.after_cancel(view.timer);view.timer=None
-            view.poll()
+    def test_cancel_active_import_ignores_result_and_does_not_stop_monitoring(self):
+        self.app.import_favorites()
+        view = self.app.favorites_import
+        self.app.cycle_active = True
+        view.cancel()
+        self.assertTrue(view.stop.is_set())
+        self.assertIs(self.app.favorites_import, view)
+        self.deliver(view, ('success', [item()]))
+        self.assertTrue(self.app.cycle_active)
         self.assertIsNone(self.app.favorites_import)
         self.app.persist_filters.assert_not_called()
+
+    def test_cancel_pending_import_releases_dialog(self):
+        self.app.session.cancel_pending.return_value = True
+        self.app.import_favorites()
+        view = self.app.favorites_import
+        view.cancel()
+        self.app.session.cancel_pending.assert_called_once_with(view.part)
+        self.assertIsNone(self.app.favorites_import)
+        self.app.persist_filters.assert_not_called()
+
+    def test_empty_preview_has_its_own_message(self):
+        self.app.import_favorites()
+        view = self.app.favorites_import
+        self.deliver(view, ('success', []))
+        self.assertIn('nie ma zapisanych Ulubionych', view.status.get())
+        self.assertFalse(view.add.enabled)
+        view.cancel()
