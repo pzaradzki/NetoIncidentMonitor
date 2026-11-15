@@ -2,7 +2,7 @@
 from contextvars import ContextVar
 from time import monotonic
 from playwright.sync_api import TimeoutError
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 
 from neto_incident_monitor.read_budget import CURRENT, remaining_ms
 

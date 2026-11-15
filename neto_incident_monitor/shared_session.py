@@ -14,7 +14,7 @@ from neto_incident_monitor.browser_session import close_session, create_runtime,
 from neto_incident_monitor.favorites import HOME
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, TRACE, error_facts
 from neto_incident_monitor.monitoring import Health, ReadPart, ReadQueue
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 
 
 class StopSignal:
@@ -135,12 +135,14 @@ class SharedSession:
         self.manual_filter_parts = parts
         self.filter_parts = tuple(part for part in parts.values() if part.data['scheduled'])
         if invalidated:
+            invalidated.update(ReadPart('filter_definition', part.target) for part in tuple(invalidated))
             for job, skipped in self.work.discard_pending_filters(invalidated):
                 LoginDiagnostics(source='monitor', request_id=job.id).record('refresh_queue',
                     queue_scope=job.scope, queue_state='filter_changed', item_count=skipped)
 
     def filter_is_current(self, part):
-        return self.manual_filter_parts.get(part.target[0]) == part
+        current = self.manual_filter_parts.get(part.target[0])
+        return current is not None and current.target == part.target
 
     def start_cycle(self, initial, intervals):
         self.cycle = MonitorCycle(initial, intervals)
@@ -342,11 +344,13 @@ class SharedSession:
                 continue
             part, source = selected
             self.last_idle = None
-            self.app.threatened_delay_reason = {'filter': 'filter', 'dashboard': 'dashboard'}.get(part.scope, 'idle')
+            is_filter = part.scope in ('filter', 'filter_definition')
+            self.app.threatened_delay_reason = 'filter' if is_filter else (
+                'dashboard' if part.scope == 'dashboard' else 'idle')
             stop = StopSignal(self.closed, cycle.stop) if source != 'manual' else self.closed
             if part.scope == 'favorites':
                 stop = StopSignal(self.closed, part.data['stop'])
-            elif part.scope == 'filter':
+            elif is_filter:
                 stop = StopSignal(stop, invalidated=lambda part=part: not self.filter_is_current(part))
             try:
                 checkpoint(stop)
@@ -358,7 +362,7 @@ class SharedSession:
                 if part.scope == 'favorites':
                     part.data['events'].put((part.target, 'result', ('cancelled', 'Import anulowany.')))
                 success = False
-            skipped = part.scope == 'filter' and not self.filter_is_current(part)
+            skipped = is_filter and not self.filter_is_current(part)
             self.work.complete_part(part, manual=source == 'manual', success=success)
             if source == 'initial':
                 cycle.initial.popleft()

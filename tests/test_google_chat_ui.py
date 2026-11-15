@@ -64,7 +64,7 @@ class GoogleChatUITests(unittest.TestCase):
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         widgets = list(descendants(dialog))
         toggles = [w for w in widgets if isinstance(w, Toggle)]
-        self.assertEqual(len(toggles), 3)
+        self.assertEqual(len(toggles), 2)
         labels = [w.cget('text') for w in widgets if isinstance(w, ttk.Label)]
         self.assertNotIn('Powiadomienia Windows', labels)
         self.assertNotIn('Powiadomienia Microsoft Teams', labels)
@@ -84,7 +84,7 @@ class GoogleChatUITests(unittest.TestCase):
         show_filter_settings(self.app, 0)
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         widgets = list(descendants(dialog))
-        self.assertEqual(len([w for w in widgets if isinstance(w, Toggle)]), 2)
+        self.assertEqual(len([w for w in widgets if isinstance(w, Toggle)]), 1)
         next(w for w in widgets if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
         for key, expected in [('notify_windows', True), ('notify_teams', False), ('notify_google_chat', True)]:
             self.assertEqual(self.app.filters[0][key], expected)

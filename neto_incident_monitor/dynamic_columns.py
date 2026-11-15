@@ -58,11 +58,19 @@ def default_layout(keys, incident_list):
     return visible, visible + [key for key in LOCAL_KEYS if key not in visible]
 
 
-def update_profile(previous, schema, *, incident_list=False):
+def update_profile(previous, schema, *, incident_list=False, preserve_layout=False):
     schema = normalize_schema(schema)
     if not schema:
         return previous
     keys = [c['key'] for c in schema]
+    if previous is not None and preserve_layout:
+        known = {c['key'] for c in previous['schema']}
+        valid = set(keys) | set(LOCAL_KEYS)
+        added = [key for key in keys if key not in known]
+        order = [key for key in previous['order'] if key in valid]
+        visible = [key for key in previous['visible'] if key in valid]
+        widths = {key: width for key, width in previous['widths'].items() if key in valid}
+        return {'schema': schema, 'visible': visible + added, 'order': order + added, 'widths': widths}
     if previous is None or set(keys) != {c['key'] for c in previous['schema']}:
         visible, order = default_layout(keys, incident_list and previous is None)
         return {'schema': schema, 'visible': visible, 'order': order, 'widths': {}}
@@ -85,9 +93,10 @@ class DynamicColumns:
         save_json(CONFIG, settings)
         self.column_profiles = profiles
 
-    def accept_column_schema(self, url, schema):
+    def accept_column_schema(self, url, schema, *, preserve_layout=False):
         old = self.column_profiles.get(url)
-        profile = update_profile(old, schema, incident_list=self._is_incident_list(url))
+        profile = update_profile(old, schema, incident_list=self._is_incident_list(url),
+                                 preserve_layout=preserve_layout)
         if profile is None:
             return
         if profile != old:
@@ -142,7 +151,7 @@ class DynamicColumns:
         if priority[:1] in PriorityDots.COLORS:
             values['priority'] = '\u2003\u2002' + priority
         values['time'] = detected
-        values['age_minutes'] = age_minutes(incident.get('created'), incident['number'])
+        values['age_minutes'] = age_minutes(incident.get('_created_utc') or incident.get('created'), incident['number'])
         return [values.get(key) or '—' for key in table['columns']]
 
     def column_order(self, table):

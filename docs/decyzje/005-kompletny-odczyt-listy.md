@@ -2,6 +2,8 @@
 
 Data: 1 listopada 2026. **Status: przyjęta; wdrożona w źródłach, odbiór nowego EXE pozostał.**
 
+Czytnik wierszy i paginację DOM zastąpiły [decyzja 034](034-odczyt-filtrow-przez-rest.md) i [decyzja 035](035-limit-odczytu-filtrow.md). Nadal obowiązuje zasada zatwierdzania wyłącznie pełnego wyniku.
+
 **Decyzja:** tabela, pager i metadane należą do jednego rozpoznanego kontekstu. Sprawdzamy gotowość strony, ciągłość zakresów, liczbę i unikalność rekordów oraz kompletność całego wyniku. Dopiero zakończony odczyt trafia do warstwy aktualizacji historii, obecności i powiadomień.
 
 **Powód:** wyłączony przycisk „Dalej” lub powtarzające się numery nie dowodzą kompletności; częściowy zestaw nie może udawać pełnej listy.

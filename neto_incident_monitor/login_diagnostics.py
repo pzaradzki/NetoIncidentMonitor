@@ -46,15 +46,15 @@ NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', '
     'password_ready', 'button_count', 'aria_or_class_disabled', 'attempt',
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
     'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available',
-    'filter_index', 'outside_schedule', 'page_index', 'first_row', 'last_row', 'total_rows', 'page_size', 'previous_page_size',
+    'filter_index', 'outside_schedule', 'page_index', 'total_rows', 'page_size',
     'row_count', 'records_read', 'duration_ms', 'request_id', 'ready_count', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
 WINDOW_EXPOSURE = {'hidden', 'minimized', 'unavailable', 'off_screen', 'exposed', 'partly_covered',
                    'covered', 'covered_topmost'}
 
 TEXT_FIELDS = {
-    'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'favorites'},
+    'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'filter_definition', 'favorites'},
     'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled', 'filter_changed'},
-    'filter_change': {'add', 'rename', 'replace', 'remove'},
+    'filter_change': {'add', 'rename', 'replace', 'remove', 'disable_limit'},
     'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window',
                           'recovered_main_window', 'main_window_observed', 'debug_browser_toggled'},
     'window_exposure': WINDOW_EXPOSURE,
@@ -67,7 +67,7 @@ TEXT_FIELDS = {
     'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
                       'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
                       'stale_id', 'period_mismatch'},
-    'rendering_scope': {'login', 'favorites'},
+    'rendering_scope': {'login', 'favorites', 'filter_definition'},
     'recovery_reason': {'logout', 'network', 'stalled', 'popup_closed'},
     'login_state': {'authentication', 'session', 'target', 'unknown', 'logout'},
     'previous_login_state': {'authentication', 'session', 'target', 'unknown', 'logout', 'initial'},
@@ -79,23 +79,13 @@ TEXT_FIELDS = {
                     'authentication_required'},
     'cache_result': {'saved','failed','restored','invalid','skipped'},
     'delay_reason': {'filter','dashboard','login','browser','idle'},
-    'outcome': {'started', 'returned', 'partial', 'error', 'cancelled', 'authentication'},
+    'outcome': {'started', 'received', 'returned', 'partial', 'error', 'cancelled', 'authentication'},
     'activity': {'login', 'filters'},
     'readiness_reason': {'covered', 'unstable', 'disabled', 'hidden', 'detached', 'outside_viewport', 'unavailable'},
     'origin': {'adeo_identity', 'servicenow', 'other'},
     'filter_outcome': {'success', 'error', 'cancelled', 'discarded', 'waiting_login', 'interrupted', 'rejected'},
-    'source': {'dashboard', 'monitor', 'pagination', 'configuration'},
-    'pagination_stage': {'navigate', 'resolve_url', 'read_rows', 'first_page', 'list_total', 'page_size',
-                         'next_page', 'verify_complete', 'retry', 'prepare', 'history_write'},
-    'pagination_mode': {'ranged', 'unpaginated'},
-    'page_size_result': {'checking_menu', 'confirmed', 'unconfirmed', 'menu_unavailable', 'control_unavailable'},
-    'pager_direction': {'first', 'next'},
-    'pagination_reason': {'ready', 'loading', 'page_unavailable', 'ambiguous_list',
-        'pager_disagreement', 'invalid_metadata', 'metadata_missing', 'range_mismatch',
-        'row_count_mismatch', 'record_type_mismatch', 'schema_changed', 'query_mismatch', 'view_mismatch', 'list_changed', 'missing_pager', 'premature_end',
-        'overlapping_rows', 'total_mismatch', 'document_changed', 'page_timeout',
-        'read_timeout', 'resolve_timeout', 'large_list_rejected', 'unexpected',
-        'timeout', 'element_unavailable', 'network_connection'},
+    'source': {'dashboard', 'monitor', 'filter_read', 'configuration'},
+    'filter_stage': {'prepare', 'definition', 'api_read', 'history_write'},
     'section': {'sla', 'held', 'requests', 'threatened'},
     'operation': {'api_request', 'api_document'},
     'network_error': {'aborted', 'timeout', 'dns', 'connection', 'certificate', 'other'},
@@ -116,9 +106,9 @@ TEXT_FIELDS = {
         'wybór konta nie spowodował przejścia do formularza',
         'nierozpoznany krok logowania wymaga obsługi użytkownika'},
 }
-EVENTS = set('''threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end pagination_start pagination_attempt pagination_bound pagination_state pagination_page pagination_stage_complete
-filter_read_start filter_read_resumed filter_read_end filter_read_error filter_links_degraded filter_commit_start filter_commit_complete
-filter_url_validation pagination_query_comparison pagination_approval_wait pagination_action pagination_page_size pagination_retry pagination_complete pagination_error pagination_cancelled pagination_waiting_login
+EVENTS = set('''threatened_details_complete threatened_details_incomplete browser_visibility_repaired login_recovery login_user_required login_form_changed account_awaiting_result login_state_changed rendering_start rendering_stop rendering_error rendering_deferred section_read_retry dashboard_cache threatened_schedule browser_cleanup_error dashboard_stage_end
+filter_read_start filter_read_resumed filter_read_end filter_read_error filter_commit_start filter_commit_complete
+filter_url_validation
 start blocked automatic_skipped awaiting_submission_result
 waiting_password_fill waiting_remembered_form submit_unavailable submit_retry_cancelled
 submit_attempt submit_error submit_retry_scheduled submit_clicked account_selection_ambiguous
@@ -147,13 +137,18 @@ EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 EVENTS.update({'analytics_api_request', 'analytics_api_snapshot'})
 NUMERIC_FIELDS.add('api_call')
-TEXT_FIELDS['api_target'] = {'sla', 'held', 'requests', 'threatened'}
+TEXT_FIELDS['api_target'] = {'sla', 'held', 'requests', 'threatened', 'incident', 'sc_request', 'sc_req_item', 'sc_task'}
 TEXT_FIELDS['read_reason'].update({'api_configuration', 'api_document', 'api_schema',
     'api_access', 'api_rate_limit', 'api_timeout', 'api_network', 'api_service',
-    'api_http', 'api_incomplete', 'api_filter_mismatch'})
+    'api_http', 'api_incomplete', 'api_filter_mismatch', 'api_filter_limit'})
+NUMERIC_FIELDS.add('api_has_next')
+TEXT_FIELDS['api_list_check'] = {'total', 'shape', 'limit', 'record_count', 'next_page', 'record_identity', 'fields'}
 TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}
 EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
 EVENTS.update({'session_visibility', 'session_connection_error', 'refresh_queue', 'filter_config_change'})
+TEXT_FIELDS['read_reason'].update({'filter_definition_save', 'filter_definition_columns'})
+EVENTS.update({'filter_definition', 'filter_definition_discovery'})
+EVENTS.update({'filter_api_page', 'filter_query_comparison'})
 EVENTS.add('password_save_prompt')
 TEXT_FIELDS['password_save_choice'] = {'waiting', 'saved', 'disabled', 'cancelled', 'save_error'}
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}

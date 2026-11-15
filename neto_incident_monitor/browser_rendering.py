@@ -1,4 +1,4 @@
-"""Bounded rendering support for hidden sign-in and Favorites pages."""
+"""Bounded rendering support for hidden ServiceNow and sign-in pages."""
 from time import monotonic
 from urllib.parse import urlparse
 
@@ -12,7 +12,7 @@ class LoginRenderingUnavailable(RuntimeError):
 
 class HiddenRendering:
     def __init__(self, diagnostics, scope):
-        if scope not in ('login', 'favorites'):
+        if scope not in ('login', 'favorites', 'filter_definition'):
             raise ValueError('Unknown rendering scope')
         self.scope = scope
         self.diagnostics = diagnostics
@@ -109,6 +109,13 @@ class HiddenRendering:
         if self.scope == 'favorites':
             from neto_incident_monitor.favorites import HOME
             return url == HOME
+        if self.scope == 'filter_definition':
+            from neto_incident_monitor.service_now_urls import normalize_list_url
+            try:
+                normalize_list_url(url)
+            except ValueError:
+                return False
+            return True
         try:
             address = urlparse(url)
             return (address.scheme == 'https' and address.hostname == 'idpb2e.adeo.com'

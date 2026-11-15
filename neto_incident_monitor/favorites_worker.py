@@ -6,7 +6,7 @@ from playwright._impl._errors import TargetClosedError
 
 from neto_incident_monitor.browser_actions import ACTION_TICK, checkpoint, navigate_page
 from neto_incident_monitor.read_budget import Budget, budget_scope
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, error_facts
 from neto_incident_monitor.favorites import HOME
 from neto_incident_monitor.favorites_reader import read_favorites, FavoritesReadError

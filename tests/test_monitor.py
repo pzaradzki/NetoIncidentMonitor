@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from neto_incident_monitor.app import App, authentication_page, collect, empty_list, navigate, load_filters
+from neto_incident_monitor.app import App, authentication_page, navigate, load_filters
 from neto_incident_monitor.history import History
 
 URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue"
@@ -238,52 +238,6 @@ class MonitorTests(unittest.TestCase):
         # URL alone does not prove that the document could be inspected.
         self.assertTrue(authentication_page(Mock(url=URL), URL))
         self.assertFalse(authentication_page(page_with(frame_with(), url=URL), URL))
-
-    def test_real_browser_empty_then_first_incident(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True, timeout=15000)
-            try:
-                page = browser.new_page()
-                page.set_default_timeout(5000)
-                page.set_default_navigation_timeout(10000)
-                page.route("https://adeo.service-now.com/**", lambda route: route.fulfill(
-                    content_type="text/html; charset=utf-8", body="<div>Brak rekordów do wyświetlenia</div>"))
-                navigate(page, URL)
-                self.assertEqual(collect(page), {})
-                self.assertTrue(empty_list(page, URL))
-                self.assertFalse(empty_list(page, "https://other.example/incident_list.do"))
-                # An empty baseline must allow the first later incident through.
-                seen = {URL: []}
-                page.set_content('<table><tr><th>Numer</th><th>Krótki opis</th></tr><tr><td><a href="/incident.do?sys_id=0123456789abcdef0123456789abcdef">INC0012345</a></td><td>Test</td></tr></table>')
-                incidents = collect(page)
-                self.assertEqual(set(incidents) - set(seen[URL]), {"INC0012345"})
-                self.assertFalse(empty_list(page, URL))
-                self.assertEqual(incidents["INC0012345"]["summary"], "Test")
-                self.assertEqual(incidents["INC0012345"]["short_description"], "Test")
-                # Links in navigation, parent-incident columns and descriptions
-                # are not additional rows in the monitored incident list.
-                page.set_content('''<a href="/incident.do">INC9999999</a>
-                  <table><tr><th></th><th>Numer</th><th>Incydent nadrzędny</th></tr>
-                    <tr><td><input type="checkbox"></td><td><a href="/incident.do?sys_id=1">INC7160057</a></td><td><a href="/incident.do?sys_id=4">INC7000000</a></td></tr>
-                    <tr><td></td><td><a href="/incident.do?sys_id=2">INC7159884</a></td><td></td></tr>
-                    <tr><td></td><td><a href="/incident.do?sys_id=3">INC7160026</a></td><td></td></tr>
-                    <tr style="display:none"><td></td><td><a href="/incident.do">INC8888888</a></td><td></td></tr>
-                  </table>''')
-                self.assertEqual(set(collect(page)), {"INC7160057", "INC7159884", "INC7160026"})
-                page.set_content('''<table><tr>
-                    <th></th><th>Numer</th><th>Krótki opis</th><th>Priorytet</th><th>Lokalizacja</th><th>Utworzono</th>
-                    </tr><tr><td>Wybierz rekord dotyczący czynności: INC7160057</td>
-                    <td><a href="/incident.do?sys_id=1">INC7160057</a></td>
-                    <td>Problem z kasą</td><td>2 — wysokie</td><td>STORE 003 GDAŃSK</td>
-                    <td>2026-10-07<br>10:00:00</td></tr></table>''')
-                result = collect(page)["INC7160057"]
-                self.assertEqual(result["summary"], "Problem z kasą")
-                self.assertEqual(result["priority"], "2 — wysokie")
-                self.assertEqual(result["location"], "STORE 003 GDAŃSK")
-                self.assertEqual(result["created"], "2026-10-07 10:00:00")
-            finally:
-                browser.close()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ import threading
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 
+from tests.test_filter_api import filter_definition
+
 from neto_incident_monitor.filter_state import FilterState
 from neto_incident_monitor.history import History
 
@@ -18,7 +20,7 @@ class FilterStateTests(unittest.TestCase):
 
     def test_session_expiry_after_successful_filter_read_reauthenticates(self):
         from neto_incident_monitor.app import App
-        from neto_incident_monitor.pagination import AuthenticationRequired
+        from neto_incident_monitor.read_errors import AuthenticationRequired
         with tempfile.TemporaryDirectory() as folder:
             app = App.__new__(App)
             app.stop = threading.Event()
@@ -27,6 +29,8 @@ class FilterStateTests(unittest.TestCase):
             app.schedule.woken_by_request = False
             url = 'https://adeo.service-now.com/incident_list.do'
             app.filters = [{'name': 'A', 'url': url}]
+            for entry in app.filters:
+                entry['list_definition'] = filter_definition(entry['url'])
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder) / 'history.json')
             page = Mock()
@@ -45,7 +49,7 @@ class FilterStateTests(unittest.TestCase):
                     patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
                     patch('neto_incident_monitor.app.navigate'), \
                     patch.object(app, 'restore_login', return_value=True) as login, \
-                    patch('neto_incident_monitor.app.read_all', side_effect=[({}, 1), AuthenticationRequired(), ({}, 1)]) as read, \
+                    patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=[{}, AuthenticationRequired(), {}]) as read, \
                     patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=wait):
                 app.monitor(settings)
@@ -74,6 +78,8 @@ class FilterStateTests(unittest.TestCase):
             app.schedule.wait.side_effect = wait
             app.filters = [{"name": "INC", "url": "https://adeo.service-now.com/incident_list.do"},
                            {"name": "TASK", "url": "https://adeo.service-now.com/sc_task_list.do"}]
+            for entry in app.filters:
+                entry['list_definition'] = filter_definition(entry['url'])
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder)/"history.json")
             settings = {"urls": [f["url"] for f in app.filters], "filters": app.filters,
@@ -89,9 +95,9 @@ class FilterStateTests(unittest.TestCase):
                  patch("neto_incident_monitor.app.wait_for_login", return_value=True), \
                  patch("neto_incident_monitor.app.wait_for_browser_cycle", side_effect=lambda page, schedule, seconds, stop: schedule.wait(seconds, stop)), \
                  patch("neto_incident_monitor.app.time.monotonic", side_effect=lambda: clock[0]), \
-                 patch("neto_incident_monitor.app.read_all", return_value=({}, 1)) as read:
+                 patch("neto_incident_monitor.filter_api.read_filter_records", return_value={}) as read:
                 app.monitor(settings)
-            self.assertEqual([call.args[1] for call in read.call_args_list],
+            self.assertEqual([call.args[3]['source_url'] for call in read.call_args_list],
                              [settings["urls"][i] for i in (0, 1, 0, 0, 1)])
             self.assertEqual(waits, [60, 60, 60])
 
@@ -105,6 +111,8 @@ class FilterStateTests(unittest.TestCase):
             app.schedule.wait.return_value = True
             app.filters = [{"name": "A", "url": "https://adeo.service-now.com/incident_list.do?fixture=a"},
                            {"name": "B", "url": "https://adeo.service-now.com/incident_list.do?fixture=b"}]
+            for entry in app.filters:
+                entry['list_definition'] = filter_definition(entry['url'])
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder)/"history.json")
             settings = {"urls": [entry["url"] for entry in app.filters], "filters": app.filters, "interval": 60}
@@ -117,12 +125,12 @@ class FilterStateTests(unittest.TestCase):
             incident = {"number": "INC1", "url": "https://adeo.service-now.com/incident"}
 
             def cycle(a, b):
-                reads = [a if isinstance(a, Exception) else (a, 1), (b, 1)]
+                reads = [a if isinstance(a, Exception) else a, b]
                 with patch("playwright.sync_api.sync_playwright", return_value=playwright), \
                      patch("neto_incident_monitor.app.STATE", Path(folder)/"seen.json"), \
                      patch("neto_incident_monitor.app.navigate"), \
                      patch("neto_incident_monitor.app.wait_for_login", return_value=True), \
-                     patch("neto_incident_monitor.app.read_all", side_effect=reads):
+                     patch("neto_incident_monitor.filter_api.read_filter_records", side_effect=reads):
                     app.monitor(settings)
                 events = []
                 while not app.events.empty():
@@ -134,9 +142,9 @@ class FilterStateTests(unittest.TestCase):
             self.assertEqual(cycle(RuntimeError('first read failed'), {}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {}), [])
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [settings["urls"][1]])
-            from neto_incident_monitor.list_context import ListStateError
+            from neto_incident_monitor.dashboard_context import DashboardReadError
             before = app.history.snapshot(settings['urls'][0])
-            self.assertEqual(cycle(ListStateError('query_mismatch'), {"INC1": dict(incident)}), [])
+            self.assertEqual(cycle(DashboardReadError('api_filter_mismatch', retryable=False), {"INC1": dict(incident)}), [])
             self.assertEqual(app.history.snapshot(settings['urls'][0]), before)
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [])
             self.assertEqual(cycle({}, {"INC1": dict(incident)}), [])

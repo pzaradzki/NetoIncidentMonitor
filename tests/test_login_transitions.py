@@ -9,7 +9,7 @@ from neto_incident_monitor.authentication import install_input_guard, authentica
 from neto_incident_monitor.automatic_login import AutomaticLogin
 from neto_incident_monitor.browser_policy import BrowserOptions, BrowserRuntime
 from neto_incident_monitor.browser_actions import navigate_page, wait_control
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 
 TARGET = 'https://adeo.service-now.com/incident_list.do'
 
@@ -182,7 +182,7 @@ class LoginTransitionTests(unittest.TestCase):
         from tests.test_login_observation import frame_with, page_with
         page = page_with(frame_with(session_signal=True))
         page.is_closed.return_value = False
-        with patch('neto_incident_monitor.app.collect', side_effect=AssertionError('Must not read filter to confirm session')):
+        with patch('neto_incident_monitor.app.discover_definition', side_effect=AssertionError('Must not read filter to confirm session')):
             self.assertTrue(wait_for_login(page, TARGET, threading.Event()))
         self.assertTrue(authenticated_session(page, TARGET))
 

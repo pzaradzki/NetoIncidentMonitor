@@ -72,7 +72,7 @@ class FilterViewTests(unittest.TestCase):
                 self.assertEqual(images(), [])
         finally:
             for timer in root.tk.call('after', 'info'):
-                root.after_cancel(timer)
+                root.tk.call('after', 'cancel', timer)
             root.destroy()
 
     def test_filter_webhook_inputs_validate_save_and_clear(self):
@@ -275,6 +275,7 @@ class FilterViewTests(unittest.TestCase):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
                 app.filters[1]["allow_large_list"] = True
+                app.filters[1]["first_only"] = True
                 self.assertTrue(app.configure_filter_button.enabled)
                 app.configure_filter_button.invoke()
                 root.update()
@@ -284,17 +285,17 @@ class FilterViewTests(unittest.TestCase):
                         yield child
                         yield from descendants(child)
                 toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-                self.assertEqual([w.enabled for w in toggles], [True, True])
-                self.assertTrue(toggles[1].variable.get())
-                toggles[1].toggle()
+                self.assertEqual([w.enabled for w in toggles], [True])
+                self.assertTrue(toggles[0].variable.get())
+                toggles[0].toggle()
                 from neto_incident_monitor.widgets import RoundedButton
                 with patch.object(app, "persist_filters") as persist:
                     next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zapisz").invoke()
                     persist.assert_called_once()
-                self.assertFalse(app.filters[1]["allow_large_list"])
+                self.assertFalse(app.filters[1]["first_only"])
         finally:
             for timer in root.tk.call("after", "info"):
-                root.after_cancel(timer)
+                root.tk.call('after', 'cancel', timer)
             root.destroy()
 
     def test_notification_channels_and_filter_names_are_independent(self):

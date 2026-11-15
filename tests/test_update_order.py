@@ -7,6 +7,8 @@ import threading
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+from tests.test_filter_api import filter_definition
+
 from neto_incident_monitor.app import App
 from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
 from neto_incident_monitor.history import History
@@ -20,7 +22,7 @@ class UpdateOrderTests(unittest.TestCase):
             app.stop, app.events = threading.Event(), queue.Queue()
             app.schedule = Mock(woken_by_request=False)
             url = 'https://adeo.service-now.com/incident_list.do'
-            app.filters = [dict(name='Synthetic', url=url)]
+            app.filters = [dict(name='Synthetic', url=url, list_definition=filter_definition(url))]
             app.disabled_filter_urls = frozenset()
             app.history = History(Path(folder)/'history.json')
             app.dashboard_requests, app.threatened_requests = queue.Queue(), queue.Queue()
@@ -43,7 +45,7 @@ class UpdateOrderTests(unittest.TestCase):
                 clock[0] += 5 if mode == 'recovery' else 130
                 if mode == 'recovery':
                     from playwright.sync_api import TimeoutError
-                    from neto_incident_monitor.pagination import AuthenticationRequired
+                    from neto_incident_monitor.read_errors import AuthenticationRequired
                     if order.count('dashboard') == 1:
                         raise TimeoutError('Synthetic document timeout')
                     if order.count('dashboard') == 2:
@@ -60,9 +62,9 @@ class UpdateOrderTests(unittest.TestCase):
             def filters(*args, **kwargs):
                 order.append('filter')
                 self.assertTrue(app.refresh_coordinator().busy)
-                return {}, 1
+                return {}
             with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                    patch('neto_incident_monitor.browser_policy.BrowserRuntime'), \
+                    patch('neto_incident_monitor.browser_session.BrowserRuntime'), \
                     patch('neto_incident_monitor.app.navigate'), \
                     patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
                     patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
@@ -71,7 +73,7 @@ class UpdateOrderTests(unittest.TestCase):
                     patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
                     patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)), \
                     patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threatened), \
-                    patch('neto_incident_monitor.app.read_all', side_effect=filters), \
+                    patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=filters), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True), \
                     self.assertLogs('neto.login_diagnostics', level='INFO') as logs:
                 app.monitor(dict(urls=[url], filters=app.filters, interval=60, task_interval=60))
@@ -119,7 +121,7 @@ class UpdateOrderTests(unittest.TestCase):
                 root = tk.Tk()
                 app = None
                 try:
-                    settings = dict(filters=[dict(name='Synthetic', url=url)], **saved)
+                    settings = dict(filters=[dict(name='Synthetic', url=url, list_definition=filter_definition(url))], **saved)
                     with patch('neto_incident_monitor.app.read_json', return_value=settings), \
                             patch('neto_incident_monitor.app.save_json'), \
                             patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):

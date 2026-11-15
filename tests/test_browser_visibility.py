@@ -66,7 +66,6 @@ class BrowserVisibilityTests(unittest.TestCase):
         stop = Mock()
         stop.is_set.return_value = False
         with patch("neto_incident_monitor.app.authentication_page", return_value=False), \
-                patch("neto_incident_monitor.app.collect", return_value={"INC1": {}}), \
                 patch("neto_incident_monitor.app.minimize_chromium") as minimize:
             self.assertTrue(wait_for_login(page, "https://adeo.service-now.com/incident_list.do", stop, True, True))
             minimize.assert_called_once_with(page)

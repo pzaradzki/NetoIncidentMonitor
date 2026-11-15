@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from decimal import Decimal
 import time
 
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 
 
 DASHBOARD_URL = ('https://adeo.service-now.com/now/platform-analytics-workspace/dashboards/params/edit/false/'

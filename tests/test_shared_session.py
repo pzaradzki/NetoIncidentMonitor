@@ -557,6 +557,9 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertTrue(app.request_refresh('filter'))
                     active_url = app.selected_filter_url()
                     active = app.session.manual_filter_parts[active_url]
+                    from tests.test_filter_api import filter_definition
+                    app.filters[0]['list_definition'] = dict(filter_definition(active_url),
+                                                             instance=app.filters[0].get('filter_instance'))
                     record = LoginDiagnostics.record
 
                     def delete_before_history(diagnostics, event, **facts):
@@ -566,7 +569,7 @@ class SharedApplicationTests(unittest.TestCase):
 
                     page = Mock()
                     page.is_closed.return_value = False
-                    with patch('neto_incident_monitor.app.read_all', return_value=({'INC1': {'number': 'INC1'}}, 1)), \
+                    with patch('neto_incident_monitor.filter_api.read_filter_records', return_value={'INC1': {'number': 'INC1'}}), \
                             patch.object(LoginDiagnostics, 'record', autospec=True, side_effect=delete_before_history):
                         result = app.read_filter(page, active_url, 'Inny adres', 1, {},
                                                  FilterState(folder / 'seen.json'), app.session.health,
@@ -803,8 +806,10 @@ class SharedApplicationTests(unittest.TestCase):
 
         url = 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue'
         enabled_url = 'https://adeo.service-now.com/sc_task_list.do'
+        from tests.test_filter_api import filter_definition
         settings = {'filters': [{'name': 'Poza harmonogramem', 'url': url, 'enabled': False},
                                 {'name': 'Cykliczny', 'url': enabled_url}]}
+        settings['filters'][0]['list_definition'] = filter_definition(url)
         with TemporaryDirectory() as directory:
             root = tk.Tk()
             root.withdraw()
@@ -830,7 +835,7 @@ class SharedApplicationTests(unittest.TestCase):
                 page = Mock()
                 page.is_closed.return_value = False
                 incident = {'number': 'INC0000001', 'url': url}
-                with patch('neto_incident_monitor.app.read_all', return_value=({incident['number']: incident}, 1)), \
+                with patch('neto_incident_monitor.filter_api.read_filter_records', return_value={incident['number']: incident}), \
                         patch('neto_incident_monitor.app.STATE', Path(directory) / 'seen.json'), \
                         self.assertLogs(_logger, level='INFO') as captured:
                     self.assertTrue(app.execute_session_part(page, part, app.session.closed, source))
@@ -841,6 +846,136 @@ class SharedApplicationTests(unittest.TestCase):
                 end = next(row for row in map(lambda record: json.loads(record.getMessage()), captured.records)
                            if row['event'] == 'filter_read_end')
                 self.assertEqual((end['outside_schedule'], end['filter_outcome']), (True, 'success'))
+            finally:
+                root.destroy()
+
+    def test_filter_definition_is_saved_once_and_enables_selected_filter_preview(self):
+        url = 'https://adeo.service-now.com/incident_list.do'
+        settings = {'filters': [{'name': 'Test', 'url': url, 'enabled': True}]}
+        with TemporaryDirectory() as directory:
+            root = tk.Tk()
+            root.withdraw()
+            path = Path(directory)
+            try:
+                from neto_incident_monitor.app import read_json, save_json
+                config = path / 'config.json'
+                save_json(config, settings)
+                with patch('neto_incident_monitor.app.CONFIG', config), \
+                        patch('neto_incident_monitor.app.STATE', path / 'seen.json'), \
+                        patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+                    app = App(root, history_path=path / 'history.json', enable_tray=False,
+                              apply_startup=False, shared_session=True)
+                    app.session.log = Mock()
+                    app.session.ready_once = True
+                    app.handle_session_event('session_ready', None)
+                    app.filter_table.selection_set('0')
+                    app.filter_selected()
+                    self.assertFalse(app.filter_info_button.enabled)
+                    page = Mock()
+                    page.is_closed.return_value = False
+                    from tests.test_filter_api import filter_definition
+                    definition = filter_definition(url)
+                    enqueue = app.events.put
+
+                    def send(event):
+                        if event[0] == 'save_filter_definition':
+                            app.save_discovered_filter_definition(event[1])
+                        else:
+                            enqueue(event)
+
+                    def read(*args):
+                        self.assertEqual(read_json(config, {})['filters'][0]['list_definition'], args[3])
+                        return {}
+
+                    with patch('neto_incident_monitor.app.discover_definition', return_value=(definition, url)) as discover, \
+                            patch.object(app.events, 'put', side_effect=send), \
+                            patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read) as api:
+                        for _ in range(2):
+                            app.request_refresh('filter')
+                            part, source = app.session.next_part(None)
+                            self.assertTrue(app.execute_session_part(page, part, app.session.closed, source))
+                            app.session.work.complete_part(part, manual=True, success=True)
+                            app.drain()
+                        discover.assert_called_once()
+                        self.assertEqual(api.call_count, 2)
+                        updated = dict(definition, query='active=false')
+                        discover.return_value = updated, url
+                        self.assertTrue(app.enqueue_refresh('filter_definition', url))
+                        part, source = app.session.next_part(None)
+                        with patch.object(app, 'persist_filters', side_effect=OSError('synthetic')):
+                            self.assertFalse(app.execute_session_part(page, part, app.session.closed, source))
+                        self.assertEqual(read_json(config, {})['filters'][0]['list_definition'], definition)
+                        app.session.work.complete_part(part, manual=True, success=False)
+                        self.assertTrue(app.enqueue_refresh('filter_definition', url))
+                        part, source = app.session.next_part(None)
+                        self.assertTrue(app.execute_session_part(page, part, app.session.closed, source))
+                        self.assertEqual(discover.call_count, 3)
+                        self.assertEqual(api.call_count, 2)
+                    saved = read_json(config, {})['filters'][0]['list_definition']
+                    self.assertEqual(saved, updated)
+                    self.assertTrue(app.filter_info_button.enabled)
+                    with patch('neto_incident_monitor.filter_definition_ui.show_filter_definition') as preview:
+                        app.filter_info_button.invoke()
+                    self.assertEqual(preview.call_args.args, (root, 'Test', saved))
+                    self.assertEqual(app.filters[0]['list_definition'], updated)
+                    app.session.work.complete_part(part, manual=True, success=True)
+                    app.session.next_part(None)
+                    root.destroy()
+                    root = tk.Tk()
+                    root.withdraw()
+                    reloaded = App(root, history_path=path / 'history.json', enable_tray=False,
+                                   apply_startup=False, shared_session=True)
+                    reloaded.session.log = Mock()
+                    reloaded.session.ready_once = True
+                    reloaded.handle_session_event('session_ready', None)
+                    self.assertTrue(reloaded.enqueue_refresh('filter', url))
+                    part, source = reloaded.session.next_part(None)
+                    with patch('neto_incident_monitor.app.discover_definition') as discover, \
+                            patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read):
+                        self.assertTrue(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
+                    discover.assert_not_called()
+                    reloaded.session.work.complete_part(part, manual=True, success=True)
+                    reloaded.drain()
+                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('synthetic')) as save, \
+                            patch('neto_incident_monitor.app.messagebox.showerror') as error_dialog:
+                        reloaded.events.put(('filter_limit', (url, 6817, object(), reloaded.monitor_generation)))
+                        reloaded.drain()
+                        save.assert_not_called()
+                        error_dialog.assert_not_called()
+                        reloaded.events.put(('filter_limit', (url, 6817, reloaded.filter_revisions.get(url),
+                                                             reloaded.monitor_generation)))
+                        reloaded.drain()
+                        save.assert_called_once()
+                        error_dialog.assert_called_once()
+                    self.assertTrue(reloaded.filters[0]['enabled'])
+                    self.assertTrue(read_json(config, {})['filters'][0]['enabled'])
+                    self.assertTrue(reloaded.enqueue_refresh('filter', url))
+                    part, source = reloaded.session.next_part(None)
+                    page.evaluate.return_value = dict(status=200, result=[], next=True, total='6817')
+                    self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
+                    reloaded.session.active_job_success = False
+                    reloaded.session.work.complete_part(part, manual=True, success=False)
+                    reloaded.session.next_part(None)
+                    reloaded.filter_table.selection_set('0')
+                    reloaded.snapshots[1] = {'INC0000123': {'number': 'INC0000123', 'url': ''}}
+                    with patch('neto_incident_monitor.app.messagebox.showinfo') as notice:
+                        reloaded.drain()
+                    notice.assert_called_once_with(
+                        'Filtr ServiceNow',
+                        'Filtr „Test” został wyłączony, ponieważ zawiera ponad 1000 elementów.', parent=root)
+                    self.assertFalse(reloaded.filters[0]['enabled'])
+                    self.assertFalse(read_json(config, {})['filters'][0]['enabled'])
+                    self.assertFalse(reloaded.filter_table.enabled_rows['0'])
+                    self.assertEqual(reloaded.session.filter_parts, ())
+                    self.assertIn('INC0000123', reloaded.snapshots[1])
+                    self.assertEqual(reloaded.status.get(),
+                                     'Filtr „Test” zwraca 6 817 zgłoszeń. Maksymalna dopuszczalna liczba to 1000.')
+                    self.assertTrue(reloaded.enqueue_refresh('filter', url))
+                    part, source = reloaded.session.next_part(None)
+                    self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
+                    with patch('neto_incident_monitor.app.messagebox.showinfo') as notice:
+                        reloaded.drain()
+                    notice.assert_not_called()
             finally:
                 root.destroy()
 

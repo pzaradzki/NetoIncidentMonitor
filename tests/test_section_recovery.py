@@ -6,7 +6,7 @@ from playwright.sync_api import TimeoutError, Error
 from neto_incident_monitor.section_runner import run_section
 from neto_incident_monitor.read_budget import BudgetExpired
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
-from neto_incident_monitor.pagination import Cancelled, AuthenticationRequired
+from neto_incident_monitor.read_errors import Cancelled, AuthenticationRequired
 from neto_incident_monitor.browser_actions import navigate_page
 
 

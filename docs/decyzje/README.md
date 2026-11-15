@@ -8,7 +8,7 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [002](002-harmonogram-zagrozen.md) | Zastąpiona przez 018; zachowuje pierwotne uzasadnienie priorytetu zagrożeń. |
 | [003](003-poprawnosc-i-aktualnosc.md) | Brak danych i błąd nie oznaczają zera ani świeżego sukcesu. |
 | [004](004-bezpieczna-diagnostyka.md) | Wspólna, ograniczona diagnostyka bez danych wrażliwych. |
-| [005](005-kompletny-odczyt-listy.md) | Pełna walidacja listy przed zapisaniem; ograniczone ponowienie od początku. |
+| [005](005-kompletny-odczyt-listy.md) | Pełna walidacja listy przed zapisem. Mechanizm DOM zastąpiły 034 i 035. |
 | [006](006-odczyt-sekcji-dashboardu.md) | Niezależna aktualność sekcji. Czytnik zastąpiła 033. |
 | [007](007-ukryty-dashboard.md) | Historyczne renderowanie ukrytej analityki, zastąpione przez 033. |
 | [008](008-obserwacja-logowania.md) | Wspólne stany logowania; konflikt i nieudana obserwacja wykluczają potwierdzenie sesji. |
@@ -28,6 +28,10 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [020](020-spojne-statusy-dashboardu.md) | Spójna aktywność sekcji, nagłówka i stopki dashboardu, chroniona cyklem żądania. |
 
 ## Format i utrzymanie
+
+[035 — Limit 1000 rekordów w odczycie filtra](035-limit-odczytu-filtrow.md) opisuje pojedyncze żądanie i obsługę filtrów przekraczających limit.
+
+[034 — Filtry użytkownika przez Table API](034-odczyt-filtrow-przez-rest.md) opisuje trwałą definicję filtra, wspólną kartę i warunki zatwierdzania pełnego wyniku.
 
 [033 — Dashboard i zagrożenia SLA przez REST API](033-odczyty-analityki-przez-api.md) opisuje wspólny transport oraz weryfikację kompletnej listy zagrożeń.
 

@@ -9,12 +9,13 @@ from neto_incident_monitor.browser_actions import checkpoint, navigate_page
 from neto_incident_monitor.dashboard import TITLES, measured_record, operation
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.favorites import HOME
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.read_budget import remaining_ms
-from neto_incident_monitor.service_now_urls import TENANT_HOST
+from neto_incident_monitor.service_now_urls import RECORD_TABLES, TENANT_HOST
 
 ORIGIN = 'https://' + TENANT_HOST
 STATS_TABLES = ('task_sla', 'incident_metric', 'sc_task')
+TABLE_ROUTES = tuple('/api/now/table/' + table for table in ('task_sla', *RECORD_TABLES.values()))
 TIMEOUT_MS = 5000
 READ_MESSAGES = {
     'api_configuration': 'Brak poprawnej lokalnej konfiguracji API.',
@@ -28,6 +29,9 @@ READ_MESSAGES = {
     'api_incomplete': 'API zwróciło niepełną listę.',
     'api_schema': 'API zwróciło dane w nieoczekiwanym formacie.',
     'api_filter_mismatch': 'API zwróciło dane poza zakresem filtra.',
+    'filter_definition_save': 'Nie udało się zapisać definicji filtra.',
+    'filter_definition_columns': 'Nie udało się rozpoznać wszystkich kolumn listy ServiceNow.',
+    'rendering_unavailable': 'Nie udało się przygotować ukrytego widoku listy ServiceNow.',
 }
 
 READ = r"""async ({origin, route, params, timeout}) => {
@@ -60,7 +64,7 @@ READ = r"""async ({origin, route, params, timeout}) => {
 
 def get(page, stop, diagnostics, alias, route, params, *, ordinal=1):
     routes = tuple('/api/now/stats/' + table for table in STATS_TABLES)
-    if route not in (*routes, '/api/now/table/task_sla'):
+    if route not in (*routes, *TABLE_ROUTES):
         raise ValueError('Unsupported analytics endpoint')
     checkpoint(stop)
     started = monotonic()

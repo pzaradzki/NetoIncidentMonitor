@@ -11,7 +11,7 @@ from neto_incident_monitor.app import App, BrowserClosedError
 from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
 from neto_incident_monitor.dashboard_cache import load_snapshot
 from neto_incident_monitor.login_diagnostics import _logger, safe_facts
-from neto_incident_monitor.pagination import Cancelled, AuthenticationRequired
+from neto_incident_monitor.read_errors import Cancelled, AuthenticationRequired
 
 
 class DashboardPeriodTests(unittest.TestCase):

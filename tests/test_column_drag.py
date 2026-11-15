@@ -64,7 +64,7 @@ class ColumnDragTests(unittest.TestCase):
                 app.apply_visible_columns()
                 self.assertEqual(tuple(table['displaycolumns'])[:4],('state','caller','priority','number'))
                 for timer in root.tk.call('after','info'):
-                    root.after_cancel(timer)
+                    root.tk.call('after', 'cancel', timer)
                 root.destroy()
                 root = tk.Tk()
                 with patch('neto_incident_monitor.app.read_json',return_value=settings):
@@ -73,7 +73,7 @@ class ColumnDragTests(unittest.TestCase):
         finally:
             root.update_idletasks()
             for timer in root.tk.call('after','info'):
-                root.after_cancel(timer)
+                root.tk.call('after', 'cancel', timer)
             root.destroy()
 
     def test_drag_cancel_and_save_failure_do_not_change_order(self):
@@ -102,5 +102,6 @@ class ColumnDragTests(unittest.TestCase):
         finally:
             root.update_idletasks()
             for timer in root.tk.call('after','info'):
-                root.after_cancel(timer)
+                # A widget can own the Tcl command even though the timer is visible from root.
+                root.tk.call('after', 'cancel', timer)
             root.destroy()

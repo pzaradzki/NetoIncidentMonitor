@@ -3,7 +3,7 @@ from time import monotonic
 
 from neto_incident_monitor.browser_actions import checkpoint
 from neto_incident_monitor.read_budget import Budget, budget_scope
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.login_diagnostics import error_facts
 

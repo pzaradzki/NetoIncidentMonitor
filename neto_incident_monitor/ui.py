@@ -318,7 +318,6 @@ def build_ui(app, settings):
     app.update_phase_text()
     app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  SCTASK/REQ/RITM: -")
     ttk.Label(heading, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
-
     app.current_count = tk.StringVar(value="0")
 
     toolbar = ttk.Frame(main)
@@ -350,6 +349,10 @@ def build_ui(app, settings):
                                                 command=app.configure_selected_filter, background=BG)
     app.configure_filter_button.configure(state="disabled")
     app.configure_filter_button.pack(side="right", padx=(8, 0))
+    app.filter_info_button = RoundedButton(actions, text="ⓘ", command=app.show_filter_info,
+                                           background=BG)
+    app.filter_info_button.configure(state="disabled")
+    app.filter_info_button.pack(side="right", padx=(8, 0))
     app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
     app.tabs = ttk.Notebook(main, style="Clean.TNotebook")
     app.tabs.grid(row=2, column=0, sticky="nsew")
@@ -375,7 +378,7 @@ def build_ui(app, settings):
         if not actions.winfo_exists() or not app.tabs.winfo_exists():
             return
         if app.tabs.select() == str(history):
-            app.clear_history_button.pack(side="right", padx=(8, 0), after=app.configure_filter_button)
+            app.clear_history_button.pack(side="right", padx=(8, 0), after=app.filter_info_button)
         else:
             app.clear_history_button.pack_forget()
         align_actions()

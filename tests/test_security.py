@@ -3,7 +3,8 @@ from unittest.mock import Mock
 from urllib.parse import quote
 
 from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
-from neto_incident_monitor.app import load_filters, navigate, collect
+from neto_incident_monitor.app import load_filters, navigate
+from neto_incident_monitor.list_context import ListTarget
 from neto_incident_monitor.teams_notifications import payload
 from neto_incident_monitor.google_chat_notifications import payloads
 
@@ -33,7 +34,7 @@ class SecurityTests(unittest.TestCase):
             self.assertFalse(app.filters[0]['enabled'])
         finally:
             for timer in root.tk.call('after', 'info'):
-                root.after_cancel(timer)
+                root.tk.call('after', 'cancel', timer)
             root.destroy()
 
     def test_list_policy_rejects_untrusted_inputs_at_config_and_navigation(self):
@@ -79,16 +80,14 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(safe_record_url(record + '&sysparm_action=unexpected', 'INC123'), record)
         self.assertEqual(safe_record_url(BASE + '/incident.do?sys_id=invalid', 'INC123'), '')
 
-    def test_untrusted_frames_are_not_collected_and_bad_links_become_plain(self):
+    def test_metadata_reader_ignores_untrusted_frames(self):
         foreign = Mock(url='https://evil.test/incident_list.do')
-        trusted = Mock(url=BASE + '/incident_list.do')
+        trusted = Mock(url=BASE + '/incident_list.do', parent_frame=None)
         trusted.locator.return_value.evaluate_all.return_value = [
-            {'label': 'INC1234567', 'href': 'https://evil.test/incident.do',
-             'fields': {'short_description': 'Opis'}}]
-        result = collect(Mock(frames=[foreign, trusted]))
+            {'type': 'incident', 'classic': True, 'number': True, 'id': 'incident_table', 'list': 'incident'}]
+        target = ListTarget.find(Mock(frames=[foreign, trusted]), trusted.url)
         foreign.locator.assert_not_called()
-        self.assertEqual(result['INC1234567']['url'], '')
-        self.assertEqual(result['INC1234567']['summary'], 'Opis')
+        self.assertIs(target.frame, trusted)
 
     def test_external_text_cannot_create_markdown_links_or_mentions(self):
         text = 'INC123 - [kliknij](https://evil.test) *pilne* _test_ ~x~ `x` \x00\u202e'

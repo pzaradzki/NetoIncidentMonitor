@@ -8,6 +8,6 @@ W porównaniach warunków listy normalizujemy kompletną wartość `javascript:g
 
 ## Realizacja i ograniczenia
 
-Wspólna funkcja `list_conditions` normalizuje zarówno warunek żądany, jak i tożsamość tabeli w paginacji. Zachowuje pole, operator, prefiksy i kolejność OR/NQ. Surowe zapytanie w `ListState` służy jedynie klasyfikacji zgodności i nie wpływa na równość stanu. Diagnostyka odróżnia `exact`, `known_alias` i `mismatch`, z kodem `last_7_days`, najwyżej raz dla każdej klasy na próbę. Nie zapisuje zapytań ani danych zgłoszeń.
+Wspólna funkcja `list_conditions` porównuje warunki adresu z metadanymi tabeli przy ustalaniu definicji REST. Zachowuje pole, operator, prefiksy i kolejność OR/NQ. Zdarzenie `filter_query_comparison` odróżnia `exact`, `known_alias` i `mismatch` oraz używa kodu `last_7_days` dla potwierdzonego aliasu. Diagnostyka pomija treść zapytań i zgłoszeń.
 
 Zachowujemy zasadę [005](005-kompletny-odczyt-listy.md): kompletność przed zapisem i odrzucenie nieznanych różnic. Nie zmieniamy URL ani tożsamości filtra i nie wykonujemy JavaScript z zapytania. Inne funkcje daty oraz inne pola wymagają osobnego potwierdzenia. [Kontrakt i odbiór](../kontrakty/kontrakt-odczytu-list.md).

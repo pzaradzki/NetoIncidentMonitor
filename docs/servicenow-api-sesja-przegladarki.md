@@ -1,6 +1,6 @@
 # ServiceNow REST API w zalogowanej sesji Chromium
 
-W bieżących źródłach **Dashboard SLA**, **Wstrzymane L1**, **Wnioski L1** i **Incydenty zagrożone SLA** korzystają z REST na karcie `SharedSession`. Ręczne i cykliczne odczyty przechodzą przez tę samą kolejkę. Filtry użytkownika nadal korzystają z czytnika list w interfejsie ServiceNow. [Decyzja 033](decyzje/033-odczyty-analityki-przez-api.md) · [Kontrakt odczytu](kontrakty/kontrakt-odczytu-dashboardu.md)
+W bieżących źródłach **Dashboard SLA**, **Wstrzymane L1**, **Wnioski L1**, **Incydenty zagrożone SLA** i filtry użytkownika pobierają dane przez REST na karcie `SharedSession`. Ręczne i cykliczne odczyty przechodzą przez tę samą kolejkę. Szczegółowy odbiór ServiceNow dla filtrów użytkownika celowo pominięto. [Decyzja 033](decyzje/033-odczyty-analityki-przez-api.md) · [Kontrakt dashboardu](kontrakty/kontrakt-odczytu-dashboardu.md) · [Kontrakt list](kontrakty/kontrakt-odczytu-list.md)
 
 ## Odczyty i zapis
 
@@ -10,6 +10,7 @@ W bieżących źródłach **Dashboard SLA**, **Wstrzymane L1**, **Wnioski L1** i
 | Wstrzymane L1 | Dwie agregacje w `incident_metric` dla progów 7 i 14 dni | Migawka stanu bieżącego. |
 | Wnioski L1 | Pięć agregacji w `sc_task`, także dla pustego przypisania i zmiennej katalogowej | Migawka stanu bieżącego. |
 | Incydenty zagrożone SLA | Table API w `task_sla`, do 100 wierszy na stronę i 10 stron | Jedna zweryfikowana migawka dla liczników, bieżącej listy, historii i alertów. |
+| Filtry użytkownika | Jedno żądanie Table API w `incident`, `sc_request`, `sc_req_item` lub `sc_task`, do 1000 rekordów | Definicja w konfiguracji filtra. Pełna migawka zasila bieżące zgłoszenia, historię, obecność i alerty. |
 
 Każda sekcja dashboardu ma własną migawkę w `dashboard-cache.json`. Czas pełnej aktualizacji zmienia się po sukcesie wszystkich trzech sekcji. Zagrożenia liczą rekordy SLA według kategorii i grupują zgłoszenia według INC. Niepełny odczyt zachowuje poprzednią listę i stan powiadomień. [Czytniki dashboardu](../neto_incident_monitor/dashboard_api.py) · [Czytnik zagrożeń](../neto_incident_monitor/threatened_api.py)
 

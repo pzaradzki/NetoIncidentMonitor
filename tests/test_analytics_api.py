@@ -11,7 +11,7 @@ from neto_incident_monitor.dashboard_api import read_held, read_month, read_requ
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.history import History
 from neto_incident_monitor.login_diagnostics import safe_facts
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.threatened_api import read_threats
 
 

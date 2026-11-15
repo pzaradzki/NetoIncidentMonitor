@@ -13,7 +13,7 @@ from neto_incident_monitor.app import App, open_login_target, wait_for_login, Lo
 from neto_incident_monitor.authentication import authentication_required, login_surface, install_input_guard
 from neto_incident_monitor.automatic_login import AutomaticLogin
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, safe_facts, error_facts, _logger
-from neto_incident_monitor.pagination import AuthenticationRequired
+from neto_incident_monitor.read_errors import AuthenticationRequired
 from neto_incident_monitor.safe_logging import SafeExceptionFormatter
 
 
@@ -103,9 +103,9 @@ class AuthenticationHardeningTests(unittest.TestCase):
             ticks[0] += 1
             if ticks[0] >= 5: stop.set()
         page.wait_for_timeout.side_effect = pulse
-        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.collect') as collect:
+        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.discover_definition') as discover:
             self.assertFalse(wait_for_login(page,TARGET,stop))
-        collect.assert_not_called()
+        discover.assert_not_called()
         self.assertLessEqual(navigate.call_count, 4)
 
     def test_repeated_observation_errors_remain_cancellable_without_leaking_messages(self):

@@ -2,7 +2,7 @@ import unittest
 from urllib.parse import quote
 
 from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
-from neto_incident_monitor.notification_templates import linked_parts, standard
+from neto_incident_monitor.notification_templates import standard
 from neto_incident_monitor.teams_notifications import payload
 from neto_incident_monitor.google_chat_notifications import payloads
 
@@ -25,40 +25,3 @@ class RequestListTests(unittest.TestCase):
             self.assertEqual(title, 'Filtr · 1')
             self.assertIn(f'>{number}</a>', payload(title, text, {number: record})['text'])
             self.assertIn(f'|{number}>', payloads(title, text, {number: record})[0]['text'])
-
-    def test_reader_and_pagination_for_catalog_lists(self):
-        from playwright.sync_api import sync_playwright
-        from neto_incident_monitor.app import collect
-        from neto_incident_monitor.columns import ColumnDiscovery
-        from neto_incident_monitor.app import empty_list
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True, channel='chromium')
-            try:
-                page = browser.new_page()
-                for prefix, table in [('REQ', 'sc_request'), ('RITM', 'sc_req_item')]:
-                    page.route(BASE + '/**', lambda route: route.fulfill(body='<html></html>', content_type='text/html'))
-                    page.goto(f'{BASE}/{table}_list.do')
-                    number = prefix + '0012345'
-                    page.set_content(f'<table><tr><th name="{table}.number">Numer</th><th name="{table}.short_description">Krótki opis</th><th name="{table}.u_custom">Własna</th></tr><tr><td><a href="/{table}.do?sys_id=0123456789abcdef0123456789abcdef">{number}</a></td><td>Opis</td><td>Wartość</td></tr></table>')
-                    found = {}; columns = ColumnDiscovery()
-                    found = collect(page, columns)
-                    self.assertIn(number, found)
-                    self.assertEqual(found[number]['_values']['sn:u_custom'], 'Wartość')
-                    self.assertEqual(found[number]['url'], f'{BASE}/{table}.do?sys_id=0123456789abcdef0123456789abcdef')
-                    field = 'request_state' if prefix == 'REQ' else 'stage'
-                    page.set_content(
-                        f'<table><tr><th glide_field="{table}.number">Numer</th>'
-                        f'<th glide_field="{table}.{field}">Etap testowy</th></tr>'
-                        f'<tr><td><a href="/{table}.do?sys_id=0123456789abcdef0123456789abcdef">{number}</a></td>'
-                        '<td>W trakcie</td></tr></table>')
-                    incident = collect(page)[number]
-                    self.assertEqual(incident['_values']['sn:' + field], 'W trakcie')
-                    self.assertEqual(incident['state'], 'W trakcie' if prefix == 'REQ' else '')
-                    self.assertEqual(incident['summary'], number)
-                    page.set_content('<div>No records to display</div>')
-                    self.assertTrue(empty_list(page, page.url))
-            finally:
-                browser.close()
-
-
-

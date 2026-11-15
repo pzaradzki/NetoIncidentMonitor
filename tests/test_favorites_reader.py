@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from playwright.sync_api import sync_playwright, TimeoutError
 from neto_incident_monitor.read_budget import Budget, budget_scope
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 
 
 def fixture(extra=''):

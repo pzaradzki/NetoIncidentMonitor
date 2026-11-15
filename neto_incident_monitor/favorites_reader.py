@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from playwright.sync_api import TimeoutError
 from neto_incident_monitor.browser_actions import checkpoint, ready_control, wait_control, read_control
 from neto_incident_monitor.read_budget import remaining_ms, BudgetExpired
-from neto_incident_monitor.pagination import AuthenticationRequired
+from neto_incident_monitor.read_errors import AuthenticationRequired
 from neto_incident_monitor.authentication import authentication_required
 from neto_incident_monitor.favorites import HOME
 

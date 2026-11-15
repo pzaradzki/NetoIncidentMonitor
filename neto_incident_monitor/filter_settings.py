@@ -68,7 +68,6 @@ def show_filter_settings(app, index):
         ("notify_google_chat", "Powiadomienia Google Chat", "Wymagają włączonych powiadomień globalnych.", app.google_chat_enabled.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
         ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
-        ("allow_large_list", "Pobieraj duże listy bez pytania", "Dotyczy list zawierających ponad 1000 wpisów.", True),
     ]:
         if not enabled:
             continue

@@ -57,7 +57,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
             self.assertEqual(history.store.read_bytes(), before)
 
     def test_stop_detected_inside_transaction_rolls_back_everything(self):
-        from neto_incident_monitor.pagination import Cancelled
+        from neto_incident_monitor.read_errors import Cancelled
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'history.json'

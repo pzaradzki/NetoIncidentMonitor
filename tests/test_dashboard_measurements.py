@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, diagnostic_read, _logger
 from neto_incident_monitor.dashboard import diagnostic_steps, operation, _diagnostics
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 
 
 class MeasurementTests(unittest.TestCase):

@@ -1,6 +1,7 @@
-"""Local ServiceNow list monitor. Browser access only; no ServiceNow API."""
+"""Local ServiceNow monitor with a shared browser session."""
 from neto_incident_monitor.dynamic_columns import DynamicColumns, load_profiles
-from neto_incident_monitor.columns import ColumnDiscovery
+from neto_incident_monitor.filter_definition import discover_definition, ready_definition, valid_definition
+from neto_incident_monitor.analytics_api import READ_MESSAGES
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
 from neto_incident_monitor.columns import FIELDS, DEFAULT, age_minutes
 from neto_incident_monitor.widgets import IncidentMenu, PriorityDots
@@ -24,13 +25,12 @@ from urllib.parse import urlparse, unquote
 from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url, resolved_list_url
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import DEFAULT_TASK_INTERVAL, Schedule, Health, ReadPart
-from neto_incident_monitor.pagination import read_all, AuthenticationRequired, Cancelled, LargeListRejected
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from playwright._impl._errors import TargetClosedError
 
 from neto_incident_monitor.runtime_paths import ROOT, DATA
 CONFIG = DATA / "config.json"
 STATE = DATA / "seen.json"
-INC = re.compile(r"\b(?:INC|SCTASK|REQ|RITM)\d{7,}\b", re.I)
 from neto_incident_monitor.login_diagnostics import error_facts
 LOG = logging.getLogger("servicenow")
 
@@ -193,130 +193,11 @@ def incident_values(incident):
     for key, _, _ in FIELDS:
         if key in ("read", "time"):
             continue
-        value = age_minutes(incident.get("created"), incident.get("number")) if key == "age_minutes" else incident.get(key) or "—"
+        value = age_minutes(incident.get("_created_utc") or incident.get("created"), incident.get("number")) if key == "age_minutes" else incident.get(key) or "—"
         if key == "priority" and str(value).strip()[:1] in PriorityDots.COLORS:
             value = "\u2003\u2002" + str(value).strip()
         values.append(value)
     return tuple(values)
-
-
-def collect(page, available=None):
-    """Read incident fields by header identity, including empty-list metadata."""
-    found = {}
-    from neto_incident_monitor.list_context import ListStateError, ListView
-    from neto_incident_monitor.read_budget import remaining_ms
-    from neto_incident_monitor.service_now_urls import RECORD_TABLES, normalize_list_url, safe_record_url
-    prefixes = {f"/{table}_list.do": prefix for prefix, table in RECORD_TABLES.items()}
-    for frame in page.frames:
-        try:
-            frame_url = normalize_list_url(frame.url, allow_short=False)
-        except ValueError:
-            continue
-        expected = prefixes.get(urlparse(frame_url).path)
-        read_rows = """tables => tables.flatMap(table => {
-          const visible = el => !!(el.getClientRects().length &&
-            getComputedStyle(el).visibility !== 'hidden');
-          const fieldName = th => (th.getAttribute('glide_field') || th.getAttribute('name') || th.getAttribute('data-name') || (/^(Numer|Number)$/i.test(th.textContent.trim()) ? 'number' : th.textContent.trim())).replace(/^(?:incident|sc_task|sc_request|sc_req_item)\\./, '');
-          const fieldLabel = th => (th.getAttribute('glide_label') || th.querySelector('a.column_head')?.textContent || th.textContent).trim();
-          const rows = Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr)
-            && !tr.classList.contains('list_header_search_row'));
-          const candidates = rows.map(tr => Array.from(tr.cells).filter(th => th.tagName === 'TH' && visible(th)
-            && !th.classList.contains('col-control') && !th.classList.contains('list-decoration-table')
-            && !th.querySelector('input, select, textarea, button, .list_header_search_toggle')
-            && !!fieldName(th)));
-          const marked = candidates.filter(cells => cells.some(th => th.hasAttribute('glide_field')));
-          const eligible = (marked.length ? marked : candidates).filter(cells => cells.some(th => fieldName(th) === 'number'));
-          if (!eligible.length) return [];
-          if (eligible.length !== 1) throw new Error('Ambiguous ServiceNow column headers');
-          const headers = eligible[0].filter(th => !marked.length || th.hasAttribute('glide_field'));
-          const header = headers.find(th => {
-            const name = fieldName(th);
-            return /^(?:(?:incident|sc_task|sc_request|sc_req_item)\\.)?number$/.test(name) || /^(Numer|Number)$/i.test(th.innerText.trim());
-          });
-          if (!header) return [];
-          const column = (names, labels) => headers.find(th => {
-            const name = fieldName(th);
-            return names.includes(name);
-          }) || headers.find(th => labels.includes(th.innerText.trim().toLowerCase()));
-          const fields = {
-            short_description: column(['short_description'], ['krótki opis', 'short description']),
-            priority: column(['priority'], ['priorytet', 'priority']),
-            location: column(['location'], ['lokalizacja', 'location']),
-            created: column(['sys_created_on'], ['utworzono', 'created']),
-            updated: column(['sys_updated_on'], ['zaktualizowano', 'updated']),
-            state: column(['state', 'incident_state', 'request_state'], ['stan', 'state']),
-            caller: column(['caller_id'], ['zgłaszający', 'caller']),
-            requested_for: column(['requested_for', 'request.requested_for', 'request_item.request.requested_for'], ['wnioskowane dla', 'requested for']),
-            opened_by: column(['opened_by'], ['otwarte przez', 'opened by']),
-            assigned_to: column(['assigned_to'], ['przypisane do', 'assigned to']),
-            description: column(['description'], ['opis', 'description']),
-            parent_incident: column(['parent_incident', 'parent'], ['incydent nadrzędny', 'parent incident']),
-            configuration_item: column(['cmdb_ci'], ['objęty element konfiguracji', 'element konfiguracji', 'configuration item']),
-            assignment_group: column(['assignment_group'], ['grupa przypisania', 'assignment group'])
-          };
-          const used = new Map();
-          const schema = headers.map(th => {
-            const label = fieldLabel(th).replace(/\\s+/g, ' ').trim();
-            const raw = fieldName(th);
-            const known = th === header ? 'number' : Object.keys(fields).find(key => fields[key] === th);
-            const base = raw === 'request_state' ? 'sn:request_state' : known || 'sn:' + raw;
-            const occurrence = used.get(base) || 0;
-            used.set(base, occurrence + 1);
-            return {key: base + (occurrence ? ':' + occurrence : ''), label: label || raw, index: th.cellIndex};
-          });
-          return [{available: schema.map(c => c.key), schema: schema.map(({key, label}) => ({key, label}))}, ...Array.from(table.rows).filter(tr => tr.closest('table') === table && visible(tr))
-            .flatMap(tr => {
-              const cell = tr.cells[header.cellIndex];
-              if (!cell || cell.tagName !== 'TD') return [];
-              return Array.from(cell.querySelectorAll('a')).filter(visible).map(a => ({
-                label: a.innerText, href: a.href, row: tr.innerText,
-                values: Object.fromEntries(schema.map(c => [c.key, tr.cells[c.index]?.innerText.trim() || ''])),
-                fields: Object.fromEntries(Object.entries(fields).map(([key, th]) => {
-                  const td = th && tr.cells[th.cellIndex];
-                  return [key, td ? td.innerText.trim() : ''];
-                }))
-              }));
-            })];
-        })"""
-        tables = frame.locator("table:visible")
-        if isinstance(page, ListView):
-            rows = tables.evaluate(f"table => ({read_rows})([table])", timeout=remaining_ms(1000))
-        else:
-            rows = tables.evaluate_all(read_rows)
-        for row in rows:
-            if "available" in row:
-                if available is not None:
-                    available.update(row["available"])
-                    if hasattr(available, 'discover') and row.get('schema'):
-                        available.discover(row['schema'])
-                continue
-            match = INC.fullmatch(row["label"].strip())
-            if match:
-                number = match.group().upper()
-                if expected and not re.fullmatch(expected + r"\d+", number):
-                    raise ListStateError("record_type_mismatch")
-                found[number] = {"number": number, "url": safe_record_url(row["href"], number, frame_url),
-                                 "_values": {key: " ".join(value.split()) for key, value in row.get('values', {}).items()},
-                                 **{key: " ".join(value.split()) for key, value in row["fields"].items()},
-                                 "summary": " ".join(row["fields"]["short_description"].split())
-                                 or number}
-    return found
-
-
-def empty_list(page, url):
-    """Accept the empty-list message only on the expected incident-list frame."""
-    from neto_incident_monitor.service_now_urls import trusted_url
-    expected_host = urlparse(url).hostname
-    for frame in page.frames:
-        parsed = urlparse(frame.url)
-        if not trusted_url(frame.url) or parsed.hostname != expected_host or parsed.path != urlparse(url).path:
-            continue
-        messages = frame.get_by_text(re.compile(
-            r"Brak\s+rekordów\s+do\s+wyświetlenia|No\s+records\s+to\s+display", re.I))
-        for index in range(messages.count()):
-            if messages.nth(index).is_visible():
-                return True
-    return False
 
 
 def navigate(page, url, stop=None):
@@ -833,114 +714,6 @@ class App(DynamicColumns, TableLoading):
             return "Nie udało się potwierdzić poprawnego wpisu autostartu."
         return "Uruchamiaj aplikację po zalogowaniu do Windows."
 
-    def approve_large_list(self, url, name, count, stop=None):
-        stop = self.stop if stop is None else stop
-        if next((entry.get("allow_large_list", False) for entry in self.filters if entry["url"] == url), False):
-            return True
-        request = {"url": url, "name": name, "count": count, "deadline": time.monotonic() + 15,
-                   "done": threading.Event(), "accepted": False, "stop": stop}
-        self.events.put(("large_list_prompt", request))
-        from neto_incident_monitor.browser_actions import ACTION_TICK
-        try:
-            while not stop.is_set():
-                remaining = request["deadline"] - time.monotonic()
-                if remaining <= 0:
-                    return False
-                tick = ACTION_TICK.get()
-                if tick:
-                    tick()
-                if request["done"].wait(min(remaining, 0.1)):
-                    return request["accepted"] and not stop.is_set()
-            return False
-        finally:
-            request["done"].set()
-
-    def show_large_list_prompt(self, request):
-        from neto_incident_monitor.widgets import RoundedButton, Toggle
-        if request["done"].is_set() or self.quitting:
-            request["done"].set()
-            return
-        dialog = tk.Toplevel(self.root, background=BG)
-        dialog.withdraw()
-        dialog.title("Potwierdzenie odczytu listy")
-        dialog.transient(self.root)
-        dialog.resizable(False, False)
-        content = ttk.Frame(dialog, padding=24)
-        content.pack(fill="both", expand=True)
-        font = ("Segoe UI", 10)
-        ttk.Label(content, text=f'Lista „{request["name"]}” zawiera {request["count"]:,} wpisów.\nOdczytać całą listę?'.replace(',', ' '),
-                  wraplength=480, justify="left", font=font).pack(anchor="w", pady=(0, 12))
-        remember = tk.BooleanVar(value=False)
-        remember_row = ttk.Frame(content)
-        remember_row.pack(fill="x")
-        ttk.Label(remember_row, text="Zapamiętaj zgodę", font=font).pack(side="left")
-        remember_toggle = Toggle(remember_row, remember)
-        remember_toggle.configure(background=BG)
-        remember_toggle.pack(side="right")
-        countdown = tk.StringVar()
-        ttk.Label(content, textvariable=countdown, font=font).pack(anchor="w", pady=12)
-        buttons = ttk.Frame(content)
-        buttons.pack(fill="x")
-        def finish(accepted, rejected=False):
-            if (request['done'].is_set() or request.get('stop', self.stop).is_set()
-                    or time.monotonic() >= request['deadline']):
-                request["done"].set()
-                dialog.destroy()
-                return
-            index = self.event_filter_index(request["url"])
-            if index is not None and (rejected or (accepted and remember.get())):
-                entry = self.filters[index - 1]
-                field = "enabled" if rejected else "allow_large_list"
-                old = entry.get(field, True if rejected else False)
-                entry[field] = not rejected
-                try:
-                    self.persist_filters()
-                except (OSError, ValueError) as error:
-                    entry[field] = old
-                    accepted = False
-                    messagebox.showerror("Duża lista", f"Nie udało się zapisać ustawienia: {error}", parent=dialog)
-                self.refresh_filters()
-            request["accepted"] = accepted
-            request["done"].set()
-            dialog.destroy()
-        RoundedButton(buttons, text="Kontynuuj odczyt", command=lambda: finish(True), primary=True).pack(side="right")
-        RoundedButton(buttons, text="Wyłącz filtr", command=lambda: finish(False, True)).pack(side="right", padx=8)
-        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False, True))
-        timer = None
-        geometry_timer = None
-        def cleanup(event):
-            if event.widget is dialog:
-                for pending in (timer, geometry_timer):
-                    if pending is not None:
-                        dialog.after_cancel(pending)
-        dialog.bind("<Destroy>", cleanup, add="+")
-        def tick():
-            nonlocal timer
-            timer = None
-            if not dialog.winfo_exists():
-                return
-            remaining = max(0, int(request["deadline"] - time.monotonic() + 0.999))
-            if request["done"].is_set() or remaining == 0 or request.get("stop", self.stop).is_set():
-                request["done"].set()
-                dialog.destroy()
-                return
-            countdown.set(f"Pominięcie odczytu za {remaining} s.")
-            timer = dialog.after(100, tick)
-        tick()
-        if not dialog.winfo_exists():
-            return
-        dialog.update_idletasks()
-        width, height = max(420, dialog.winfo_reqwidth()), dialog.winfo_reqheight()
-        x = max(0, (dialog.winfo_screenwidth() - width) // 2)
-        y = max(0, (dialog.winfo_screenheight() - height) // 2)
-        geometry = f"{width}x{height}+{x}+{y}"
-        dialog.geometry(geometry)
-        dialog.deiconify()
-        dialog.lift()
-        dialog.attributes("-topmost", True)
-        # Reapply after mapping: Windows can reposition transient windows.
-        geometry_timer = dialog.after_idle(lambda: dialog.geometry(geometry) if dialog.winfo_exists() else None)
-
     def make_table(self, parent, history):
         columns = [(key, label, width) for key, label, width in FIELDS if key != "time"]
         if history:
@@ -1137,7 +910,25 @@ class App(DynamicColumns, TableLoading):
             self.refresh_current()
             self.refresh_history()
             self.update_counts()
+        self.update_filter_info_button()
         self.update_refresh_controls()
+
+    def update_filter_info_button(self):
+        if hasattr(self, 'filter_info_button'):
+            index = self.selected_filter_index()
+            entry = self.filters[index - 1] if index else {}
+            definition = entry.get('list_definition') if not entry.get('url_invalid') else None
+            self.filter_info_button.configure(state='normal' if valid_definition(definition) else 'disabled')
+
+    def show_filter_info(self):
+        from neto_incident_monitor.filter_definition_ui import show_filter_definition
+        index = self.selected_filter_index()
+        if index:
+            entry = self.filters[index - 1]
+            definition = entry.get('list_definition')
+            if not entry.get('url_invalid') and valid_definition(definition):
+                show_filter_definition(self.root, entry['name'], definition,
+                                       refresh=lambda: self.enqueue_refresh('filter_definition', entry['url']))
 
     def open_filter(self, event):
         table = self.filter_table
@@ -1537,7 +1328,7 @@ class App(DynamicColumns, TableLoading):
         previous = settings.get('filters', []) if proposed is None else self.filters
         filters = self.filters if proposed is None else proposed
         old_policies = {
-            item["url"]: (bool(item.get("first_only")), bool(item.get("allow_large_list")), item.get("enabled", True))
+            item["url"]: (bool(item.get("first_only")), item.get("enabled", True))
             for item in previous if isinstance(item, dict) and "url" in item
         }
         settings["filters"] = filters
@@ -1546,7 +1337,7 @@ class App(DynamicColumns, TableLoading):
         settings["urls"] = [entry["url"] for entry in filters]
         save_json(CONFIG, settings)
         current_policies = {
-            item["url"]: (bool(item.get("first_only")), bool(item.get("allow_large_list")), item.get("enabled", True))
+            item["url"]: (bool(item.get("first_only")), item.get("enabled", True))
             for item in filters
         }
         changed = {url: object() for url in old_policies.keys() | current_policies.keys()
@@ -1595,6 +1386,38 @@ class App(DynamicColumns, TableLoading):
             save_json(CONFIG, settings)
         except (OSError, ValueError) as exc:
             messagebox.showerror("Układ okna", f"Nie udało się zapisać szerokości panelu: {exc}", parent=self.root)
+
+    def handle_filter_limit(self, url, count):
+        from neto_incident_monitor.filter_api import MAX_FILTER_RECORDS
+
+        index = self.event_filter_index(url)
+        if index is None or self.quitting:
+            return
+        entry = self.filters[index - 1]
+        name = entry['name']
+        total = f'{count:,}'.replace(',', ' ')
+        status = f'Filtr „{name}” zwraca {total} zgłoszeń. Maksymalna dopuszczalna liczba to {MAX_FILTER_RECORDS}.'
+        enabled = entry.get('enabled', True)
+        save_failed = False
+        if enabled:
+            proposed = list(self.filters)
+            proposed[index - 1] = dict(entry, enabled=False)
+            try:
+                self.save_filter_change(proposed, 'disable_limit', self.selected_filter_url())
+            except (OSError, ValueError):
+                save_failed = True
+        self.set_activity(f'Za duża lista: {name}', 'error', 'filter_error')
+        self.status.set(status)
+        if enabled:
+            if self.root.state() in ('withdrawn', 'iconic'):
+                self.show_window()
+            if save_failed:
+                messagebox.showerror('Filtr ServiceNow',
+                    f'Nie udało się zapisać wyłączenia filtra „{name}”.', parent=self.root)
+            else:
+                messagebox.showinfo('Filtr ServiceNow',
+                    f'Filtr „{name}” został wyłączony, ponieważ zawiera ponad {MAX_FILTER_RECORDS} elementów.',
+                    parent=self.root)
 
     def toggle_filter(self, item):
         if getattr(self, 'favorites_import', None) is not None:
@@ -1675,6 +1498,7 @@ class App(DynamicColumns, TableLoading):
                 if original_url != urls[0]:
                     from uuid import uuid4
                     updated.pop('resolved_list_url', None)
+                    updated.pop('list_definition', None)
                     updated['filter_instance'] = uuid4().hex
                 proposed = list(self.filters)
                 if edit:
@@ -2085,7 +1909,7 @@ class App(DynamicColumns, TableLoading):
     def enqueue_refresh(self, scope, url):
         if not self.session.ready_once or self.session_state not in ('ready', 'waiting') or self.quitting:
             return False
-        if scope not in ('all', 'dashboard', 'threatened', 'filter'):
+        if scope not in ('all', 'dashboard', 'threatened', 'filter', 'filter_definition'):
             raise ValueError('Nieznany zakres aktualizacji.')
         self.update_session_filters()
         parts = []
@@ -2098,7 +1922,7 @@ class App(DynamicColumns, TableLoading):
         else:
             part = self.session.manual_filter_parts.get(url or self.selected_filter_url())
             if part is not None:
-                parts.append(part)
+                parts.append(ReadPart(scope, part.target) if scope == 'filter_definition' else part)
         if not parts:
             return False
         _, merged = self.session.submit(scope, parts)
@@ -2138,19 +1962,23 @@ class App(DynamicColumns, TableLoading):
             from neto_incident_monitor.favorites_worker import read_on_session
             return read_on_session(page, part.data, self.session, stop)
         url, revision = part.target
-        outside_schedule = source == 'manual' and not part.data['scheduled']
+        definition_only = part.scope == 'filter_definition'
+        outside_schedule = source == 'manual' and (definition_only or not part.data['scheduled'])
+        job = self.session.active_job if source == 'manual' else None
+        request_id = job.id if job is not None else None
         if self.history.membership is None and self.session.legacy_membership is None:
             from neto_incident_monitor.filter_state import FilterState
             self.session.legacy_membership = FilterState(STATE, normalize_url)
         remaining, retries = {}, set()
         for _ in range(2):
             current = self.session.manual_filter_parts.get(url)
-            if (current != part or revision is not self.filter_revisions.get(url)
+            if (not self.session.filter_is_current(part) or revision is not self.filter_revisions.get(url)
                     or (not outside_schedule and url in self.disabled_filter_urls)):
                 return False
             result = self.read_filter(page, url, current.data['name'], current.data['index'], {}, self.session.legacy_membership,
                                       self.session.health, {url: current.data['resolved']}, retries, remaining,
-                                      self.monitor_generation, stop, outside_schedule=outside_schedule, part=part)
+                                      self.monitor_generation, stop, outside_schedule=outside_schedule, part=part,
+                                      request_id=request_id)
             if result != 'waiting_login':
                 return result == 'success'
         return False
@@ -2650,7 +2478,7 @@ class App(DynamicColumns, TableLoading):
                             if result == "waiting_login":
                                 self.schedule.request()
                                 break
-                            cycle_error |= result == "error"
+                            cycle_error |= result in ("error", "rejected")
                         self.read_due_threatened(page)
                         now = time.monotonic()
                         for kind in due:
@@ -2690,16 +2518,18 @@ class App(DynamicColumns, TableLoading):
 
     def read_filter(self, page, url, filter_name, filter_index, settings, membership,
                     health, resolved, retry_urls, remaining_after_login, generation, stop,
-                    *, outside_schedule=False, part=None):
+                    *, outside_schedule=False, part=None, request_id=None):
         from neto_incident_monitor.browser_actions import ACTION_TICK
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
-        from neto_incident_monitor.pagination import MAX_READ_SECONDS
+        from neto_incident_monitor.filter_api import (
+            FilterListLimitExceeded, MAX_FILTER_RECORDS, MAX_READ_SECONDS, read_filter_records)
         from neto_incident_monitor.read_budget import Budget, budget_scope
 
         class FilterInvalidated(Exception):
             pass
 
         self.threatened_delay_reason = 'filter'
+        definition_only = part is not None and part.scope == 'filter_definition'
         revision = part.target[1] if part is not None else getattr(self, 'filter_revisions', {}).get(url)
         health_key = part.target if part is not None else url
 
@@ -2723,14 +2553,16 @@ class App(DynamicColumns, TableLoading):
         report('filter_updating', url)
         read_stage = {'stage': 'prepare', 'page': 0}
         read_started = time.monotonic()
+        retry_used = False
         resumed = remaining_after_login.pop(url, None)
-        if resumed is not None and resumed[2] is revision:
-            seconds, read_diagnostics, _ = resumed
+        recovered_login = resumed is not None and resumed[2] is revision
+        if recovered_login:
+            seconds, read_diagnostics, _, retry_used = resumed
             read_diagnostics.record("filter_read_resumed")
         else:
             seconds = MAX_READ_SECONDS
-            read_diagnostics = LoginDiagnostics(source="pagination", filter_index=filter_index,
-                                                outside_schedule=outside_schedule)
+            read_diagnostics = LoginDiagnostics(source="filter_read", filter_index=filter_index,
+                                                outside_schedule=outside_schedule, request_id=request_id)
             read_diagnostics.record("filter_read_start")
         outcome = "interrupted"
         filter_budget = Budget(seconds)
@@ -2740,13 +2572,8 @@ class App(DynamicColumns, TableLoading):
             current = page
             if self.browser_runtime:
                 self.browser_runtime.set_activity('filters')
-            available = ColumnDiscovery()
-            def observe_stage(stage, index):
-                nonlocal available
-                if stage == "retry":
-                    available = ColumnDiscovery()
-                read_stage.update(stage=stage, page=index)
-
+            from neto_incident_monitor.browser_actions import checkpoint
+            from neto_incident_monitor.dashboard_context import DashboardReadError
             browser_tick = ACTION_TICK.get()
 
             def filter_tick():
@@ -2758,28 +2585,71 @@ class App(DynamicColumns, TableLoading):
             try:
                 validate_revision()
                 with budget_scope(filter_budget):
-                    incidents, page_count = read_all(
-                        current, url, stop, lambda p: collect(p, available), empty_list, authentication_page,
-                        lambda p, address: navigate(p, address, stop),
-                        lambda index, count: report('filter_progress',
-                            f'strona {index}, odczytano {count} incydentów…'
-                            if index else 'powrót do pierwszej strony…'),
-                        approve_large=lambda count: self.approve_large_list(url, filter_name, count, stop),
-                        on_stage=observe_stage,
-                        filter_index=filter_index, diagnostics=read_diagnostics)
+                    entry = next((item for item in self.filters if item['url'] == url), None)
+                    if entry is None:
+                        raise FilterInvalidated()
+                    if not definition_only and ready_definition(entry):
+                        definition = entry['list_definition']
+                    else:
+                        read_stage['stage'] = 'definition'
+                        report('filter_progress', 'ustalanie definicji listy…')
+                        from neto_incident_monitor.dashboard import measured_record
+                        started = time.monotonic()
+                        discovery_outcome = 'error'
+                        render = (self.browser_runtime.definition_read(current, read_diagnostics)
+                                  if self.browser_runtime else nullcontext())
+                        try:
+                            with render:
+                                definition, direct = discover_definition(
+                                    current, entry, stop, navigate, authentication_page, read_diagnostics)
+                            discovery_outcome = 'returned'
+                        except AuthenticationRequired:
+                            discovery_outcome = 'authentication'
+                            raise
+                        except (Cancelled, FilterInvalidated):
+                            discovery_outcome = 'cancelled'
+                            raise
+                        finally:
+                            measured_record(read_diagnostics, 'filter_definition_discovery',
+                                            outcome=discovery_outcome,
+                                            duration_ms=round((time.monotonic() - started) * 1000))
+                        request = dict(done=threading.Event(), saved=False, stop=stop, url=url,
+                                       revision=revision, generation=generation, definition=definition,
+                                       direct=direct, diagnostics=read_diagnostics)
+                        self.events.put(('save_filter_definition', request))
+                        try:
+                            while not request['done'].wait(.05):
+                                checkpoint(stop)
+                        finally:
+                            request['done'].set()
+                        checkpoint(stop)
+                        if not request['saved']:
+                            raise DashboardReadError('filter_definition_save', retryable=False)
+                        if definition_only:
+                            self.events.put(('columns', (url, definition['columns'], revision, generation, True, True)))
+                            outcome = 'success'
+                            return outcome
+                    read_stage['stage'] = 'api_read'
+                    while True:
+                        read_stage['page'] = 1
+                        try:
+                            incidents = read_filter_records(current, stop, read_diagnostics, definition)
+                            break
+                        except DashboardReadError as error:
+                            if retry_used or not error.retryable:
+                                raise
+                            retry_used = True
+                            read_diagnostics.record('section_read_retry', attempt=1, read_reason=error.reason)
             finally:
                 ACTION_TICK.reset(filter_tick_token)
             validate_revision()
+            schema = definition['columns']
             if is_short_url(url):
-                direct = resolved_list_url(current, url)
-                if not direct:
-                    raise ValueError('Nie rozpoznano docelowej listy skrótu.')
-                resolved[url] = direct
-            missing_links = sum(not incident.get("url") for incident in incidents.values())
-            if missing_links:
-                read_diagnostics.record("filter_links_degraded", row_count=missing_links)
+                resolved[url] = next((item.get('resolved_list_url', url) for item in self.filters
+                                      if item['url'] == url), url)
+            available = sorted(column['key'] for column in schema)
             for incident in incidents.values():
-                incident["_available_columns"] = sorted(available)
+                incident["_available_columns"] = available
             read_stage['stage'] = 'history_write'
             from neto_incident_monitor.browser_actions import checkpoint
             read_diagnostics.record("filter_commit_start", records_read=len(incidents))
@@ -2800,10 +2670,7 @@ class App(DynamicColumns, TableLoading):
                     **instance)
             read_diagnostics.record("filter_commit_complete", records_read=len(incidents))
             outcome = "success"
-            if is_short_url(url):
-                self.events.put(("filter_resolved", (url, direct, revision, generation)))
-            if available.schema is not None:
-                self.events.put(("columns", (url, available.schema, revision, generation, outside_schedule)))
+            self.events.put(("columns", (url, schema, revision, generation, outside_schedule)))
             health.success(health_key)
             retry_urls.discard(url)
             self.events.put(("snapshot", (url, incidents, revision, generation, outside_schedule)))
@@ -2813,12 +2680,18 @@ class App(DynamicColumns, TableLoading):
                 else:
                     self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)], revision, generation)))
             report('read', (time.time(), filter_name))
-            report('filter_progress', f'{len(incidents)} incydentów na {page_count} stronach, nowych: {len(new)}.')
+            report('filter_progress', f'{len(incidents)} zgłoszeń, nowych: {len(new)}.')
         except FilterInvalidated:
             outcome = "discarded"
-        except LargeListRejected:
-            outcome = 'rejected' if is_current() else 'discarded'
-            report('status', f'Pominięto dużą listę: {filter_name}.')
+        except FilterListLimitExceeded as error:
+            if not is_current():
+                outcome = 'discarded'
+                return outcome
+            outcome = 'rejected'
+            read_diagnostics.record('filter_read_error', filter_stage='api_read', page_index=1,
+                                    read_reason=error.reason, total_rows=error.total, page_size=MAX_FILTER_RECORDS,
+                                    final_failure=True)
+            self.events.put(('filter_limit', (url, error.total, revision, generation)))
         except Cancelled:
             outcome = 'cancelled' if is_current() else 'discarded'
             return outcome
@@ -2826,9 +2699,18 @@ class App(DynamicColumns, TableLoading):
             if not is_current():
                 outcome = 'discarded'
                 return outcome
+            seconds_left = max(0, filter_budget.end - time.monotonic())
+            if part is not None and (recovered_login or not seconds_left):
+                outcome = 'error'
+                self.session.connected = False
+                read_diagnostics.record('filter_read_error', filter_stage=read_stage['stage'],
+                    page_index=read_stage['page'], read_reason='authentication_required', final_failure=True)
+                report('filter_error', 'Nie udało się przywrócić sesji ServiceNow dla tego odczytu. '
+                       'Zachowano poprzedni wynik.')
+                return outcome
             outcome = "waiting_login"
             remaining_after_login[url] = (
-                max(0, filter_budget.end - time.monotonic()), read_diagnostics, revision)
+                seconds_left, read_diagnostics, revision, retry_used)
             report('phase', 'Oczekiwanie na logowanie')
             message = "Sesja ServiceNow wygasła. Zaloguj się w przeglądarce — monitoring wznowi się automatycznie."
             report('status', message)
@@ -2847,29 +2729,32 @@ class App(DynamicColumns, TableLoading):
                 outcome = 'discarded'
                 return outcome
             outcome = "error"
-            read_diagnostics.record("filter_read_error", pagination_stage=read_stage["stage"],
-                page_index=read_stage["page"], **error_facts(exc))
+            reason = getattr(exc, "reason", None)
+            read_diagnostics.record("filter_read_error", filter_stage=read_stage["stage"],
+                page_index=read_stage["page"], read_reason=reason, **error_facts(exc))
             LOG.error("Błąd odczytu filtra (%s); etap=%s; strona=%d; czas=%.1fs; filtr=%d.",
                       type(exc).__name__, read_stage['stage'], read_stage['page'],
                       time.monotonic() - read_started, filter_index)
-            report('phase', 'Błąd odczytu')
-            reason = getattr(exc, "reason", None)
+            if part is None:
+                report('phase', 'Błąd odczytu')
             if read_stage["stage"] == "history_write":
                 message = "Nie udało się zapisać historii i stanu filtra. Zachowano poprzedni wynik."
             elif reason in ("query_mismatch", "view_mismatch"):
                 message = "ServiceNow zwrócił inne warunki lub widok listy. Zachowano poprzedni wynik."
+            elif reason in READ_MESSAGES:
+                message = READ_MESSAGES[reason] + ' Zachowano poprzedni wynik.'
             elif reason:
                 message = "Nie potwierdzono pełnego odczytu filtra. Zachowano poprzedni wynik."
             elif outside_schedule:
                 message = "Odczyt filtra nie powiódł się. Możesz ponowić go przyciskiem Aktualizuj."
             else:
                 message = "Odczyt filtra nie powiódł się. Próba ponownie w kolejnym cyklu."
-            report('status', message)
+            report('filter_error' if part is not None else 'status', message)
             if not outside_schedule and health.failure(health_key):
                 report('interruption', f'Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane.')
         finally:
             read_diagnostics.record("filter_read_end", filter_outcome=outcome,
-                pagination_stage=read_stage["stage"], page_index=read_stage["page"],
+                filter_stage=read_stage["stage"], page_index=read_stage["page"],
                 duration_ms=round((time.monotonic() - read_started) * 1000))
             report('filter_updating', None)
         return outcome
@@ -3078,6 +2963,40 @@ class App(DynamicColumns, TableLoading):
 
         return success
 
+    def save_discovered_filter_definition(self, request):
+        from neto_incident_monitor.dashboard import measured_record
+        diagnostics = request['diagnostics']
+        try:
+            with self.filter_config_lock:
+                url = request['url']
+                if (request['done'].is_set() or request['stop'].is_set() or self.quitting
+                        or request['generation'] is not self.monitor_generation
+                        or request['revision'] is not self.filter_revisions.get(url)):
+                    return
+                index = self.event_filter_index(url)
+                if index is None:
+                    return
+                proposed = list(self.filters)
+                entry = dict(proposed[index - 1], list_definition=request['definition'])
+                if is_short_url(url):
+                    entry['resolved_list_url'] = request['direct']
+                if not ready_definition(entry):
+                    return
+                proposed[index - 1] = entry
+                try:
+                    self.persist_filters(proposed)
+                except (OSError, ValueError) as error:
+                    measured_record(diagnostics, 'filter_definition', outcome='error', **error_facts(error))
+                    self.status.set('Nie udało się zapisać definicji filtra.')
+                    return
+                measured_record(diagnostics, 'filter_definition', outcome='returned')
+                request['saved'] = True
+            self.update_session_filters()
+            self.schedule.request()
+            self.update_filter_info_button()
+        finally:
+            request['done'].set()
+
     def handle_session_event(self, kind, value):
         if kind == 'session_prepare_read':
             request = value
@@ -3165,12 +3084,14 @@ class App(DynamicColumns, TableLoading):
             if self.cycle_active == active:
                 self.next_check = next_read
                 self.check_deadlines = deadlines
-                if self.session_state == 'ready' and self.activity_kind not in ('dashboard_error', 'threatened_error'):
+                if self.session_state == 'ready' and self.activity_kind not in (
+                        'dashboard_error', 'threatened_error', 'filter_error'):
                     self.set_activity('Oczekiwanie na kolejne sprawdzenie' if active else 'Gotowy do odczytu', 'success')
         elif kind in ('session_job_running', 'session_job_finished'):
             scope = value if kind == 'session_job_running' else value[0]
             label = {'all': 'Pełna aktualizacja', 'dashboard': 'Dashboard', 'threatened': 'Incydenty zagrożone',
-                     'filter': 'Odczyt filtra', 'favorites': 'Import Ulubionych'}[scope]
+                     'filter': 'Odczyt filtra', 'filter_definition': 'Odświeżenie definicji filtra',
+                     'favorites': 'Import Ulubionych'}[scope]
             if kind == 'session_job_running':
                 self.status.set(f'{label} • w trakcie')
             else:
@@ -3178,7 +3099,8 @@ class App(DynamicColumns, TableLoading):
                 result = 'zakończono' if value[1] else 'niepełny odczyt lub anulowanie'
                 if skipped:
                     result += f' • pominięto po zmianie filtrów: {skipped}'
-                self.status.set(f'{label} • {result}')
+                if value[1] or self.activity_kind != 'filter_error':
+                    self.status.set(f'{label} • {result}')
                 self.update_refresh_controls()
         else:
             return False
@@ -3307,16 +3229,23 @@ class App(DynamicColumns, TableLoading):
         try:
             while True:
                 kind, value = self.events.get_nowait()
+                if kind == 'save_filter_definition':
+                    self.save_discovered_filter_definition(value)
+                    continue
                 if getattr(self, 'session', None) and kind.startswith('session_') and self.handle_session_event(kind, value):
                     continue
-                outside_schedule = False
-                if kind in ("snapshot", "columns", "filter_resolved", "filter_notification", 'filter_activity') and len(value) >= 4:
+                outside_schedule = preserve_layout = False
+                if kind in ("snapshot", "columns", "filter_notification", 'filter_activity', 'filter_limit') and len(value) >= 4:
                     url, payload, revision, generation, *flags = value
                     if (generation is not getattr(self, "monitor_generation", None) or
                             revision is not getattr(self, "filter_revisions", {}).get(url)):
                         continue
                     value = (url, payload)
                     outside_schedule = bool(flags and flags[0])
+                    preserve_layout = len(flags) > 1 and flags[1]
+                    if kind == 'filter_limit':
+                        self.handle_filter_limit(url, payload)
+                        continue
                     if kind == 'filter_activity':
                         index = self.event_filter_index(url)
                         if index is None:
@@ -3326,6 +3255,9 @@ class App(DynamicColumns, TableLoading):
                         if kind == 'read':
                             value = (value[0], name)
                         elif kind == 'filter_progress':
+                            kind, value = 'status', f'{name}: {value}'
+                        elif kind == 'filter_error':
+                            self.set_activity(f'Błąd odczytu: {name}', 'error', 'filter_error')
                             kind, value = 'status', f'{name}: {value}'
                 if kind == 'refresh_state':
                     self.update_refresh_controls()
@@ -3377,28 +3309,7 @@ class App(DynamicColumns, TableLoading):
                 if kind == 'dashboard_result':
                     self.dashboard_view.apply_result(value)
                     continue
-                if kind == 'filter_resolved':
-                    short, direct = value
-                    from neto_incident_monitor.service_now_urls import normalize_list_url
-                    direct = normalize_list_url(direct, allow_short=False)
-                    entry = next((entry for entry in self.filters if entry['url'] == short), None)
-                    if entry is not None and entry.get('resolved_list_url') != direct:
-                        previous = entry.get('resolved_list_url')
-                        entry['resolved_list_url'] = direct
-                        try:
-                            self.persist_filters()
-                        except (OSError, ValueError):
-                            if previous is None:
-                                entry.pop('resolved_list_url', None)
-                            else:
-                                entry['resolved_list_url'] = previous
-                            self.status.set('Rozpoznano listę, ale nie udało się zapisać jej rodzaju.')
-                        else:
-                            self.update_session_filters()
-                            self.schedule.request()
-                        self.columns_filter_url = None
-                        self.filter_selected()
-                elif kind == "filter_updating":
+                if kind == "filter_updating":
                     self.updating_filter_url = value
                     index = self.event_filter_index(value)
                     self.filter_table.updating_item = str(index - 1) if index is not None else None
@@ -3410,8 +3321,6 @@ class App(DynamicColumns, TableLoading):
                         self.set_activity('Przygotowanie kolejnego odczytu', kind='phase')
                 elif kind == "check_deadlines":
                     self.check_deadlines = value
-                elif kind == "large_list_prompt":
-                    self.show_large_list_prompt(value)
                 elif kind == "status":
                     self.status.set(value)
                 elif kind == "tray_ready":
@@ -3503,7 +3412,8 @@ class App(DynamicColumns, TableLoading):
                         continue
                     if isinstance(available, list):
                         self.column_availability[index] = {c["key"] for c in available}
-                        self.accept_column_schema(self.filters[index - 1]["url"], available)
+                        self.accept_column_schema(self.filters[index - 1]["url"], available,
+                                                  preserve_layout=preserve_layout)
                 elif kind == "snapshot":
                     filter_index, incidents = value
                     filter_index = self.event_filter_index(filter_index)
@@ -3555,13 +3465,18 @@ class App(DynamicColumns, TableLoading):
         now = time.monotonic()
         if now - getattr(self, "last_age_refresh", 0) >= 1:
             self.last_age_refresh = now
+            url = self.selected_filter_url()
+            snapshot = self.snapshots.get(self.selected_filter_index(), {})
             for table in (self.current_table, self.table):
                 if not self.table_visible(table):
                     continue
                 changed = False
                 visible_items = set(table.identify_row(y) for y in range(0, table.winfo_height(), 12))
                 for item in visible_items - {''}:
-                    value = age_minutes(table.set(item, "created"), table.set(item, "number"))
+                    number = self.row_numbers.get((table, item)) or table.set(item, "number")
+                    incident = snapshot.get(number, {}) if table is self.current_table else (
+                        (self.history.record(number, url) or {}).get('incident', {}) if url else {})
+                    value = age_minutes(incident.get('_created_utc') or table.set(item, "created"), number)
                     if table.set(item, "age_minutes") != value:
                         table.set(item, "age_minutes", value)
                         changed = True

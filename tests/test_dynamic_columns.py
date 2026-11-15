@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
-from neto_incident_monitor.app import App, collect
-from neto_incident_monitor.columns import ColumnDiscovery
+from neto_incident_monitor.app import App
+from neto_incident_monitor.filter_definition import read_list_headers
+from neto_incident_monitor.list_context import ListTarget
 from neto_incident_monitor.dynamic_columns import LOCAL_KEYS, load_profiles, update_profile
 from neto_incident_monitor.widgets import RoundedButton
 
@@ -38,25 +39,15 @@ class ProfileTests(unittest.TestCase):
                     page.set_content('<table>'+html+'</table>')
                     for search_visible in (True, False):
                         page.locator('.list_header_search_row').evaluate('(el, show) => el.style.display = show ? "" : "none"', search_visible)
-                        discovery = ColumnDiscovery()
-                        self.assertEqual(collect(page, discovery), {})
-                        self.assertEqual(len(discovery.schema), 14)
-                        self.assertEqual(discovery.schema[0], {'key': 'number', 'label': 'Numer'})
-                        self.assertIn({'key': 'sn:u_ci_category', 'label': 'CI category'}, discovery.schema)
-                        self.assertNotIn('sn:search', discovery)
-                        self.assertFalse(any('przeszukiwania' in c['label'] for c in discovery.schema))
-                    # Keep physical cell indexes despite the two control columns.
-                    page.locator('table').evaluate('''table => {
-                      const row = table.insertRow();
-                      for (let i=0; i<16; i++) row.insertCell().textContent = 'cell'+i;
-                      row.cells[2].innerHTML = '<a href="/incident.do?sys_id=test">INC1234567</a>';
-                    }''')
-                    record = collect(page)['INC1234567']
-                    self.assertEqual(record['short_description'], 'cell3')
-                    self.assertEqual(record['_values']['sn:u_ci_category'], 'cell13')
+                        schema = read_list_headers(ListTarget.find(page, URL))['schema']
+                        self.assertEqual(len(schema), 14)
+                        self.assertEqual(schema[0], {'key': 'number', 'label': 'Numer', 'field': 'number'})
+                        self.assertIn({'key': 'sn:u_ci_category', 'label': 'CI category', 'field': 'u_ci_category'}, schema)
+                        self.assertNotIn('sn:search', {column['key'] for column in schema})
+                        self.assertFalse(any('przeszukiwania' in column['label'] for column in schema))
                     page.locator('thead').evaluate('el => el.appendChild(el.rows[0].cloneNode(true))')
                     with self.assertRaisesRegex(Exception, 'Ambiguous ServiceNow column headers'):
-                        collect(page, ColumnDiscovery())
+                        read_list_headers(ListTarget.find(page, URL))
             finally:
                 browser.close()
 
@@ -80,12 +71,16 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(load_profiles({URL: profile})[URL], profile)
         self.assertEqual(load_profiles({URL: {'schema': None}}), {})
 
-    def test_inconsistent_traversal_is_rejected(self):
-        discovery = ColumnDiscovery()
-        discovery.discover(SCHEMA)
-        discovery.discover(list(reversed(SCHEMA)))
-        with self.assertRaises(RuntimeError):
-            discovery.discover(SCHEMA[:2])
+    def test_definition_refresh_preserves_shared_columns_and_adds_new_ones(self):
+        profile = update_profile(None, SCHEMA)
+        profile['visible'] = ['state', 'time']
+        profile['order'] = ['state', 'number', 'sn:u_custom', *LOCAL_KEYS]
+        profile['widths'] = {'state': 211, 'sn:u_custom': 123}
+        schema = [SCHEMA[0], SCHEMA[2], {'key': 'sn:added', 'label': 'Nowa'}]
+        refreshed = update_profile(profile, schema, preserve_layout=True)
+        self.assertEqual(refreshed['visible'], ['state', 'time', 'sn:added'])
+        self.assertEqual(refreshed['order'], ['state', 'number', *LOCAL_KEYS, 'sn:added'])
+        self.assertEqual(refreshed['widths'], {'state': 211})
 
     def test_reader_discovers_unknown_fields_in_empty_and_populated_list(self):
         from playwright.sync_api import sync_playwright
@@ -97,13 +92,9 @@ class ProfileTests(unittest.TestCase):
                 page.goto(URL)
                 headers = '<tr><th></th><th name="incident.u_custom">Pole własne</th><th name="incident.number">Numer</th><th name="incident.state">Stan</th><th name="incident.hidden" style="display:none">Ukryta</th></tr>'
                 page.set_content('<table>'+headers+'</table>')
-                discovery = ColumnDiscovery()
-                self.assertEqual(collect(page, discovery), {})
-                self.assertEqual([c['key'] for c in discovery.schema], ['sn:u_custom', 'number', 'state'])
-                page.set_content('<table>'+headers+'<tr><td></td><td>Własna wartość</td><td><a href="/incident.do?sys_id=abc">INC1234567</a></td><td>Nowy</td><td style="display:none">Sekret</td></tr></table>')
-                record = collect(page, discovery)['INC1234567']
-                self.assertEqual(record['_values']['sn:u_custom'], 'Własna wartość')
-                self.assertNotIn('sn:hidden', record['_values'])
+                schema = read_list_headers(ListTarget.find(page, URL))['schema']
+                self.assertEqual([c['key'] for c in schema], ['sn:u_custom', 'number', 'state'])
+                self.assertEqual(schema[0]['field'], 'u_custom')
             finally:
                 browser.close()
 
@@ -118,8 +109,6 @@ class DynamicUITests(unittest.TestCase):
         self.root.update()
 
     def tearDown(self):
-        for timer in self.root.tk.call('after', 'info'):
-            self.root.after_cancel(timer)
         self.root.destroy()
         self.folder.cleanup()
 

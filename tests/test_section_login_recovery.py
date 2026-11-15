@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from playwright.sync_api import TimeoutError
 
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.read_budget import CURRENT, RECOVERY
 from neto_incident_monitor.section_runner import run_section
 

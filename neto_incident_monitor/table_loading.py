@@ -91,7 +91,7 @@ class TableLoading:
                     values = dict(incident)
                     values.update(incident.get('_values', {}))
                     values.update(number=number, time=detected,
-                                  age_minutes=age_minutes(incident.get('created'), number))
+                                  age_minutes=age_minutes(incident.get('_created_utc') or incident.get('created'), number))
                     rows.append((index, number, incident, detected, values.get(column) or '—'))
                 if column:
                     present = [r for r in rows if str(r[-1]).strip() not in ('', '—')]

@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from neto_incident_monitor.app import validate_urls, load_filters
 from neto_incident_monitor.service_now_urls import normalize_list_url, InvalidListURL
-from neto_incident_monitor.pagination import first_page
 from neto_incident_monitor.login_diagnostics import _logger
 from tests.test_query_date_alias import QUERY
 
@@ -27,7 +26,6 @@ class WrappedListURLTests(unittest.TestCase):
         self.assertEqual(parse_qsl(urlsplit(normalized).query), expected)
         self.assertEqual(normalize_list_url(normalized), normalized)
         self.assertEqual(load_filters({'filters': [{'name': 'Synthetic', 'url': normalized}]} )[0]['url'], normalized)
-        self.assertEqual(dict(parse_qsl(urlsplit(first_page(normalized)).query))['sysparm_first_row'], '1')
 
     def test_nested_parameter_encoding_preserves_reserved_and_unicode_characters(self):
         for value in ('a b', 'Zażółć gęślą', 'C++ & a=b 100%', 'literal%20sequence', '#value?', 'a;b'):

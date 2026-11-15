@@ -7,7 +7,7 @@ from neto_incident_monitor.browser_window import BrowserWindow
 from neto_incident_monitor.browser_actions import ACTION_TICK,ready_control
 from neto_incident_monitor.favorites import HOME
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics
-from neto_incident_monitor.pagination import Cancelled
+from neto_incident_monitor.read_errors import Cancelled
 from playwright._impl._errors import TargetClosedError
 
 @unittest.skipUnless(sys.platform=='win32','Windows integration')

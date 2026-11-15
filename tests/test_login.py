@@ -11,7 +11,6 @@ class LoginTests(unittest.TestCase):
     def test_hidden_browser_is_hidden_again_after_login_even_without_minimize(self):
         window = Mock()
         with patch('neto_incident_monitor.app.authentication_page', return_value=False), \
-             patch('neto_incident_monitor.app.collect', return_value={'INC1': {}}), \
              patch('neto_incident_monitor.app.minimize_chromium') as minimize:
             self.assertTrue(wait_for_login(self.page(), 'https://adeo.service-now.com/incident_list.do',
                                            threading.Event(), browser_window=window))
@@ -74,7 +73,6 @@ class LoginTests(unittest.TestCase):
             for minimize_enabled in (False, True):
                 with self.subTest(auto_login=automatic_enabled, minimize=minimize_enabled), \
                      patch('neto_incident_monitor.app.authentication_page', return_value=False), \
-                     patch('neto_incident_monitor.app.collect', return_value={'INC1234567': {}}), \
                      patch('neto_incident_monitor.app.minimize_chromium') as minimize:
                     page = self.page()
                     wait_for_login(page, 'https://adeo.service-now.com/incident_list.do',
@@ -113,26 +111,24 @@ class LoginTests(unittest.TestCase):
             self.assertTrue(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',threading.Event()))
         navigate.assert_not_called();self.assertEqual(page.wait_for_timeout.call_count,2)
 
-    def test_empty_list_and_cached_session_are_ready(self):
-        with patch('neto_incident_monitor.app.authentication_page', return_value=False), patch('neto_incident_monitor.app.collect', return_value={}), \
-             patch('neto_incident_monitor.app.empty_list', return_value=True):
+    def test_cached_session_is_ready_on_list_url(self):
+        with patch('neto_incident_monitor.app.authentication_page', return_value=False):
             self.assertTrue(wait_for_login(self.page(), 'https://adeo.service-now.com/incident_list.do', threading.Event()))
 
     def test_stop_interrupts_unrecognized_list(self):
         stop = threading.Event()
         page = self.page(False)
         page.wait_for_timeout.side_effect = lambda _: stop.set()
-        with patch('neto_incident_monitor.app.authentication_page', return_value=False), patch('neto_incident_monitor.app.collect', return_value={}), \
-             patch('neto_incident_monitor.app.empty_list', return_value=False):
+        with patch('neto_incident_monitor.app.authentication_page', return_value=False):
             self.assertFalse(wait_for_login(page, 'https://adeo.service-now.com/incident_list.do', stop))
 
     def test_authenticated_home_does_not_need_list_navigation(self):
         from tests.test_login_observation import frame_with
         page=self.page();page.url='https://adeo.service-now.com/home.do'
         page.frames=[frame_with(url=page.url,session_signal=True)]
-        with patch('neto_incident_monitor.app.navigate') as navigate,patch('neto_incident_monitor.app.collect') as collect:
+        with patch('neto_incident_monitor.app.navigate') as navigate:
             self.assertTrue(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',threading.Event()))
-        navigate.assert_not_called();collect.assert_not_called()
+        navigate.assert_not_called()
 
     def test_closed_browser_is_reported(self):
         page = self.page()

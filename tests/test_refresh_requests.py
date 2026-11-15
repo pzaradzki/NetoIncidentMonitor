@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
+from tests.test_filter_api import filter_definition
+
 from neto_incident_monitor.app import App
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import RefreshControl
@@ -20,7 +22,7 @@ class RefreshRequestsTests(unittest.TestCase):
                 app.threatened_requests.put(1)
                 app.schedule = Mock(woken_by_request=False)
                 urls = ['https://adeo.service-now.com/incident_list.do?sysparm_query=priority=' + str(i) for i in range(3)]
-                app.filters = [dict(name=str(i), url=url) for i, url in enumerate(urls)]
+                app.filters = [dict(name=str(i), url=url, list_definition=filter_definition(url)) for i, url in enumerate(urls)]
                 app.disabled_filter_urls = frozenset()
                 app.history = History(Path(folder) / 'history.json')
                 app.restore_login = Mock(return_value=True)
@@ -35,10 +37,11 @@ class RefreshRequestsTests(unittest.TestCase):
                     order.append('threatened')
                     clock[0] += 5
                     return dict.fromkeys(('P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'), 0), {}
-                def read(page, url, *args, **kwargs):
+                def read(page, stop, diagnostics, definition):
+                    url = definition['source_url']
                     order.append(urls.index(url))
                     clock[0] += 35
-                    return {}, 1
+                    return {}
                 page = Mock()
                 page.is_closed.return_value = False
                 context = Mock(pages=[page])
@@ -51,7 +54,7 @@ class RefreshRequestsTests(unittest.TestCase):
                         patch('neto_incident_monitor.app.navigate'), \
                         patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
                         patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
-                        patch('neto_incident_monitor.app.read_all', side_effect=read), \
+                        patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read), \
                         patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True) as wait:
                     app.monitor(dict(urls=urls, filters=app.filters, interval=3600, task_interval=3600))
                 expected = ['dashboard', 'threatened', 0, 1, 'threatened', 2]
@@ -148,7 +151,7 @@ class RefreshRequestsTests(unittest.TestCase):
                 app.schedule = Mock(woken_by_request=True)
                 urls = ['https://adeo.service-now.com/incident_list.do?sysparm_query=priority=1',
                         'https://adeo.service-now.com/incident_list.do?sysparm_query=priority=2']
-                app.filters = [dict(name=name, url=url) for name, url in zip(('A', 'B'), urls)]
+                app.filters = [dict(name=name, url=url, list_definition=filter_definition(url)) for name, url in zip(('A', 'B'), urls)]
                 app.disabled_filter_urls = frozenset()
                 app.history = History(Path(folder) / 'history.json')
                 app.refresh_coordinator().reserve(scope, urls[1] if scope == 'filter' else None)
@@ -161,15 +164,16 @@ class RefreshRequestsTests(unittest.TestCase):
                 context = Mock(pages=[page])
                 playwright = MagicMock()
                 playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-                def read(page, url, *args, **kwargs):
+                def read(page, stop, diagnostics, definition):
+                    url = definition['source_url']
                     self.assertTrue(app.refresh_coordinator().busy)
                     order.append('A' if url == urls[0] else 'B')
-                    return {}, 1
+                    return {}
                 with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
                         patch('neto_incident_monitor.browser_window.BrowserWindow'), \
                         patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
                         patch('neto_incident_monitor.app.navigate'), \
-                        patch('neto_incident_monitor.app.read_all', side_effect=read), \
+                        patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read), \
                         patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True):
                     app.monitor(dict(urls=urls, filters=app.filters, interval=60, task_interval=60))
                 self.assertEqual(order, expected)

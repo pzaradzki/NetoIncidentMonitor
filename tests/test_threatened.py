@@ -5,9 +5,11 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
+from tests.test_filter_api import filter_definition
+
 from neto_incident_monitor.app import App
 from neto_incident_monitor.threatened import KEYS, THREATENED_URL
-from neto_incident_monitor.pagination import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 
 class ThreatenedPresentationTests(unittest.TestCase):
     def test_sidebar_activity_badge_fits_with_warning_icons(self):
@@ -244,7 +246,7 @@ class ThreatenedWorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             app = self.app()
             url = app.monitor_settings['urls'][0]
-            app.filters = [{'name': 'Test', 'url': url}]
+            app.filters = [{'name': 'Test', 'url': url, 'list_definition': filter_definition(url)}]
             app.disabled_filter_urls = frozenset()
             app.schedule = Mock()
             app.schedule.woken_by_request = False
@@ -263,14 +265,14 @@ class ThreatenedWorkerTests(unittest.TestCase):
                 return dict.fromkeys(KEYS, 0), {}
             def filters(*args, **kwargs):
                 order.append('filter')
-                return {}, 1
+                return {}
             with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
                     patch('playwright.sync_api.sync_playwright', return_value=playwright), \
                     patch('neto_incident_monitor.browser_window.BrowserWindow'), \
                     patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
                     patch('neto_incident_monitor.app.navigate'), \
                     patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
-                    patch('neto_incident_monitor.app.read_all', side_effect=filters), \
+                    patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=filters), \
                     patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, True]):
                 app.monitor(settings)
             self.assertEqual(order[:4], ['login', 'dashboard', 'threatened', 'filter'])

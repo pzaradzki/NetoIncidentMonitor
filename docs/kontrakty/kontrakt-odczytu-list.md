@@ -1,6 +1,18 @@
 # Kontrakt odczytu list ServiceNow
 
-## Warunki i kompletność
+## Table API w bieżących źródłach
+
+Aktualizacja najpierw sprawdza wersję definicji, adres, instancję filtra, tabelę, warunki, widok i mapowanie kolumn. Przy brakującym komplecie otwiera listę na wspólnej karcie, rozpoznaje warunki i nagłówki oraz czeka na potwierdzenie atomowego zapisu. Pierwsze pobranie rekordów wykonuje przez REST w tym samym zleceniu. Przy zapisanym komplecie przechodzi od razu do API. **ⓘ → Odśwież definicję z SNOW** dodaje do tej samej kolejki zadanie wymiany metadanych. Nieudane odświeżenie zachowuje dotychczasowy zapis. Zmiana adresu unieważnia poprzednią definicję i żądania starej rewizji.
+
+Czytnik pobiera pola z zapisanego widoku ServiceNow, również ukryte lokalnie i dostępne dla historii i szablonów powiadomień. Pobiera także numer, identyfikator i surową datę utworzenia INC dla wieku zgłoszenia. Brak pola w odpowiedzi i pusta wartość są odrębnymi przypadkami. Techniczne pole nierozpoznane w metadanych wymaga uzupełnienia definicji.
+
+Żądanie REST zachowuje warunki i jawne dyrektywy sortowania z zapytania. Dodaje `sys_id` do rozstrzygania remisów i pomija końcowe `EQ`. Odrzuca między innymi nieobsłużony kontekst list zależnych i stały filtr z osobnego parametru URL. Źródłem zapytania pozostaje klasyczna tabela, weryfikowana względem jawnych warunków adresu. Zgodność zależy od operatorów, pól i uprawnień konta. Szczegółowe porównanie wszystkich wariantów na docelowej instancji celowo pominięto. [ServiceNow Table API](https://www.servicenow.com/docs/r/api-reference/rest-apis/c_TableAPI.html)
+
+Czytnik żąda do 1000 rekordów w jednej odpowiedzi. Wymaga `X-Total-Count`, zgodnej liczby wierszy, braku sygnału kolejnej strony oraz unikalnych identyfikatorów i numerów. Przy wyniku powyżej 1000 aplikacja wyłącza filtr z harmonogramu, zapisuje konfigurację i pokazuje monit. Stopka podaje nazwę filtra, liczebność i limit. Jeśli filtr był wyłączony, aplikacja pokazuje stopkę bez ponownego monitu o wyłączeniu. Nieudany zapis wyłączenia wyświetla komunikat o błędzie. Wynik ze starej rewizji nie zmienia konfiguracji. Błąd, wygaśnięcie sesji i anulowanie odrzucają bufor. Utrata sesji i przejściowe błędy transportu korzystają z dotychczasowych budżetów ponowień. Przekroczenie limitu i niespójna odpowiedź kończą bieżące zlecenie. [Decyzja 035](../decyzje/035-limit-odczytu-filtrow.md)
+
+Diagnostyka łączy zapisy rozpoznania, trwałego zapisu definicji, żądania API, walidacji, ponowień i transakcji historii. Zapisuje alias tabeli, wynik i czasy, liczebność, limit, sygnał kolejnej strony oraz kategorię nieudanej kontroli. Do diagnostyki nie trafiają treść zapytań, identyfikatory zgłoszeń, odpowiedzi API ani dane sesji. Stan odbioru i usuwania poprzedniego czytnika opisuje [plan migracji](../plany/zakonczone/migracja-odczytu-filtrow-na-api.md).
+
+## Historia wycofanego czytnika klasycznych list
 
 Czytnik wiąże widoczną tabelę, pager, typ rekordu i metadane z jedną listą. Jawne zapytanie i widok muszą odpowiadać żądaniu. Kolejność warunków i grupowanie OR/NQ pozostają istotne. Ignorowane są jedynie końcowe dyrektywy `EQ` i sortowania oraz potwierdzona równoważność z [decyzji 015](../decyzje/015-rownowaznosc-dat-filtrow.md).
 
@@ -12,7 +24,11 @@ Dla klasycznych list INC, REQ, RITM i SCTASK czytnik sprawdza `rows_per_page` w 
 
 ServiceNow zapisuje wybór jako preferencję użytkownika i stosuje ją na klasycznych listach dostępnych dla tego konta. [Dokumentacja ServiceNow](https://www.servicenow.com/docs/r/platform-user-interface/configure-use-list-functions.html).
 
-## Diagnostyka
+### Podgląd definicji przed migracją
+
+Pierwsza wersja przycisku **ⓘ** pokazywała definicję z metadanych zebranych podczas pełnego odczytu klasycznej listy. Zapis obejmował tabelę, warunki, widok, etykiety i techniczne nazwy kolumn. Migracja uzupełnia ten zapis o wersję, pochodzenie i stabilne klucze używane podczas odczytu przez REST.
+
+### Diagnostyka poprzedniego czytnika i walidacja adresu
 
 Zdarzenie `pagination_page_size` zapisuje wynik sprawdzenia menu lub potwierdzenia zmiany, numer strony oraz poprzedni i odczytany rozmiar. Przy 100 wierszach istniejące `pagination_bound` podaje rozmiar bez dodatkowych zdarzeń menu.
 
