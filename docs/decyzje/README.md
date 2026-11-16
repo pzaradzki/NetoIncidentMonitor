@@ -25,9 +25,15 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 | [019](019-odzyskiwanie-sesji-sekcji.md) | Niezależne ponowienie odczytu i odzyskanie logowania, wspólny budżet 60 s. |
 
-| [020](020-spojne-statusy-dashboardu.md) | Spójna aktywność sekcji, nagłówka i stopki dashboardu, chroniona cyklem żądania. |
+| [020](020-spojne-statusy-dashboardu.md) | Ochrona statusów dashboardu cyklem żądania. Prezentację zastępuje [039](039-statusy-widokow-i-kolejki.md). |
 
 ## Format i utrzymanie
+
+[039 — Statusy widoków, sesji i kolejki](039-statusy-widokow-i-kolejki.md) określa rolę obu belek, zakres metadanych odczytu i pomiar czasu REST.
+
+[038 — Walidacja złożonych warunków filtrów](038-walidacja-warunkow-filtrow.md) opisuje metadane zmiennych katalogowych, porównania pól i ważność potwierdzenia.
+
+[037 — Definicje filtrów bez klasycznej listy](037-definicje-filtrow-bez-dom.md) rozdziela zapytanie filtra i układ konta oraz określa obsługiwane adresy i walidację zakresu.
 
 [036 — Import Ulubionych przez API nawigatora](036-import-ulubionych-przez-rest.md) opisuje odczyt drzewa z bieżącej sesji i wycofanie czytnika menu.
 

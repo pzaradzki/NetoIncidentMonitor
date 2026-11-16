@@ -10,6 +10,7 @@ from neto_incident_monitor.runtime_paths import DATA, FROZEN
 RUNTIME_NAMES = {
     "config.json", "config.tmp", "seen.json", "seen.tmp", "history.json", "history.tmp",
     "dashboard-cache.json", "dashboard-cache.tmp", "browser-profile",
+    "filter-layouts.json", "filter-layouts.tmp",
     "history.state.sqlite3", "history.state.sqlite3-journal",
     "history.state.sqlite3-wal", "history.state.sqlite3-shm",
 }

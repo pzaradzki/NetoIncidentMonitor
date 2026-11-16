@@ -209,7 +209,10 @@ class AnalyticsApiTests(unittest.TestCase):
             context.route('**/*', route)
             page.goto(ORIGIN + '/now/sow/home')
             args = (page, threading.Event(), Mock(), 'sla', '/api/now/stats/task_sla')
-            self.assertEqual(get(*args, {})['result']['stats']['count'], '1')
+            from neto_incident_monitor.analytics_api import data_duration, measure_data_requests
+            with measure_data_requests() as times:
+                self.assertEqual(get(*args, {})['result']['stats']['count'], '1')
+            self.assertGreaterEqual(data_duration(times), 0)
             with self.assertRaises(AuthenticationRequired):
                 get(*args, {'redirect_test': 'true'})
             self.assertEqual(context.pages, [page])

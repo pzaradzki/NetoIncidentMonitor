@@ -1,7 +1,7 @@
 """Presentation layer for the local incident monitor."""
 import tkinter as tk
 from tkinter import ttk
-from neto_incident_monitor.widgets import Toggle, RoundedButton, DashboardButton, FilterList, TabTooltip
+from neto_incident_monitor.widgets import Toggle, RoundedButton, DashboardButton, FilterList, TabTooltip, update_grid_scrollbar
 from PIL import Image, ImageDraw, ImageTk
 
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT, VIEW_TITLE_FONT
@@ -140,7 +140,7 @@ def build_ui(app, settings):
     app.activity_pill = StatusPill(activity_host, compact=True, fit=True)
     app.activity_pill.pack(side='left', anchor='center')
     app.activity_kind = 'phase'
-    app.activity_pill.set_status('Gotowy do uruchomienia')
+    app.activity_pill.set_status('Monitoring zatrzymany' if app.session else 'Gotowy do uruchomienia')
     app.controls = ttk.Frame(header)
     app.controls.pack(side="right")
     app.start_button = RoundedButton(app.controls, text="Uruchom monitoring", icon="play", command=app.start,
@@ -217,14 +217,7 @@ def build_ui(app, settings):
     filter_scroll.grid(row=1, column=1, sticky="ns", padx=(8, 0))
     filter_scroll.grid_remove()
 
-    def update_filter_scroll(first, last):
-        filter_scroll.set(first, last)
-        if float(first) > 0.000001 or float(last) < 0.999999:
-            filter_scroll.grid()
-        else:
-            filter_scroll.grid_remove()
-
-    app.filter_table.configure(yscrollcommand=update_filter_scroll)
+    app.filter_table.configure(yscrollcommand=lambda first, last: update_grid_scrollbar(filter_scroll, first, last))
     filter_actions = ttk.Frame(sidebar, style="White.TFrame")
     filter_actions.grid(row=4, column=0, sticky="ew", pady=(10, 0))
     filter_actions.columnconfigure(0, weight=1)
@@ -303,57 +296,61 @@ def build_ui(app, settings):
     main.columnconfigure(0, weight=1)
     main.rowconfigure(2, weight=1)
     app.phase = tk.StringVar(value="Gotowy do uruchomienia")
-    state = tk.Frame(main, bg=BG)
-    state.grid(row=0, column=0, sticky='ew', pady=(0, 12))
-    state.columnconfigure(0, weight=1)
-    heading = tk.Frame(state, bg=BG)
-    heading.grid(row=0, column=0, sticky='sew')
+    heading = tk.Frame(main, bg=BG)
+    heading.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+    heading.columnconfigure(0, weight=1)
     app.selected_filter_name = tk.StringVar()
-    tk.Label(heading, textvariable=app.selected_filter_name, font=VIEW_TITLE_FONT, bg=BG, fg=TEXT).pack(side='left')
-    from neto_incident_monitor.widgets import StatusPill
-    app.phase_label = StatusPill(heading, compact=True)
-    app.phase_label.pack(side='left', padx=(12, 0))
+    filter_title = tk.Label(heading, font=VIEW_TITLE_FONT, bg=BG, fg=TEXT, width=1, anchor='w')
+    filter_title.grid(row=0, column=0, sticky='sew')
+    from tkinter.font import Font
+    title_font = Font(root, font=VIEW_TITLE_FONT)
+
+    def fit_filter_title(*_):
+        title = app.selected_filter_name.get()
+        limit = max(0, filter_title.winfo_width() - 6)
+        if title_font.measure(title) > limit:
+            while title and title_font.measure(title + '…') > limit:
+                title = title[:-1]
+            title = title + '…' if title else ''
+        filter_title.configure(text=title)
+
+    app.selected_filter_name.trace_add('write', fit_filter_title)
+    filter_title.bind('<Configure>', fit_filter_title)
     app.table_load_status = tk.StringVar(value='')
-    ttk.Label(heading, textvariable=app.table_load_status, style='Muted.TLabel').pack(side='left', padx=(12, 0))
+    load_label = ttk.Label(main, textvariable=app.table_load_status, style='Muted.TLabel')
+    load_label.grid(row=1, column=0, sticky='w')
+    load_label.grid_remove()
+    app.table_load_status.trace_add('write', lambda *_:
+        load_label.grid() if app.table_load_status.get() else load_label.grid_remove())
+    from neto_incident_monitor.read_status_ui import ReadStatusBar
+    app.filter_read_bar = ReadStatusBar(main)
+    app.filter_read_bar.grid(row=3, column=0, sticky='ew')
     app.update_phase_text()
-    app.countdown = tk.StringVar(value="Następna aktualizacja INC: -  SCTASK/REQ/RITM: -")
-    ttk.Label(heading, textvariable=app.countdown, style="Muted.TLabel").pack(side="right")
     app.current_count = tk.StringVar(value="0")
 
-    toolbar = ttk.Frame(main)
-    toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-    toolbar.pack_propagate(False)
-    actions = ttk.Frame(main)
-    app.open_filter_button = RoundedButton(actions, text='Otwórz w SNOW',
-        command=app.open_selected_filter, background=BG)
-    app.open_filter_button.configure(state='disabled')
-    app.open_filter_button.pack(side='right', padx=(8, 0))
-    app.refresh_filter_button = RoundedButton(actions, text='Aktualizuj', icon='refresh',
-        command=lambda: app.request_refresh('filter'), background=BG)
-    app.refresh_filter_button.configure(state='disabled')
-    app.refresh_filter_button.pack(side='right', padx=(8, 0))
+    actions = ttk.Frame(heading)
+    actions.grid(row=0, column=1, sticky='se')
+    for attribute, text, icon, command in (
+        ('configure_filter_button', 'Konfiguruj', 'gear', app.configure_selected_filter),
+        ('columns_button', 'Kolumny', 'columns', app.configure_columns),
+        ('refresh_filter_button', 'Aktualizuj', 'refresh', lambda: app.request_refresh('filter')),
+        ('open_filter_button', 'Otwórz w SNOW', None, app.open_selected_filter),
+    ):
+        button = RoundedButton(actions, text=text, icon=icon, command=command, background=BG)
+        button.configure(state='disabled')
+        button.pack(side='left', padx=(8, 0))
+        setattr(app, attribute, button)
+    app.filter_read_bar.set_actions(edit=app.filter_buttons[1], retry=app.refresh_filter_button)
 
     def match_dashboard_heading_height(event=None):
         # The dashboard's period selectors can be taller than its buttons at higher DPI.
         height = app.dashboard_view.heading_row.winfo_reqheight()
-        for row in (state, app.threatened_view.heading_row):
+        for row in (heading, app.threatened_view.heading_row):
             row.rowconfigure(0, minsize=height)
 
     app.dashboard_view.heading_row.bind('<Configure>', match_dashboard_heading_height, add='+')
     root.after_idle(match_dashboard_heading_height)
-    columns_button = RoundedButton(actions, text="Kolumny", icon="columns", command=app.configure_columns, background=BG)
-    app.columns_button = columns_button
-    columns_button.configure(state="disabled")
-    columns_button.pack(side="right", padx=(8, 0))
-    app.configure_filter_button = RoundedButton(actions, text="Konfiguruj", icon="gear",
-                                                command=app.configure_selected_filter, background=BG)
-    app.configure_filter_button.configure(state="disabled")
-    app.configure_filter_button.pack(side="right", padx=(8, 0))
-    app.filter_info_button = RoundedButton(actions, text="ⓘ", command=app.show_filter_info,
-                                           background=BG)
-    app.filter_info_button.configure(state="disabled")
-    app.filter_info_button.pack(side="right", padx=(8, 0))
-    app.clear_history_button = RoundedButton(actions, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
+    app.clear_history_button = RoundedButton(main, text="Wyczyść historię", icon="trash", command=app.clear_history, background=BG)
     app.tabs = ttk.Notebook(main, style="Clean.TNotebook")
     app.tabs.grid(row=2, column=0, sticky="nsew")
     current = ttk.Frame(app.tabs, style="White.TFrame")
@@ -362,26 +359,16 @@ def build_ui(app, settings):
     app.tabs.add(history, text="Historia zgłoszeń")
     app.history_tooltip = TabTooltip(app.tabs, 1,
         "Lista wcześniej wykrytych zgłoszeń. Pokazuje dane zapisane w chwili wykrycia — mogą różnić się od aktualnych danych w ServiceNow.")
-    def align_actions(event=None):
-        # The incident pane always fits both tabs and the action buttons.
-        if not actions.winfo_exists() or not app.tabs.winfo_exists():
-            return
-        required = sum(image.width() for image in app.root.tab_images) + actions.winfo_reqwidth() + 12
-        body.columnconfigure(2, minsize=required)
-        root.minsize(48 + 235 + 20 + required, 680)
-        actions.place(in_=app.tabs, relx=1, x=0, y=3, anchor="ne")
-        toolbar.configure(height=1)
-        actions.lift()
+    def minimum_view_width():
+        tabs_width = sum(image.width() for image in root.tab_images)
+        return max(tabs_width + app.clear_history_button.winfo_reqwidth() + 12, actions.winfo_reqwidth() + 112, 620)
 
-    app.tabs.bind("<Configure>", align_actions)
     def update_history_action(event=None):
-        if not actions.winfo_exists() or not app.tabs.winfo_exists():
-            return
         if app.tabs.select() == str(history):
-            app.clear_history_button.pack(side="right", padx=(8, 0), after=app.filter_info_button)
+            app.clear_history_button.place(in_=app.tabs, relx=1, y=3, anchor='ne')
+            tk.Misc.lift(app.clear_history_button)
         else:
-            app.clear_history_button.pack_forget()
-        align_actions()
+            app.clear_history_button.place_forget()
 
     app.tabs.bind("<<NotebookTabChanged>>", update_history_action, add="+")
     app.tabs.bind("<<NotebookTabChanged>>", app.show_table_tab, add="+")
@@ -391,7 +378,9 @@ def build_ui(app, settings):
     def fit_sidebar(event=None):
         if not actions.winfo_exists() or not canvas.winfo_exists():
             return
-        required = sum(image.width() for image in root.tab_images) + actions.winfo_reqwidth() + 12
+        required = minimum_view_width()
+        body.columnconfigure(2, minsize=required)
+        root.minsize(48 + MIN_SIDEBAR_WIDTH + 20 + required, 680)
         maximum = max(MIN_SIDEBAR_WIDTH, body.winfo_width() - 48 - 20 - required)
         canvas.configure(width=min(desired_width, maximum))
 
@@ -404,7 +393,7 @@ def build_ui(app, settings):
         nonlocal desired_width
         if drag_origin is None:
             return
-        required = sum(image.width() for image in root.tab_images) + actions.winfo_reqwidth() + 12
+        required = minimum_view_width()
         maximum = max(MIN_SIDEBAR_WIDTH, body.winfo_width() - 48 - 20 - required)
         desired_width = max(MIN_SIDEBAR_WIDTH, min(maximum, drag_origin[1] + event.x_root - drag_origin[0]))
         fit_sidebar()
@@ -421,21 +410,78 @@ def build_ui(app, settings):
     splitter.bind("<B1-Motion>", drag_resize)
     splitter.bind("<ButtonRelease-1>", finish_resize)
     body.bind("<Configure>", fit_sidebar, add="+")
-    root.after_idle(align_actions)
     root.after_idle(fit_sidebar)
     app.splitter = splitter
     app.current_table = app.make_table(current, False)
     app.table = app.make_table(history, True)
     app.current_table.bind("<Double-1>", app.open_incident)
     app.table.bind("<Double-1>", app.open_incident)
-    app.last_read = tk.StringVar(value="Ostatnia aktualizacja: —")
-    app.status = tk.StringVar(value="Uruchom monitoring i zaloguj się w otwartej przeglądarce.")
+    app.status = tk.StringVar()
     if getattr(app, 'session', None):
-        app.session_status = tk.StringVar(value='Łączenie z ServiceNow')
-        session_bar = ttk.Frame(root, padding=(24, 0, 24, 12))
-        session_bar.pack(fill='x')
-        ttk.Label(session_bar, textvariable=app.session_status).pack(side='left')
-        ttk.Label(session_bar, textvariable=app.last_read, style='Muted.TLabel').pack(side='left', padx=12)
-        ttk.Label(session_bar, textvariable=app.status, style='Muted.TLabel', wraplength=520).pack(side='right')
-        app.login_window_button = RoundedButton(session_bar, text='Pokaż okno logowania', background=BG,
-                                                command=lambda: app.events.put(('show_browser', None)))
+        app.session_status = tk.StringVar(value='Łączenie…')
+        app.work_status = tk.StringVar()
+        footer_color = BG
+        footer_font = ('Segoe UI', 9)
+        app.footer_line = tk.Frame(body, bg=ReadStatusBar.BORDER, height=1)
+        app.footer_line.grid(row=1, column=0, columnspan=3, sticky='ew', pady=(6, 0))
+        app.footer_surface = tk.Frame(body, bg=footer_color)
+        app.footer_surface.grid(row=2, column=0, columnspan=3, sticky='nsew')
+
+        session_bar = app.session_bar = tk.Frame(body, bg=footer_color, padx=4, pady=5)
+        session_bar.grid(row=2, column=0, sticky='new')
+        light = tk.Canvas(session_bar, width=9, height=9, bg=footer_color, highlightthickness=0)
+        light.pack(side='left', padx=(0, 5))
+        dot = light.create_oval(1, 1, 8, 8, outline='')
+        displayed_session = tk.StringVar()
+        state_label = tk.Label(session_bar, textvariable=displayed_session, bg=footer_color, fg=MUTED,
+                               font=footer_font, anchor='w', justify='left', width=1)
+        state_label.pack(side='left', fill='x', expand=True)
+        state_label.bind('<Configure>', lambda event: state_label.configure(wraplength=max(60, event.width - 4)))
+
+        work_bar = app.work_bar = tk.Frame(body, bg=footer_color, pady=5, padx=0)
+        work_bar.grid(row=2, column=2, sticky='new')
+        work_bar.columnconfigure(1, weight=1)
+        activity_icon = tk.Canvas(work_bar, width=17, height=15, bg=footer_color, highlightthickness=0)
+        activity_icon.grid(row=0, column=0, sticky='w', padx=(0, 6))
+        pulse = activity_icon.create_line(1, 8, 4, 8, 7, 2, 10, 13, 13, 8, 16, 8,
+                                          width=1.5, capstyle='round', joinstyle='round')
+        displayed_work = tk.StringVar()
+        work_label = tk.Label(work_bar, textvariable=displayed_work, bg=footer_color, fg=MUTED,
+                              font=footer_font, width=1, anchor='w', justify='left')
+        work_label.grid(row=0, column=1, sticky='ew')
+        app.footer_actions = tk.Frame(work_bar, bg=footer_color)
+        app.footer_actions.grid(row=0, column=2, sticky='e', padx=(8, 6))
+        app.login_window_button = RoundedButton(app.footer_actions, text='Pokaż okno logowania',
+                                                background=footer_color,
+                                                command=lambda: app.events.put(('show_browser', None)), compact=True)
+        notice = tk.Frame(work_bar, bg=footer_color)
+        notice.grid(row=1, column=0, columnspan=3, sticky='ew', padx=(0, 6), pady=(4, 0))
+        notice.grid_remove()
+        notice_label = tk.Label(notice, textvariable=app.status, bg=footer_color, fg=MUTED, width=1,
+                                anchor='w', justify='left', font=footer_font)
+        notice_label.pack(side='left', fill='x', expand=True)
+        RoundedButton(notice, text='Zamknij', compact=True, background=footer_color,
+                      command=lambda: app.status.set('')).pack(side='right', padx=(8, 0))
+        notice_label.bind('<Configure>', lambda event: notice_label.configure(wraplength=max(100, event.width - 4)))
+        work_label.bind('<Configure>', lambda event: work_label.configure(wraplength=max(100, event.width - 4)))
+
+        def show_notice(*_):
+            if app.status.get():
+                notice.grid()
+            else:
+                notice.grid_remove()
+
+        def show_footer_status(*_):
+            color = {'ready': '#86ceaa', 'failed': '#ffadb8', 'waiting': '#f5c77b'}.get(app.session_state, MUTED)
+            light.itemconfigure(dot, fill=color)
+            displayed_session.set(f'ServiceNow · {app.session_status.get()}')
+            idle = 'Oczekuje na następny odczyt' if app.cycle_active and app.session_state == 'ready' else 'Brak zleceń'
+            work = app.work_status.get()
+            displayed_work.set(f'Aktywność · {work or idle}')
+            activity_color = {'ready': '#a8cbfa', 'waiting': '#f5c77b'}.get(app.session_state, MUTED) if work else MUTED
+            activity_icon.itemconfigure(pulse, fill=activity_color)
+
+        app.status.trace_add('write', show_notice)
+        for variable in (app.session_status, app.work_status, app.phase):
+            variable.trace_add('write', show_footer_status)
+        show_footer_status()

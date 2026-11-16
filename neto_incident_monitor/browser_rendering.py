@@ -1,9 +1,6 @@
-"""Bounded rendering support for hidden ServiceNow and sign-in pages."""
+"""Bounded rendering support for hidden ServiceNow browser operations."""
 from time import monotonic
 from urllib.parse import urlparse
-
-from neto_incident_monitor.dashboard_context import DashboardReadError
-
 
 class LoginRenderingUnavailable(RuntimeError):
     """A safe code, never the raw DevTools exception or its payload."""
@@ -12,7 +9,7 @@ class LoginRenderingUnavailable(RuntimeError):
 
 class HiddenRendering:
     def __init__(self, diagnostics, scope):
-        if scope not in ('login', 'filter_definition'):
+        if scope not in ('login', 'dashboard_scope'):
             raise ValueError('Unknown rendering scope')
         self.scope = scope
         self.diagnostics = diagnostics
@@ -42,7 +39,6 @@ class HiddenRendering:
         if not self.target(page.url):
             self.stop('context_left')
             return
-        from neto_incident_monitor.authentication import authentication_required, authenticated_session
         if self.scope == 'login':
             from neto_incident_monitor.authentication import login_observation
             observed = login_observation(page, 'https://adeo.service-now.com/', include_popups=False)
@@ -50,13 +46,7 @@ class HiddenRendering:
                     observed.facts.get('password_manual_edit')):
                 self.stop('authentication')
                 return
-        elif authentication_required(page, 'https://adeo.service-now.com/'):
-            self.stop('authentication')
-            return
         if self.client:
-            return
-        if self.scope != 'login' and not authenticated_session(page, 'https://adeo.service-now.com/'):
-            self.record('rendering_deferred', rendering_reason='session_unconfirmed')
             return
         self.frames = self.acks = 0
         self.started = monotonic()
@@ -80,9 +70,10 @@ class HiddenRendering:
             self.unavailable()
 
     def unavailable(self):
-        if self.scope == 'login':
-            raise LoginRenderingUnavailable('rendering_unavailable') from None
-        raise DashboardReadError('rendering_unavailable', retryable=False) from None
+        if self.scope == 'dashboard_scope':
+            from neto_incident_monitor.dashboard_context import DashboardReadError
+            raise DashboardReadError('rendering_unavailable', retryable=False) from None
+        raise LoginRenderingUnavailable('rendering_unavailable') from None
 
     def frame(self, event):
         client = self.client
@@ -100,19 +91,15 @@ class HiddenRendering:
             self.stop('ack_failed')
 
     def navigation(self, frame):
-        if self.page and frame == self.page.main_frame and (self.scope == 'login' or not self.target(frame.url)):
+        if self.page and frame == self.page.main_frame:
             self.stop('context_left')
 
     def target(self, url):
         if not isinstance(url, str):
             return False
-        if self.scope == 'filter_definition':
-            from neto_incident_monitor.service_now_urls import normalize_list_url
-            try:
-                normalize_list_url(url)
-            except ValueError:
-                return False
-            return True
+        if self.scope == 'dashboard_scope':
+            from neto_incident_monitor.dashboard_scope import is_scope_dashboard
+            return is_scope_dashboard(url)
         try:
             address = urlparse(url)
             return (address.scheme == 'https' and address.hostname == 'idpb2e.adeo.com'

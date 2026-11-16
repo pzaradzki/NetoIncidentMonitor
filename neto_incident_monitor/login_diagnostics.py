@@ -47,7 +47,7 @@ NUMERIC_FIELDS = set(FIELDS) | {'manual_account_selections', 'window_visible', '
     'delivery_observer', 'timeout_ms', 'delay_s', 'automatic_blocked', 'autofilled',
     'locked_account', 'manual', 'submitted', 'frame_count', 'page_count', 'http_status', 'reused', 'loading', 'button_available',
     'filter_index', 'outside_schedule', 'page_index', 'total_rows', 'page_size',
-    'row_count', 'records_read', 'duration_ms', 'request_id', 'ready_count', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
+    'row_count', 'records_read', 'duration_ms', 'api_data_ms', 'request_id', 'ready_count', 'lateness_ms', 'year', 'month', 'os_errno', 'winerror', 'active_ms', 'login_wait_ms', 'final_failure', 'ack_count', 'cleanup_errors', 'document_generation', 'session_signal', 'logout_signal', 'authentication_path'}
 WINDOW_EXPOSURE = {'hidden', 'minimized', 'unavailable', 'off_screen', 'exposed', 'partly_covered',
                    'covered', 'covered_topmost'}
 
@@ -62,12 +62,10 @@ TEXT_FIELDS = {
     'url_kind': {'direct', 'wrapper', 'short'},
     'validation_result': {'accepted', 'rejected'},
     'validation_reason': {'none', 'unsafe', 'unsupported_target', 'conflicting_parameters'},
-    'query_comparison': {'exact', 'known_alias', 'mismatch'},
-    'query_alias': {'none', 'last_7_days'},
     'request_state': {'queued', 'running', 'retrying', 'finished', 'cancelled',
                       'queue_error', 'locked', 'unlocked', 'blocked', 'idle_changed',
                       'stale_id', 'period_mismatch'},
-    'rendering_scope': {'login', 'filter_definition'},
+    'rendering_scope': {'login', 'dashboard_scope'},
     'recovery_reason': {'logout', 'network', 'stalled', 'popup_closed'},
     'login_state': {'authentication', 'session', 'target', 'unknown', 'logout'},
     'previous_login_state': {'authentication', 'session', 'target', 'unknown', 'logout', 'initial'},
@@ -136,9 +134,10 @@ TEXT_FIELDS['schedule_kind'] = {'inc', 'task'}
 EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 EVENTS.update({'analytics_api_request', 'analytics_api_snapshot'})
-NUMERIC_FIELDS.add('api_call')
+NUMERIC_FIELDS.update({'api_call', 'optional_field_omissions'})
 TEXT_FIELDS['api_target'] = {'sla', 'held', 'requests', 'threatened', 'incident', 'sc_request', 'sc_req_item', 'sc_task',
-                             'favorites'}
+                             'favorites', 'filter_short_link', 'filter_layout', 'filter_fields', 'filter_variable',
+                             'filter_variable_membership'}
 TEXT_FIELDS['read_reason'].update({'api_configuration', 'api_document', 'api_schema',
     'api_access', 'api_rate_limit', 'api_timeout', 'api_network', 'api_service',
     'api_http', 'api_incomplete', 'api_filter_mismatch', 'api_filter_limit'})
@@ -148,8 +147,20 @@ TEXT_FIELDS['ui_state'] = {'reading', 'retrying', 'waiting_login', 'error'}
 EVENTS.update({'section_login_recovery_start', 'section_login_recovery_end'})
 EVENTS.update({'session_visibility', 'session_connection_error', 'refresh_queue', 'filter_config_change'})
 TEXT_FIELDS['read_reason'].update({'filter_definition_save', 'filter_definition_columns'})
+TEXT_FIELDS['read_reason'].update({'filter_short_link', 'filter_query_scope', 'filter_layout_view',
+                                   'filter_layout_account', 'filter_layout_save'})
+TEXT_FIELDS['read_reason'].update({'filter_condition_operator', 'filter_condition_value', 'filter_context_unsupported', 'filter_variable_missing',
+                                   'filter_variable_access', 'filter_variable_metadata', 'filter_variable_context'})
+TEXT_FIELDS['condition_kind'] = {'field_schema', 'catalog_variable', 'catalog_membership'}
+EVENTS.add('filter_condition_metadata')
+TEXT_FIELDS['queue_scope'].update({'filter_layout', 'default_layouts', 'dashboard_scope'})
+TEXT_FIELDS['operation'].update({'scope_open', 'scope_location', 'scope_assigned', 'scope_p1', 'scope_query', 'scope_save'})
+TEXT_FIELDS['read_reason'].update({'dashboard_scope_query', 'dashboard_scope_save', 'dashboard_scope_filter'})
+EVENTS.add('dashboard_scope_result')
 EVENTS.update({'filter_definition', 'filter_definition_discovery'})
-EVENTS.update({'filter_api_page', 'filter_query_comparison'})
+EVENTS.update({'filter_layout_read', 'filter_layout_cache', 'filter_layout_preview'})
+TEXT_FIELDS['filter_url_kind'] = {'short', 'direct'}
+EVENTS.add('filter_api_page')
 EVENTS.add('password_save_prompt')
 TEXT_FIELDS['password_save_choice'] = {'waiting', 'saved', 'disabled', 'cancelled', 'save_error'}
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}

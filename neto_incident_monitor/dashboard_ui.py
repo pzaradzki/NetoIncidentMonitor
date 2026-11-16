@@ -1,11 +1,14 @@
 """Dashboard controls and main-thread presentation of browser results."""
-from datetime import date
+from dataclasses import replace
+from datetime import date, datetime
 import webbrowser
 import tkinter as tk
 from tkinter import ttk
 
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, VIEW_TITLE_FONT
 from neto_incident_monitor.widgets import RoundedButton, PriorityDots, StatusPill, AnimatedMetricTile
+from neto_incident_monitor.read_status import ReadStatus
+from neto_incident_monitor.read_status_ui import ReadStatusBar
 
 
 def bind_dashboard_wheel(widget, callback):
@@ -25,8 +28,12 @@ def build_dashboard(parent, app, cache_path=None):
     from pathlib import Path
     cache_path = Path(cache_path) if cache_path is not None else DATA / 'dashboard-cache.json'
     panel = tk.Frame(parent, bg=BG)
-    canvas = tk.Canvas(panel, bg=BG, highlightthickness=0, borderwidth=0)
-    scroll = ttk.Scrollbar(panel, orient='vertical', command=canvas.yview)
+    panel.read_bar = ReadStatusBar(panel, date_label='Pełny odczyt')
+    panel.read_bar.pack(side='bottom', fill='x')
+    view = tk.Frame(panel, bg=BG)
+    view.pack(fill='both', expand=True)
+    canvas = tk.Canvas(view, bg=BG, highlightthickness=0, borderwidth=0)
+    scroll = ttk.Scrollbar(view, orient='vertical', command=canvas.yview)
     canvas.pack(side='left', fill='both', expand=True)
     content = tk.Frame(canvas, bg=BG)
     content.columnconfigure(0, weight=1)
@@ -60,6 +67,10 @@ def build_dashboard(parent, app, cache_path=None):
     panel.request_diagnostics = None
     panel.request_sections = set()
     panel.last_complete_read_at = None
+    panel.last_complete_period = None
+    panel.last_complete_duration_ms = None
+    panel.read_status_by_period = {}
+    panel.request_times = {}
     panel.final_result_received = False
     panel.request_error = False
     panel.ui_activity_state = None
@@ -146,6 +157,16 @@ def build_dashboard(parent, app, cache_path=None):
         year, month = panel.data_period or panel.selected_period()
         panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year} • '
                           f'Ostatnia aktualizacja: {panel.last_read_text} • {status}')
+        selected = panel.selected_period()
+        result = panel.read_status_by_period.get(selected, ReadStatus())
+        details = [result.detail] if result.detail else []
+        if panel.data_period and panel.data_period != selected:
+            details.append(f'Kafelki SLA pokazują dane za {months[month - 1].lower()} {year}.')
+        if panel.cache_error:
+            details.append('Nie udało się zapisać danych dashboardu na dysku.')
+        if status.startswith(('Nie udało się zlecić', 'Nie udało się otworzyć', 'Odczyt niedostępny')):
+            details.append(status)
+        panel.read_bar.show(replace(result, detail=' '.join(details)))
     panel.set_message = set_message
     set_message('Brak odczytu')
     def period_changed(event=None):
@@ -231,6 +252,7 @@ def build_dashboard(parent, app, cache_path=None):
         panel.active_request = (panel.request_id, year, month)
         panel.request_period = (year, month)
         panel.request_sections.clear()
+        panel.request_times.clear()
         panel.final_result_received = False
         panel.request_error = False
         panel.ui_activity_state = None
@@ -259,6 +281,7 @@ def build_dashboard(parent, app, cache_path=None):
     refresh.pack(side="left", anchor="s")
     panel.refresh_button = refresh
     refresh.configure(state='disabled')
+    panel.read_bar.set_actions(retry=refresh)
     def open_dashboard():
         from neto_incident_monitor.dashboard import DASHBOARD_URL
         try:
@@ -361,12 +384,19 @@ def build_dashboard(parent, app, cache_path=None):
         if panel.request_period is not None and panel.active_request is None:
             record('dashboard_result_rejected', request_id=request_id, request_state='finished')
             return
+        if panel.final_result_received:
+            record('dashboard_result_rejected', request_id=request_id, request_state='finished')
+            return
+        period = (year, month)
+        previous_status = panel.read_status_by_period.get(period, ReadStatus())
         message = extra[0] if extra else ''
         metadata = extra[1] if len(extra) > 1 else None
         if error or metadata is None:
             panel.final_result_received = True
         if error:
             panel.request_error = True
+            panel.read_status_by_period[period] = previous_status.failed(
+                'Nie udało się odczytać kompletu danych dashboardu.', partial=bool(panel.request_sections))
             set_message('Błąd odczytu')
             return
         if metadata:
@@ -379,6 +409,7 @@ def build_dashboard(parent, app, cache_path=None):
                     previous.update(last_attempt_at=now, last_outcome='error')
             elif valid_values(alias, metadata['values']):
                 panel.request_sections.add(alias)
+                panel.request_times[alias] = metadata.get('duration_ms')
                 panel.section_snapshots[alias] = {'values': dict(metadata['values']),
                     'read_at': metadata['read_at'], 'last_attempt_at': now, 'last_outcome': 'success',
                     'complete': True, 'year': year if alias == 'sla' else None,
@@ -391,7 +422,8 @@ def build_dashboard(parent, app, cache_path=None):
             diagnostics = metadata['diagnostics']
             try:
                 if panel.section_snapshots:
-                    save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at)
+                    save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at,
+                                  period=panel.last_complete_period, duration_ms=panel.last_complete_duration_ms)
                 panel.cache_error = False
                 measured_record(diagnostics, 'dashboard_cache', cache_result='saved' if panel.section_snapshots else 'skipped')
             except OSError as exc:
@@ -402,16 +434,28 @@ def build_dashboard(parent, app, cache_path=None):
         if not metadata and panel.request_sections == {'sla', 'held', 'requests'}:
             # Only a completed full transaction advances the public timestamp.
             panel.last_complete_read_at = datetime.now().astimezone().isoformat(timespec='seconds')
+            panel.last_complete_period = period
+            times = panel.request_times.values()
+            panel.last_complete_duration_ms = sum(times) if all(value is not None for value in times) else None
+            panel.read_status_by_period[period] = previous_status.accepted(
+                datetime.fromisoformat(panel.last_complete_read_at).timestamp(), panel.last_complete_duration_ms)
             render_snapshots()
-            record('dashboard_complete', request_id=request_id, year=year, month=month, outcome='returned')
+            record('dashboard_complete', request_id=request_id, year=year, month=month,
+                   outcome='returned', api_data_ms=panel.last_complete_duration_ms)
             try:
-                save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at)
+                save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at,
+                              period=period, duration_ms=panel.last_complete_duration_ms)
                 panel.cache_error = False
                 record('dashboard_cache', cache_result='saved')
             except OSError as exc:
                 panel.cache_error = True
                 from neto_incident_monitor.login_diagnostics import error_facts
                 record('dashboard_cache', cache_result='failed', **error_facts(exc))
+        elif not metadata:
+            partial = bool(panel.request_sections)
+            panel.read_status_by_period[period] = previous_status.failed(
+                message or 'Nie udało się pobrać kompletu danych dashboardu.', partial=partial,
+                title='Część danych wymaga odświeżenia' if partial else 'Nie udało się odczytać dashboardu')
         panel.restored_snapshot = False
         message = message or ('Trwa aktualizacja' if metadata else 'Dane aktualne')
         if panel.cache_error:
@@ -426,22 +470,20 @@ def build_dashboard(parent, app, cache_path=None):
     if cached:
         panel.section_snapshots = cached['sections']
         panel.last_complete_read_at = cached.get('last_complete_read_at')
+        panel.last_complete_period = tuple(cached['last_complete_period']) if cached.get('last_complete_period') else None
+        panel.last_complete_duration_ms = cached.get('last_complete_duration_ms')
         sla = panel.section_snapshots.get('sla')
         if sla:
             panel.month.set(months[sla['month'] - 1])
             panel.year.set(str(sla['year']))
+            if panel.last_complete_period == (sla['year'], sla['month']):
+                panel.read_status_by_period[panel.last_complete_period] = ReadStatus().accepted(
+                    datetime.fromisoformat(panel.last_complete_read_at).timestamp(), panel.last_complete_duration_ms)
         render_snapshots()
         for alias in panel.section_snapshots:
             set_section_state(panel.request_id, NAMES[alias], 'Dane nieaktualne')
         panel.restored_snapshot = True
         set_message('Dane mogą być nieaktualne')
-    notice_text = tk.Label(content, textvariable=panel.message, wraplength=700,
-                           bg=BG, fg=MUTED, font=('Segoe UI', 10),
-                           justify='left', anchor='w')
-    notice_text.grid(row=6, column=0, sticky='ew', pady=(12, 0))
-    panel.notice = notice_text
-    notice_text.bind('<Configure>', lambda event:
-                     notice_text.configure(wraplength=max(100, event.width - 6)))
     def scroll_wheel(event):
         if content.winfo_reqheight() > canvas.winfo_height():
             canvas.yview_scroll(-int(event.delta / 120), 'units')

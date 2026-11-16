@@ -6,15 +6,19 @@ from time import monotonic
 from uuid import uuid4
 
 from playwright._impl._errors import TargetClosedError
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Error, sync_playwright
 
 from neto_incident_monitor.authentication import authentication_required
 from neto_incident_monitor.browser_actions import ACTION_TICK, checkpoint
 from neto_incident_monitor.browser_session import close_session, create_runtime, open_context
+from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.favorites import HOME
+from neto_incident_monitor.filter_layouts import DEFAULT_LAYOUT_PREFIXES, LayoutStore, fetch_layout, read_account
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, TRACE, error_facts
 from neto_incident_monitor.monitoring import Health, ReadPart, ReadQueue
-from neto_incident_monitor.read_errors import Cancelled
+from neto_incident_monitor.read_budget import Budget, BudgetExpired, budget_scope
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
+from neto_incident_monitor.service_now_urls import RECORD_TABLES
 
 
 class StopSignal:
@@ -92,6 +96,8 @@ class MonitorCycle:
 
 class SharedSession:
     def __init__(self, app, profile):
+        from neto_incident_monitor.app import CONFIG
+
         self.app, self.profile = app, profile
         self.closed = Event()
         self.reconnect = Event()
@@ -110,6 +116,13 @@ class SharedSession:
         self.runtime = None
         self.health = Health()
         self.legacy_membership = None
+        self.layouts = LayoutStore(CONFIG.with_name('filter-layouts.json'))
+        self.layout_account = None
+        self.layout_generation = object()
+        self.layout_attempts = {}
+        self.layout_updates = {}
+        self.default_layouts = set()
+        self.filter_field_schemas = {}
         self.thread = Thread(target=self.run, name='ServiceNow-session', daemon=True)
 
     def emit(self, kind, value=None):
@@ -138,6 +151,7 @@ class SharedSession:
         self.filter_parts = tuple(part for part in parts.values() if part.data['scheduled'])
         if invalidated:
             invalidated.update(ReadPart('filter_definition', part.target) for part in tuple(invalidated))
+            invalidated.update(ReadPart('filter_layout', part.target) for part in tuple(invalidated))
             for job, skipped in self.work.discard_pending_filters(invalidated):
                 LoginDiagnostics(source='monitor', request_id=job.id).record('refresh_queue',
                     queue_scope=job.scope, queue_state='filter_changed', item_count=skipped)
@@ -255,6 +269,7 @@ class SharedSession:
                                 focus_handoff=restore_focus, debug_show_browser=debug)
             if not hidden and not debug:
                 raise BrowserClosedError('Nie udało się ukryć okna Chromium.')
+            self.update_layout_account(page, stop, after_login=True)
             self.connected = self.ready_once = True
             self.emit('session_ready', restore_focus)
             return True
@@ -264,6 +279,119 @@ class SharedSession:
             self.runtime.manual_required = False
             if not page.is_closed():
                 self.runtime.set_activity('filters')
+
+    def update_layout_account(self, page, stop, *, after_login=False):
+        account = read_account(page, stop)
+        changed = account != self.layout_account
+        if changed:
+            self.layout_account = account
+            self.layout_generation = object()
+            self.filter_field_schemas.clear()
+            self.layout_updates.clear()
+            self.emit('session_layout_account')
+        if changed or after_login:
+            self.layout_attempts.clear()
+            self.default_layouts = set(RECORD_TABLES.values()) if account else set()
+        return account
+
+    def saved_default_layouts(self):
+        account = self.layout_account
+        generation = self.layout_generation
+        if account is None or not self.connected:
+            return None
+        store = self.layouts.snapshot()
+        layouts = {prefix: tuple((column['label'], column['field'])
+                                 for column in store.get(account, table, 'default') or ())
+                   for prefix, table in RECORD_TABLES.items()}
+        return layouts if self.connected and account == self.layout_account and generation is self.layout_generation else None
+
+    def refresh_default_layouts(self, page, part, stop):
+        diagnostics = LoginDiagnostics(source='monitor', request_id=self.active_job.id)
+        completed = part.data['completed']
+        recovered = False
+        self.update_layout_account(page, stop)
+        for prefix in DEFAULT_LAYOUT_PREFIXES:
+            table = RECORD_TABLES[prefix]
+            while True:
+                checkpoint(stop)
+                if self.layout_account != part.target:
+                    diagnostics.record('filter_layout_cache', api_target=table, outcome='cancelled',
+                                       read_reason='filter_layout_account')
+                    raise Cancelled()
+                try:
+                    with budget_scope(Budget(8)):
+                        self.filter_layout(page, stop, diagnostics, table, 'default', refresh=True,
+                                           requested_at=part.data['requested_at'])
+                    completed.append(prefix)
+                except AuthenticationRequired:
+                    if recovered:
+                        raise
+                    recovered = True
+                    if not self.authenticate(page, stop):
+                        raise Cancelled()
+                    if self.layout_account == part.target:
+                        self.default_layouts.difference_update(RECORD_TABLES[item] for item in completed)
+                    continue
+                except DashboardReadError:
+                    pass  # The failed table keeps its last validated layout.
+                except TargetClosedError:
+                    raise
+                except Error as error:
+                    reason = 'api_timeout' if isinstance(error, BudgetExpired) else 'api_document'
+                    diagnostics.record('filter_layout_read', api_target=table, outcome='error', read_reason=reason,
+                                       **error_facts(error))
+                break
+        return len(completed) == len(DEFAULT_LAYOUT_PREFIXES)
+
+    def filter_layout(self, page, stop, diagnostics, table, view, *, refresh=False, requested_at=None):
+        account = self.layout_account
+        if account is None:
+            raise DashboardReadError('filter_layout_account', retryable=False)
+        saved = self.layouts.get(account, table, view)
+        key = table, view
+        satisfied = requested_at is not None and self.layout_updates.get(key, 0) >= requested_at
+        if saved is not None and (not refresh or satisfied):
+            diagnostics.record('filter_layout_cache', api_target=table, outcome='returned', reused=True)
+            return saved
+        previous = self.layout_attempts.get(key)
+        if previous is not None and monotonic() < previous[0]:
+            raise DashboardReadError(previous[1], retryable=False)
+        if view == 'default':
+            self.default_layouts.discard(table)
+        try:
+            columns = fetch_layout(page, stop, diagnostics, table, view)
+            checkpoint(stop)
+            self.layouts.save(account, table, view, columns)
+            if view == 'default':
+                self.emit('session_layout_saved')
+            self.layout_attempts.pop(key, None)
+            self.layout_updates[key] = monotonic()
+            diagnostics.record('filter_layout_cache', api_target=table, outcome='returned', reused=False,
+                               item_count=len(columns))
+            return columns
+        except DashboardReadError as error:
+            self.layout_attempts[key] = monotonic() + 60, error.reason
+            diagnostics.record('filter_layout_cache', api_target=table, outcome='error',
+                               read_reason=error.reason, reused=saved is not None)
+            raise
+
+    def prefetch_layout(self, page):
+        table = next(table for table in RECORD_TABLES.values() if table in self.default_layouts)
+        try:
+            with budget_scope(Budget(8)):
+                self.filter_layout(page, self.closed, self.log, table, 'default', refresh=True)
+        except AuthenticationRequired:
+            self.connected = False
+            self.default_layouts.clear()
+        except DashboardReadError:
+            pass
+        except TargetClosedError:
+            raise
+        except Error as error:
+            reason = 'api_timeout' if isinstance(error, BudgetExpired) else 'api_document'
+            self.default_layouts.discard(table)
+            self.layout_attempts[(table, 'default')] = monotonic() + 60, reason
+            self.log.record('filter_layout_read', api_target=table, outcome='error', read_reason=reason)
 
     def navigation_error(self, facts):
         self.runtime.navigation_error = facts['error_category']
@@ -327,16 +455,27 @@ class SharedSession:
 
     def finish_manual_job(self, cycle, outcome=None):
         job = self.active_job
+        layout_refresh = job.scope == 'default_layouts'
+        completed = tuple(job.requested[0].data['completed']) if layout_refresh else ()
         if outcome is None:
             outcome = 'error' if not self.active_job_success else 'partial' if job.skipped_filters else 'returned'
+            if layout_refresh and completed and not self.active_job_success:
+                outcome = 'partial'
         state = 'cancelled' if outcome == 'cancelled' else 'finished'
-        self.record_job(job, state, outcome=outcome, item_count=job.skipped_filters)
+        counts = {'ready_count': len(completed), 'item_count': len(DEFAULT_LAYOUT_PREFIXES)} if layout_refresh else {
+            'item_count': job.skipped_filters}
+        self.record_job(job, state, outcome=outcome, **counts)
         if cycle and job.scope == 'all':
             cycle.finish_full_read(job.requested, self.filter_parts)
         self.work.finish()
         self.active_job = None
         self.after_manual = True
         self.emit('session_job_finished', (job.scope, self.active_job_success, job.skipped_filters))
+        if layout_refresh:
+            self.emit('session_default_layout_result', (job.id, outcome, completed))
+        elif job.scope == 'dashboard_scope':
+            reason = job.requested[0].data.get('reason')
+            self.emit('session_dashboard_scope_result', (job.id, reason if outcome == 'error' and reason else outcome))
 
     def finish_interrupted_import(self, part, cycle, outcome, message):
         self.active_job_success = False
@@ -347,6 +486,7 @@ class SharedSession:
     def serve(self, page):
         from neto_incident_monitor.app import BrowserClosedError, wait_for_browser_cycle
 
+        prefetch_between_filters = True
         while not self.closed.is_set():
             if page.is_closed():
                 raise BrowserClosedError('Karta robocza została zamknięta.')
@@ -355,6 +495,9 @@ class SharedSession:
                 cycle = None
             selected = self.next_part(cycle)
             if selected is None:
+                if self.default_layouts:
+                    self.prefetch_layout(page)
+                    continue
                 deadlines = tuple(cycle.deadlines.values()) if cycle else ()
                 if cycle and self.app.threatened_next_read is not None:
                     deadlines += (self.app.threatened_next_read,)
@@ -366,8 +509,13 @@ class SharedSession:
                 wait_for_browser_cycle(page, self.app.schedule, max(0, next_read - monotonic()), self.closed)
                 continue
             part, source = selected
+            if source == 'filter' and prefetch_between_filters and self.default_layouts:
+                self.prefetch_layout(page)
+                prefetch_between_filters = False
+                continue
+            prefetch_between_filters = True
             self.last_idle = None
-            is_filter = part.scope in ('filter', 'filter_definition')
+            is_filter = part.scope in ('filter', 'filter_definition', 'filter_layout')
             self.app.threatened_delay_reason = 'filter' if is_filter else (
                 'dashboard' if part.scope == 'dashboard' else 'idle')
             stop = StopSignal(self.closed, cycle.stop) if source != 'manual' else self.closed
@@ -375,6 +523,14 @@ class SharedSession:
                 stop = StopSignal(self.closed, part.data['stop'])
             elif is_filter:
                 stop = StopSignal(stop, invalidated=lambda part=part: not self.filter_is_current(part))
+            token = object()
+            self.emit('session_part_started', (token, part))
+            layout_refresh = part.scope == 'default_layouts'
+            if layout_refresh:
+                self.emit('session_default_layout_started', self.active_job.id)
+            elif part.scope == 'dashboard_scope':
+                self.emit('session_dashboard_scope_started', self.active_job.id)
+            report_terminal = layout_refresh or part.scope == 'dashboard_scope'
             try:
                 checkpoint(stop)
                 if not self.connected or authentication_required(page, HOME):
@@ -387,6 +543,11 @@ class SharedSession:
                 if part.scope == 'favorites':
                     self.finish_interrupted_import(part, cycle, 'cancelled', 'Import anulowany.')
                     continue
+                if report_terminal:
+                    self.active_job_success = False
+                    self.work.complete_part(part, manual=True, success=False)
+                    self.finish_manual_job(cycle, 'cancelled')
+                    continue
                 success = False
             except Exception as error:
                 if part.scope == 'favorites':
@@ -394,7 +555,13 @@ class SharedSession:
                                if isinstance(error, (BrowserClosedError, TargetClosedError)) else
                                'Połączenie z ServiceNow zostało przerwane podczas importu.')
                     self.finish_interrupted_import(part, cycle, 'error', message)
+                if report_terminal:
+                    self.active_job_success = False
+                    self.work.complete_part(part, manual=True, success=False)
+                    self.finish_manual_job(cycle, 'error')
                 raise
+            finally:
+                self.emit('session_part_finished', token)
             skipped = is_filter and not self.filter_is_current(part)
             self.work.complete_part(part, manual=source == 'manual', success=success)
             if source == 'initial':
@@ -442,7 +609,6 @@ class SharedSession:
             self.active_job = job
             self.active_job_success = True
             self.record_job(job, 'running')
-            self.emit('session_job_running', job.scope)
             return job.parts[0], 'manual'
         if cycle:
             part = cycle.next_filter(self.filter_parts)

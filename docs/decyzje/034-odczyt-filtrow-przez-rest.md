@@ -1,6 +1,6 @@
 # 034 — Filtry użytkownika przez Table API
 
-**Status** — przyjęta i wdrożona w bieżących źródłach. Poprzedni czytnik wierszy wycofano. Szczegółowy odbiór na ServiceNow pominięto na decyzję użytkownika.
+**Status** — odczyt rekordów przez Table API pozostaje wdrożony. Ustalenia o czytniku metadanych klasycznej listy i zapisie układu przy filtrze zastąpiła [decyzja 037](037-definicje-filtrow-bez-dom.md). Szczegółowy odbiór pierwszej migracji na ServiceNow pominięto na decyzję użytkownika.
 
 **Decyzja** — definicja identyfikuje tabelę, pełne warunki, widok i techniczne pola kolumn dla adresu i instancji filtra. Przed pierwszym odczytem API aplikacja uzupełnia brakujące metadane na wspólnej karcie i potwierdza zapis konfiguracji. Gotowa definicja obsługuje kolejne odczyty bez otwierania listy. Zmiana adresu unieważnia zapis. Zmiany widoku ServiceNow użytkownik pobiera na żądanie przez **ⓘ**.
 

@@ -267,15 +267,20 @@ def add_threatened_tables(content, app):
         snapshot.update(rows)
         draw()
 
+    summary = None
     if hasattr(app, 'history'):
         try:
-            render_details(app.history.threatened_snapshot())
+            rows, summary = app.history.threatened_snapshot(with_summary=True)
+            render_details(rows)
         except (OSError, ValueError, sqlite3.Error):
-            return render_details, True, False
-    return render_details, False, bool(snapshot)
+            return render_details, True, False, None
+    return render_details, False, bool(snapshot), summary
 
 
 def build_threatened_view(parent, app):
+    from dataclasses import replace
+    from neto_incident_monitor.read_status import ReadStatus
+    from neto_incident_monitor.read_status_ui import ReadStatusBar
     panel = tk.Frame(parent, bg=BG)
     panel.request_id = 0
     panel.pending = False
@@ -283,9 +288,16 @@ def build_threatened_view(parent, app):
     panel.values = {}
     panel.last_read = None
     panel.last_full_read = None
+    panel.read_status = ReadStatus()
+    panel.finished_request_id = None
+    panel.details_request_id = None
     panel.simulated = False
-    canvas = tk.Canvas(panel, bg=BG, highlightthickness=0)
-    scroll = ttk.Scrollbar(panel, orient='vertical', command=canvas.yview)
+    panel.read_bar = ReadStatusBar(panel)
+    panel.read_bar.pack(side='bottom', fill='x')
+    view = tk.Frame(panel, bg=BG)
+    view.pack(fill='both', expand=True)
+    canvas = tk.Canvas(view, bg=BG, highlightthickness=0)
+    scroll = ttk.Scrollbar(view, orient='vertical', command=canvas.yview)
     canvas.pack(side='left', fill='both', expand=True)
     content = tk.Frame(canvas, bg=BG)
     window = canvas.create_window((0, 0), window=content, anchor='nw')
@@ -350,6 +362,7 @@ def build_threatened_view(parent, app):
     panel.refresh_button = RoundedButton(actions, text='Aktualizuj', icon='refresh', command=request, background=BG)
     panel.refresh_button.pack(side='right')
     panel.refresh_button.configure(state='disabled')
+    panel.read_bar.set_actions(retry=panel.refresh_button)
     tiles = tk.Frame(content, bg=BG)
     tiles.pack(fill='x')
     tiles.columnconfigure((0, 1, 2), weight=1, uniform='risk')
@@ -359,19 +372,33 @@ def build_threatened_view(parent, app):
         tile.grid(row=index // 3, column=index % 3, sticky='nsew', padx=(0, 12 if index % 3 != 2 else 0), pady=(0, 12))
         panel.tiles.append(tile)
     panel.message = tk.StringVar(value='Kliknij Aktualizuj, aby pobrać zagrożenia z ServiceNow.')
-    render_details, history_error, restored_history = add_threatened_tables(content, app)
+    render_details, history_error, restored_history, summary = add_threatened_tables(content, app)
+    from neto_incident_monitor.threatened import KEYS
+    counters = summary.get('counters') if isinstance(summary, dict) else None
+    read_at = summary.get('read_at') if isinstance(summary, dict) else None
+    if (isinstance(counters, dict) and set(counters) == set(KEYS)
+            and all(type(value) is int and value >= 0 for value in counters.values())
+            and type(read_at) in (int, float) and 0 < read_at < 253402214400):
+        duration = summary.get('duration_ms')
+        panel.last_read = panel.last_full_read = read_at
+        panel.values = counters
+        panel.read_status = panel.read_status.accepted(read_at, duration if type(duration) is int and duration >= 0 else None)
+        panel.read_bar.show(panel.read_status)
+        for tile, (key, _, _) in zip(panel.tiles, CATEGORIES):
+            tile.value_label.configure(text=str(counters[key]))
+        restored_history = True
     if history_error:
         panel.message.set('Nie udało się odczytać zapisanej historii zagrożeń.')
+        panel.read_bar.show(replace(panel.read_status, detail=panel.message.get()))
     elif restored_history:
         pill.set_status('Dane nieaktualne')
         panel.message.set('Wyświetlono zapisaną listę. Kliknij Aktualizuj, aby pobrać bieżące zagrożenia.')
-    tk.Label(content, textvariable=panel.message, wraplength=700, justify='left',
-             bg=BG, fg=MUTED, font=('Segoe UI', 10), anchor='w').pack(side='bottom', fill='x', pady=(6, 0))
     def set_state(request_id, state):
-        if request_id != panel.request_id:
+        if request_id != panel.request_id or request_id == panel.finished_request_id:
             return
         button = app.threatened_incidents_button
-        button.set_updating(state in ('W trakcie aktualizacji', 'Ponawianie odczytu'))
+        if not getattr(app, 'session', None):
+            button.set_updating(state in ('W trakcie aktualizacji', 'Ponawianie odczytu'))
         if state in ('W kolejce', 'Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
             panel.pending = True
             update_button()
@@ -396,13 +423,14 @@ def build_threatened_view(parent, app):
         panel.message.set(f'Ostatni pełny odczyt: {timestamp} • {description}')
     panel.set_state = set_state
     def apply_result(request_id, values, timestamp, error_detail=None):
-        if request_id != panel.request_id:
+        if request_id != panel.request_id or request_id == panel.finished_request_id:
             return
         from neto_incident_monitor.threatened import KEYS
         if values is not None and (set(values) != set(KEYS) or
                 any(type(value) is not int or value < 0 for value in values.values())):
             values = None
         if values is not None:
+            panel.details_request_id = request_id
             panel.simulated = False
             panel.values = dict(values)
             panel.last_read = timestamp
@@ -411,21 +439,37 @@ def build_threatened_view(parent, app):
             app.threatened_incidents_button.set_alert(any(values.values()))
         panel.pending = False
         if values is None:
+            panel.details_request_id = None
             set_state(request_id, 'Błąd odczytu')
             if error_detail:
                 panel.message.set(f'{panel.message.get()} {error_detail}')
+            detail = error_detail or 'Nie udało się pobrać kompletu danych o zagrożeniach SLA.'
+            if panel.last_full_read is not None and not panel.simulated:
+                detail += ' Zachowano wynik poprzedniego odczytu.'
+            if panel.simulated:
+                detail += ' Wyświetlane dane testowe.'
+            panel.read_status = panel.read_status.failed(detail, title='Nie udało się odczytać zagrożeń SLA')
+            panel.read_bar.show(panel.read_status)
         update_button()
     panel.apply_result = apply_result
 
-    def apply_details(request_id, rows):
-        if request_id != panel.request_id:
+    def apply_details(request_id, rows, duration_ms=None):
+        if (request_id != panel.request_id or request_id == panel.finished_request_id
+                or request_id != panel.details_request_id):
             return
+        panel.details_request_id = None
         if rows is not None:
             render_details(rows)
             panel.last_full_read = panel.last_read
             set_state(request_id, 'Zaktualizowany')
+            panel.read_status = panel.read_status.accepted(panel.last_full_read, duration_ms)
         else:
             set_state(request_id, 'Niepełny odczyt')
+            detail = 'Odczytano liczniki, ale nie udało się zapisać listy zagrożeń.'
+            if panel.last_full_read is not None:
+                detail += ' Zachowano ostatnią zapisaną listę.'
+            panel.read_status = panel.read_status.failed(detail, title='Nie udało się zapisać listy zagrożeń')
+        panel.read_bar.show(panel.read_status)
 
     panel.apply_details = apply_details
     def simulate_read():
@@ -440,13 +484,16 @@ def build_threatened_view(parent, app):
         pill.set_status('Dane testowe', 'waiting')
         panel.message.set(f'Symulacja: {category} — 1 zagrożony incydent. '
                           'To dane testowe; następny poprawny odczyt z ServiceNow je zastąpi.')
+        panel.read_bar.show(replace(panel.read_status, detail='Wyświetlane dane testowe.'))
         # Keep the in-flight request, its ID, timestamp and button state intact.
         return 'break'
     panel.simulate_read = simulate_read
     def finish_request(request_id):
         if request_id == panel.request_id:
+            panel.finished_request_id = request_id
             panel.pending = False
-            app.threatened_incidents_button.set_updating(False)
+            if not getattr(app, 'session', None):
+                app.threatened_incidents_button.set_updating(False)
             update_button()
     panel.finish_request = finish_request
     def set_monitoring(active):

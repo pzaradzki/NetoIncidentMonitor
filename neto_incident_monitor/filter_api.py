@@ -5,7 +5,7 @@ from neto_incident_monitor.analytics_api import count, get
 from neto_incident_monitor.browser_actions import checkpoint
 from neto_incident_monitor.dashboard import measured_record
 from neto_incident_monitor.dashboard_context import DashboardReadError
-from neto_incident_monitor.filter_definition import api_query
+from neto_incident_monitor.filter_definition import OPTIONAL_LAYOUT_FIELDS, api_query
 from neto_incident_monitor.service_now_urls import RECORD_TABLES, TENANT_HOST, safe_record_url
 
 MAX_FILTER_RECORDS = 1000
@@ -38,6 +38,7 @@ def read_filter_records(page, stop, diagnostics, definition):
     fields = set(columns.values()) | {'sys_id', 'number'}
     if table == 'incident':
         fields.add('sys_created_on')
+    required = fields - OPTIONAL_LAYOUT_FIELDS.get(table, frozenset())
     query, ordered_by_id = api_query(definition['query'])
     # Keep the whole source view so hidden columns remain usable in history and templates.
     params = {'sysparm_query': query,
@@ -61,9 +62,10 @@ def read_filter_records(page, stop, diagnostics, definition):
         if len(rows) != total or reply['next']:
             raise DashboardReadError('api_incomplete', retryable=False)
         incidents, seen_ids, last_id = {}, set(), ''
+        facts['optional_field_omissions'] = 0
         for row in rows:
             issue = 'fields'
-            if not isinstance(row, dict) or not fields.issubset(row):
+            if not isinstance(row, dict) or not required.issubset(row):
                 raise DashboardReadError('api_schema', retryable=False)
             record_id, number = extract_value(row, 'sys_id'), extract_value(row, 'number')
             issue = 'record_identity'
@@ -78,6 +80,9 @@ def read_filter_records(page, stop, diagnostics, definition):
             issue = 'fields'
             values = {}
             for key, field in columns.items():
+                if field not in row:
+                    facts['optional_field_omissions'] += 1
+                    continue
                 value = extract_value(row, field, display=True)
                 values[key] = ' '.join(str(value).split()) if value is not None else ''
             url = safe_record_url(f'https://{TENANT_HOST}/{table}.do?sys_id={record_id}', number)

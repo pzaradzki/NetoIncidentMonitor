@@ -1,7 +1,6 @@
 """Thread-safe preferences; Playwright actions stay in the worker."""
 from queue import Queue, Empty
 from threading import Lock
-from contextlib import contextmanager
 from time import monotonic
 
 
@@ -46,8 +45,6 @@ class BrowserRuntime:
         self.activity = 'filters'
         from neto_incident_monitor.browser_rendering import HiddenRendering
         self.login_rendering = HiddenRendering(diagnostics, scope='login')
-        self.definition_rendering = HiddenRendering(diagnostics, scope='filter_definition')
-        self.definition_page = None
         self.debug_show_browser = False
         self.rendering_failed = False
         self.manual_key = None
@@ -69,19 +66,6 @@ class BrowserRuntime:
         from neto_incident_monitor.authentication import clear_login_activity
         clear_login_activity(self.page)
         self.login_rendering.close('runtime_closed')
-        self.definition_rendering.close('runtime_closed')
-
-    @contextmanager
-    def definition_read(self, page, diagnostics):
-        renderer = self.definition_rendering
-        renderer.diagnostics = diagnostics
-        self.definition_page = page
-        try:
-            yield
-        finally:
-            self.definition_page = None
-            renderer.close()
-            renderer.diagnostics = self.diagnostics
 
     def set_activity(self, activity):
         if activity not in ('login', 'filters'):
@@ -213,7 +197,7 @@ class BrowserRuntime:
                 self.login_rendering.close('not_needed')
                 self.show_manual()
                 self.applied_visibility = (self.activity, self.page, True, False, self.override)
-            self.finish_debug_toggle(options, debug_changed, hidden and not self.rendering_failed)
+            self.finish_debug_toggle(debug_changed, hidden and not self.rendering_failed)
             return options
         hidden = not debug and (self.override == 'hide' or (self.override is None and options['hide_browser']))
         visibility = (self.activity, self.page, hidden, options['minimize_browser'], self.override)
@@ -238,17 +222,15 @@ class BrowserRuntime:
             self.applied_visibility = visibility
         if show_debug:
             self.show_window(activate=debug_changed)
-        self.finish_debug_toggle(options, debug_changed, hidden)
+        self.finish_debug_toggle(debug_changed, hidden)
         return options
 
-    def finish_debug_toggle(self, options, changed, hidden):
+    def finish_debug_toggle(self, changed, hidden):
         if not changed:
             return
         visible = self.window.is_visible() if self.window is not None else None
         self.record('session_visibility', visibility_reason='debug_browser_toggled', activity=self.activity,
                     debug_show_browser=self.debug_show_browser, hide_browser=hidden, window_visible=visible)
-        if self.definition_page is not None:
-            self.definition_rendering.sync(self.definition_page, options['hide_browser'] and not self.debug_show_browser)
 
     def complete_login(self):
         from neto_incident_monitor.authentication import finish_authentication

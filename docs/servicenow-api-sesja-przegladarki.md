@@ -10,10 +10,16 @@ W bieżących źródłach Dashboard SLA, Wstrzymane L1, Wnioski L1, Incydenty za
 | Wstrzymane L1 | Dwie agregacje w `incident_metric` dla progów 7 i 14 dni | Migawka stanu bieżącego. |
 | Wnioski L1 | Pięć agregacji w `sc_task`, także dla pustego przypisania i zmiennej katalogowej | Migawka stanu bieżącego. |
 | Incydenty zagrożone SLA | Table API w `task_sla`, do 100 wierszy na stronę i 10 stron | Jedna zweryfikowana migawka dla liczników, bieżącej listy, historii i alertów. |
-| Filtry użytkownika | Jedno żądanie Table API w `incident`, `sc_request`, `sc_req_item` lub `sc_task`, do 1000 rekordów | Definicja w konfiguracji filtra. Pełna migawka zasila bieżące zgłoszenia, historię, obecność i alerty. |
+| Filtry użytkownika | Jedno żądanie Table API w `incident`, `sc_request`, `sc_req_item` lub `sc_task`, do 1000 rekordów | Zapytanie w konfiguracji filtra, osobny układ konta. Pełna migawka zasila bieżące zgłoszenia, historię, obecność i alerty. |
 | Import Ulubionych | `GET /api/now/ui/navigator/favorites` bez parametrów | Pełna migawka w pamięci podglądu. Wybrane filtry zapisuje dopiero potwierdzenie użytkownika. |
 
 Każda sekcja dashboardu ma własną migawkę w `dashboard-cache.json`. Czas pełnej aktualizacji zmienia się po sukcesie wszystkich trzech sekcji. Zagrożenia liczą rekordy SLA według kategorii i grupują zgłoszenia według INC. Niepełny odczyt zachowuje poprzednią listę i stan powiadomień. [Czytniki dashboardu](../neto_incident_monitor/dashboard_api.py) · [Czytnik zagrożeń](../neto_incident_monitor/threatened_api.py)
+
+## Metadane filtrów
+
+Gdy zapytanie i układ są zapisane, odczyt filtra wysyła jedno żądanie po rekordy. Po logowaniu kolejka zwykle wykonuje cztery odczyty domyślnych układów `UIPage / getList`. Pobranie nazwanego układu na żądanie może wymagać drugiej odpowiedzi do porównania z układem zapasowym. Pełny adres nie wymaga rozwinięcia. Skrót dodaje jeden GET do odczytu danych nawigatora. Nowe lub ręcznie odświeżane zapytanie może wymagać odczytu metadanych każdej jeszcze nieznanej tabeli w ścieżce pola. Te metadane są współdzielone w pamięci sesji. [Kontrakt list](kontrakty/kontrakt-odczytu-list.md)
+
+Rozwijanie skrótu i odczyt układu używają wewnętrznych kontraktów ServiceNow. Po aktualizacji ADEO powtórz próbę skrótu, czterech domyślnych układów, znanego i nieznanego widoku nazwanego oraz filtra z odwołaniem. Sprawdź też brak odczytu rekordów przy błędnym warunku. [Analiza i odbiór](analizy/definicja-filtrow-servicenow-bez-dom.md)
 
 ## Uruchomienie odczytów API
 

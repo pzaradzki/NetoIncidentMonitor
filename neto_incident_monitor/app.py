@@ -1,10 +1,11 @@
 """Local ServiceNow monitor with a shared browser session."""
 from neto_incident_monitor.dynamic_columns import DynamicColumns, load_profiles
-from neto_incident_monitor.filter_definition import discover_definition, ready_definition, valid_definition
+from neto_incident_monitor.filter_definition import ready_definition
+from neto_incident_monitor.filter_metadata import discover_query, saved_query
 from neto_incident_monitor.analytics_api import READ_MESSAGES
 from neto_incident_monitor.theme import BG, SURFACE, TEXT, MUTED, ACCENT
 from neto_incident_monitor.columns import FIELDS, DEFAULT, age_minutes
-from neto_incident_monitor.widgets import IncidentMenu, PriorityDots
+from neto_incident_monitor.widgets import IncidentMenu, PriorityDots, update_grid_scrollbar
 from neto_incident_monitor.login_diagnostics import diagnostic_read
 from contextlib import nullcontext
 import json
@@ -22,7 +23,7 @@ from tkinter import ttk
 from neto_incident_monitor import themed_dialogs as messagebox
 from neto_incident_monitor.window_style import current_grab_path
 from urllib.parse import urlparse, unquote
-from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url, resolved_list_url
+from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url
 from neto_incident_monitor.history import History
 from neto_incident_monitor.monitoring import DEFAULT_TASK_INTERVAL, Schedule, Health, ReadPart
 from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
@@ -546,6 +547,7 @@ class App(DynamicColumns, TableLoading):
         self.worker = None
         self.items = {}
         self.snapshots = {}
+        self.filter_read_status = {}
         self.updating_filter_url = None
         self.next_check = None
         self.check_deadlines = {}
@@ -562,6 +564,10 @@ class App(DynamicColumns, TableLoading):
         self.session = None
         self.cycle_active = False
         self.session_state = 'starting'
+        self.session_part = None
+        self.default_layout_refresh = (None, '', ())
+        self.dashboard_scope_refresh = (None, '')
+        self.session_work_detail = ''
         self.connection_dialog = None
         self.password_save_dialog = None
         self.syncing_auto_login = False
@@ -737,7 +743,10 @@ class App(DynamicColumns, TableLoading):
         horizontal = ttk.Scrollbar(parent, orient="horizontal", command=table.xview)
         vertical.grid(row=0, column=1, sticky="ns")
         horizontal.grid(row=1, column=0, sticky="ew")
-        table.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        vertical.grid_remove()
+        horizontal.grid_remove()
+        table.configure(yscrollcommand=lambda first, last: update_grid_scrollbar(vertical, first, last),
+                        xscrollcommand=lambda first, last: update_grid_scrollbar(horizontal, first, last))
         table.column_drag = None
         table.bind("<ButtonPress-1>", self.column_drag_start, add="+")
         table.bind("<B1-Motion>", self.column_drag_motion, add="+")
@@ -914,21 +923,19 @@ class App(DynamicColumns, TableLoading):
         self.update_refresh_controls()
 
     def update_filter_info_button(self):
-        if hasattr(self, 'filter_info_button'):
-            index = self.selected_filter_index()
-            entry = self.filters[index - 1] if index else {}
-            definition = entry.get('list_definition') if not entry.get('url_invalid') else None
-            self.filter_info_button.configure(state='normal' if valid_definition(definition) else 'disabled')
+        update = getattr(self, 'update_open_filter_query', None)
+        if update is not None:
+            update()
 
-    def show_filter_info(self):
-        from neto_incident_monitor.filter_definition_ui import show_filter_definition
-        index = self.selected_filter_index()
-        if index:
-            entry = self.filters[index - 1]
-            definition = entry.get('list_definition')
-            if not entry.get('url_invalid') and valid_definition(definition):
-                show_filter_definition(self.root, entry['name'], definition,
-                                       refresh=lambda: self.enqueue_refresh('filter_definition', entry['url']))
+    def filter_info_definition(self, entry):
+        if not entry.get('url') or entry.get('url_invalid'):
+            return None
+        session = getattr(self, 'session', None)
+        account = session.layout_account if session else None
+        definition = saved_query(entry, account.key if account else None, for_display=True)
+        if definition is None and ready_definition(entry) and (not session or not is_short_url(entry['url'])):
+            return entry['list_definition']
+        return definition
 
     def open_filter(self, event):
         table = self.filter_table
@@ -1280,6 +1287,8 @@ class App(DynamicColumns, TableLoading):
     def remap_filter_view(self, previous):
         positions = {entry['url']: index for index, entry in enumerate(self.filters, 1)}
         previous_urls = {index: entry['url'] for index, entry in enumerate(previous, 1)}
+        if hasattr(self, 'filter_read_status'):
+            self.filter_read_status = {url: result for url, result in self.filter_read_status.items() if url in positions}
         for field in ('snapshots', 'column_availability'):
             data = getattr(self, field)
             setattr(self, field, {positions[previous_urls[index]]: value for index, value in data.items()
@@ -1396,7 +1405,8 @@ class App(DynamicColumns, TableLoading):
         entry = self.filters[index - 1]
         name = entry['name']
         total = f'{count:,}'.replace(',', ' ')
-        status = f'Filtr „{name}” zwraca {total} zgłoszeń. Maksymalna dopuszczalna liczba to {MAX_FILTER_RECORDS}.'
+        limit = f'{MAX_FILTER_RECORDS:,}'.replace(',', ' ')
+        detail = f'Lista zawiera {total} zgłoszeń. Zawęź warunki w ServiceNow, aby filtr zwracał maksymalnie {limit}.'
         enabled = entry.get('enabled', True)
         save_failed = False
         if enabled:
@@ -1407,14 +1417,18 @@ class App(DynamicColumns, TableLoading):
             except (OSError, ValueError):
                 save_failed = True
         self.set_activity(f'Za duża lista: {name}', 'error', 'filter_error')
-        self.status.set(status)
+        title = ('Nie udało się wyłączyć filtra' if save_failed else
+                 'Filtr wyłączony z harmonogramu' if enabled else 'Za dużo zgłoszeń w filtrze')
+        self.update_filter_read_result(url, error=detail, title=title, action='edit', warning=not save_failed)
         if enabled:
-            if self.root.state() in ('withdrawn', 'iconic'):
+            minimized = self.root.state() in ('withdrawn', 'iconic')
+            visible = not minimized and self.active_view == 'incidents' and self.selected_filter_url() == url
+            if minimized:
                 self.show_window()
             if save_failed:
                 messagebox.showerror('Filtr ServiceNow',
                     f'Nie udało się zapisać wyłączenia filtra „{name}”.', parent=self.root)
-            else:
+            elif not visible:
                 messagebox.showinfo('Filtr ServiceNow',
                     f'Filtr „{name}” został wyłączony, ponieważ zawiera ponad {MAX_FILTER_RECORDS} elementów.',
                     parent=self.root)
@@ -1445,6 +1459,7 @@ class App(DynamicColumns, TableLoading):
         self.update_session_filters()
         self.filter_table.enabled_rows[item] = entry["enabled"]
         self.snapshots.pop(index + 1, None)
+        self.filter_read_status.pop(entry['url'], None)
         self.column_availability.pop(index + 1, None)
         self.filter_table.selection_set(item)
         self.schedule.request()
@@ -1540,12 +1555,35 @@ class App(DynamicColumns, TableLoading):
         name = self.filters[index - 1]["name"] if index else ""
         self.phase.set(phase)
         self.selected_filter_name.set(name)
-        self.phase_label.set_status(phase)
+        self.update_filter_read_bar()
+
+    def update_filter_read_bar(self):
+        if hasattr(self, 'filter_read_bar'):
+            from neto_incident_monitor.read_status import ReadStatus
+            self.filter_read_bar.show(self.filter_read_status.get(self.selected_filter_url(), ReadStatus()))
+
+    def update_filter_read_result(self, url, *, accepted=None, error=None, title='', action='retry', warning=False):
+        from neto_incident_monitor.read_status import ReadStatus
+        previous = self.filter_read_status.get(url, ReadStatus())
+        detail = error or ''
+        if not accepted and previous.read_at is not None:
+            detail = f'{detail} Zachowano wynik poprzedniego odczytu.'.strip()
+        self.filter_read_status[url] = (previous.accepted(*accepted) if accepted else
+                                        previous.failed(detail, title=title, action=action, warning=warning))
+        if url == self.selected_filter_url():
+            self.update_filter_read_bar()
 
     def set_phase(self, phase):
         self.monitoring_phase = phase
         self.update_phase_text()
-        self.set_activity(phase, 'error' if phase.startswith('Błąd') else
+        if getattr(self, 'session', None):
+            if self.quitting:
+                self.activity_pill.set_status('Zamykanie aplikacji', 'waiting')
+            else:
+                self.activity_pill.set_status('Monitoring aktywny' if self.cycle_active else 'Monitoring zatrzymany',
+                                              'success' if self.cycle_active else 'neutral')
+        else:
+            self.set_activity(phase, 'error' if phase.startswith('Błąd') else
                           'success' if phase == 'Monitoring aktywny' else
                           'waiting' if phase == 'Oczekiwanie na logowanie' else
                           'working' if phase in ('Uruchamianie przeglądarki', 'Ponowne uruchamianie przeglądarki', 'Sprawdzanie list') else None)
@@ -1557,8 +1595,52 @@ class App(DynamicColumns, TableLoading):
     def set_activity(self, text, tone=None, kind='phase'):
         """Called only by the Tk thread; workers report through the event queue."""
         self.activity_kind = kind
-        if hasattr(self, 'activity_pill'):
+        if not getattr(self, 'session', None) and hasattr(self, 'activity_pill'):
             self.activity_pill.set_status(text, tone)
+
+    def update_session_work(self, pending):
+        if not hasattr(self, 'work_status'):
+            return
+        part = self.session_part[1] if self.session_part else None
+        filters = {entry['url']: (str(index), entry['name']) for index, entry in enumerate(self.filters)}
+        filter_scopes = ('filter', 'filter_definition', 'filter_layout')
+
+        def valid_filter(item):
+            url, revision = item.target
+            return url in filters and revision is self.filter_revisions.get(url)
+
+        if part and part.scope in filter_scopes and not valid_filter(part):
+            part = None
+        queued = pending - {part}
+        for scope, button in (('dashboard', self.dashboard_button), ('threatened', self.threatened_incidents_button)):
+            state = (bool(part and part.scope == scope), any(item.scope == scope for item in queued))
+            if (button.updating, button.queued) != state:
+                button.updating, button.queued = state
+                button.redraw()
+
+        active_row = filters[part.target[0]][0] if part and part.scope in filter_scopes else None
+        queued_rows = frozenset(filters[item.target[0]][0] for item in queued
+                                if item.scope in filter_scopes and valid_filter(item))
+        if (self.filter_table.updating_item, self.filter_table.queued_items) != (active_row, queued_rows):
+            self.filter_table.updating_item = active_row
+            self.filter_table.queued_items = queued_rows
+            self.filter_table.redraw()
+
+        text = 'Oczekuje w kolejce' if queued and self.session_state != 'failed' else ''
+        if part:
+            name = f' „{filters[part.target[0]][1]}”' if part.scope in filter_scopes else ''
+            text = {'dashboard': 'Aktualizuje Dashboard SLA', 'threatened': 'Aktualizuje Incydenty zagrożone SLA',
+                    'filter': 'Aktualizuje filtr' + name, 'filter_definition': 'Odświeża zapytanie filtra' + name,
+                    'filter_layout': 'Odświeża układ kolumn filtra' + name,
+                    'default_layouts': 'Aktualizuje układy list ServiceNow',
+                    'dashboard_scope': 'Odświeża zakres Dashboardu SLA',
+                    'favorites': 'Importuje Ulubione'}[part.scope]
+            if self.session_state == 'waiting':
+                text += ' • Oczekuje na logowanie'
+            elif self.session_work_detail:
+                text = self.session_work_detail
+        if self.work_status.get() != text:
+            self.work_status.set(text)
 
     def update_counts(self):
         numbers = set(self.snapshots.get(self.selected_filter_index(), {}))
@@ -1872,8 +1954,10 @@ class App(DynamicColumns, TableLoading):
             for button in self.filter_buttons:
                 enable(button, not self.quitting and not getattr(self, 'favorites_import', None))
             cycle = self.session.cycle
-            self.dashboard_view.lock_queued_period(dashboard_pending or (
-                self.cycle_active and cycle is not None and any(part.scope == 'dashboard' for part in tuple(cycle.initial))))
+            initial = set(tuple(cycle.initial)) if self.cycle_active and cycle is not None else set()
+            self.dashboard_view.lock_queued_period(dashboard_pending or any(part.scope == 'dashboard' for part in initial))
+            self.update_session_work(pending | initial)
+            self.sync_read_bar_actions()
             return
         running = bool(self.worker and self.worker.is_alive() and not self.stop.is_set() and not self.quitting)
         available = running and not getattr(self, 'auth_waiting', False) and not self.refresh_coordinator().busy
@@ -1886,6 +1970,15 @@ class App(DynamicColumns, TableLoading):
             entry = next((f for f in self.filters if f['url'] == self.selected_filter_url()), None)
             self.refresh_filter_button.configure(state='normal' if available and entry and not entry.get('url_invalid') else 'disabled')
             self.open_filter_button.configure(state='normal' if entry and not entry.get('url_invalid') else 'disabled')
+        self.sync_read_bar_actions()
+
+    def sync_read_bar_actions(self):
+        if hasattr(self, 'filter_read_bar'):
+            self.filter_read_bar.sync_action()
+        for view in ('dashboard_view', 'threatened_view'):
+            panel = getattr(self, view, None)
+            if panel is not None and hasattr(panel, 'read_bar'):
+                panel.read_bar.sync_action()
 
     def update_session_filters(self):
         if not getattr(self, 'session', None):
@@ -1909,7 +2002,7 @@ class App(DynamicColumns, TableLoading):
     def enqueue_refresh(self, scope, url):
         if not self.session.ready_once or self.session_state not in ('ready', 'waiting') or self.quitting:
             return False
-        if scope not in ('all', 'dashboard', 'threatened', 'filter', 'filter_definition'):
+        if scope not in ('all', 'dashboard', 'threatened', 'filter', 'filter_definition', 'filter_layout'):
             raise ValueError('Nieznany zakres aktualizacji.')
         self.update_session_filters()
         parts = []
@@ -1922,17 +2015,51 @@ class App(DynamicColumns, TableLoading):
         else:
             part = self.session.manual_filter_parts.get(url or self.selected_filter_url())
             if part is not None:
-                parts.append(ReadPart(scope, part.target) if scope == 'filter_definition' else part)
+                data = {'requested_at': time.monotonic()} if scope == 'filter_layout' else None
+                parts.append(part if scope == 'filter' else ReadPart(scope, part.target, data))
         if not parts:
             return False
-        _, merged = self.session.submit(scope, parts)
-        self.status.set('Aktualizacja połączona z kolejką.' if merged else 'Aktualizacja oczekuje w kolejce.')
+        self.session.submit(scope, parts)
+        self.update_refresh_controls()
+        return True
+
+    def can_refresh_default_layouts(self):
+        return bool(self.session and self.session_state == 'ready' and self.session.connected
+                    and self.session.layout_account is not None and not self.quitting
+                    and self.default_layout_refresh[0] is None)
+
+    def request_default_layout_refresh(self):
+        if not self.can_refresh_default_layouts():
+            return False
+        part = ReadPart('default_layouts', self.session.layout_account,
+                        {'requested_at': time.monotonic(), 'completed': []})
+        request_id, _ = self.session.submit('default_layouts', [part])
+        self.default_layout_refresh = (request_id, 'queued', ())
+        self.update_refresh_controls()
+        return True
+
+    def can_refresh_dashboard_scope(self):
+        return bool(self.session and self.session_state == 'ready' and self.session.connected
+                    and self.session.layout_account is not None and not self.quitting
+                    and self.dashboard_scope_refresh[0] is None)
+
+    def request_dashboard_scope_refresh(self):
+        if not self.can_refresh_dashboard_scope():
+            return False
+        part = ReadPart('dashboard_scope', self.session.layout_account, {})
+        request_id, _ = self.session.submit('dashboard_scope', [part])
+        self.dashboard_scope_refresh = (request_id, 'queued')
         self.update_refresh_controls()
         return True
 
     def execute_session_part(self, page, part, stop, source):
         from neto_incident_monitor.browser_actions import checkpoint
         checkpoint(stop)
+        if part.scope == 'default_layouts':
+            return self.session.refresh_default_layouts(page, part, stop)
+        if part.scope == 'dashboard_scope':
+            from neto_incident_monitor.dashboard_scope import refresh_scope
+            return refresh_scope(self.session, page, part, stop)
         if part.scope in ('dashboard', 'threatened'):
             done = threading.Event()
             request = {'part': part, 'stop': stop, 'done': done, 'value': None}
@@ -1949,23 +2076,18 @@ class App(DynamicColumns, TableLoading):
             if request['value'] is None:
                 return False
             if part.scope == 'dashboard':
-                success = self.read_dashboard_request(page, request=request['value'], stop=stop)
-                name = 'Dashboard'
-            else:
-                success = self.read_threatened_request(page, periodic=source == 'threatened',
-                                                       request=request['value'], stop=stop)
-                name = 'Incydenty zagrożone'
-            if success and not stop.is_set():
-                self.events.put(('read', (time.time(), name)))
-            return success
+                return self.read_dashboard_request(page, request=request['value'], stop=stop)
+            return self.read_threatened_request(page, periodic=source == 'threatened',
+                                                request=request['value'], stop=stop)
         if part.scope == 'favorites':
             from neto_incident_monitor.favorites_worker import read_on_session
             return read_on_session(page, part.data, self.session, stop)
         url, revision = part.target
-        definition_only = part.scope == 'filter_definition'
-        outside_schedule = source == 'manual' and (definition_only or not part.data['scheduled'])
+        metadata_only = part.scope in ('filter_definition', 'filter_layout')
+        outside_schedule = source == 'manual' and (metadata_only or not part.data['scheduled'])
         job = self.session.active_job if source == 'manual' else None
         request_id = job.id if job is not None else None
+        self.session.update_layout_account(page, stop)
         if self.history.membership is None and self.session.legacy_membership is None:
             from neto_incident_monitor.filter_state import FilterState
             self.session.legacy_membership = FilterState(STATE, normalize_url)
@@ -2224,7 +2346,8 @@ class App(DynamicColumns, TableLoading):
         self.snapshots.clear()
         self.column_availability.clear()
         self.update_counts()
-        self.last_read.set("Ostatnia aktualizacja: —")
+        self.filter_read_status.clear()
+        self.update_filter_read_bar()
         self.next_check = None
         self.check_deadlines = {}
         self.set_phase("Uruchamianie przeglądarki")
@@ -2513,6 +2636,41 @@ class App(DynamicColumns, TableLoading):
             self.browser_runtime = None
             run_diagnostics.record('monitor_finished')
 
+    def read_shared_filter_definition(self, page, entry, stop, diagnostics, revision, generation, part):
+        from neto_incident_monitor.browser_actions import checkpoint
+        from neto_incident_monitor.dashboard_context import DashboardReadError
+
+        session = self.session
+        scope = part.scope
+        account = session.layout_account
+        metadata = saved_query(entry, account.key if account else None)
+        if account is None:
+            raise DashboardReadError('filter_layout_account', retryable=False)
+        if metadata is None or scope == 'filter_definition':
+            metadata, direct = discover_query(page, stop, diagnostics, entry, account.key,
+                                              session.filter_field_schemas, fresh=scope == 'filter_definition')
+            request = dict(done=threading.Event(), saved=False, stop=stop, url=entry['url'],
+                           revision=revision, generation=generation, definition=metadata, direct=direct,
+                           layout_generation=session.layout_generation, diagnostics=diagnostics)
+            self.events.put(('save_filter_definition', request))
+            try:
+                while not request['done'].wait(.05):
+                    checkpoint(stop)
+            finally:
+                request['done'].set()
+            checkpoint(stop)
+            if not request['saved']:
+                raise DashboardReadError('filter_definition_save', retryable=False)
+        else:
+            diagnostics.record('filter_definition', outcome='returned', reused=True,
+                               api_target=metadata['table'])
+        if scope == 'filter_definition':
+            return None
+        columns = session.filter_layout(page, stop, diagnostics, metadata['table'], metadata['view'],
+                                        refresh=scope == 'filter_layout',
+                                        requested_at=part.data['requested_at'] if scope == 'filter_layout' else None)
+        return dict(metadata, columns=columns)
+
     def read_filter(self, page, url, filter_name, filter_index, settings, membership,
                     health, resolved, retry_urls, remaining_after_login, generation, stop,
                     *, outside_schedule=False, part=None, request_id=None):
@@ -2521,12 +2679,15 @@ class App(DynamicColumns, TableLoading):
         from neto_incident_monitor.filter_api import (
             FilterListLimitExceeded, MAX_FILTER_RECORDS, MAX_READ_SECONDS, read_filter_records)
         from neto_incident_monitor.read_budget import Budget, budget_scope
+        from neto_incident_monitor.analytics_api import data_duration, measure_data_requests
 
         class FilterInvalidated(Exception):
             pass
 
         self.threatened_delay_reason = 'filter'
         definition_only = part is not None and part.scope == 'filter_definition'
+        layout_only = part is not None and part.scope == 'filter_layout'
+        layout_generation = self.session.layout_generation if part is not None else None
         revision = part.target[1] if part is not None else getattr(self, 'filter_revisions', {}).get(url)
         health_key = part.target if part is not None else url
 
@@ -2536,12 +2697,14 @@ class App(DynamicColumns, TableLoading):
                     kind, value = 'status', f'{filter_name}: {value}'
                 self.events.put((kind, value))
             else:
-                self.events.put(('filter_activity', (url, (kind, value), revision, generation)))
+                self.events.put(('filter_activity', (url, (kind, value), revision, generation,
+                                                      False, False, layout_generation)))
 
         def is_current():
             return (revision is getattr(self, 'filter_revisions', {}).get(url)
                     and (outside_schedule or url not in self.disabled_filter_urls)
-                    and (part is None or self.session.filter_is_current(part)))
+                    and (part is None or (self.session.filter_is_current(part)
+                        and layout_generation is self.session.layout_generation)))
 
         def validate_revision():
             if not is_current():
@@ -2585,52 +2748,27 @@ class App(DynamicColumns, TableLoading):
                     entry = next((item for item in self.filters if item['url'] == url), None)
                     if entry is None:
                         raise FilterInvalidated()
-                    if not definition_only and ready_definition(entry):
-                        definition = entry['list_definition']
-                    else:
+                    if part is not None:
                         read_stage['stage'] = 'definition'
-                        report('filter_progress', 'ustalanie definicji listy…')
-                        from neto_incident_monitor.dashboard import measured_record
-                        started = time.monotonic()
-                        discovery_outcome = 'error'
-                        render = (self.browser_runtime.definition_read(current, read_diagnostics)
-                                  if self.browser_runtime else nullcontext())
-                        try:
-                            with render:
-                                definition, direct = discover_definition(
-                                    current, entry, stop, navigate, authentication_page, read_diagnostics)
-                            discovery_outcome = 'returned'
-                        except AuthenticationRequired:
-                            discovery_outcome = 'authentication'
-                            raise
-                        except (Cancelled, FilterInvalidated):
-                            discovery_outcome = 'cancelled'
-                            raise
-                        finally:
-                            measured_record(read_diagnostics, 'filter_definition_discovery',
-                                            outcome=discovery_outcome,
-                                            duration_ms=round((time.monotonic() - started) * 1000))
-                        request = dict(done=threading.Event(), saved=False, stop=stop, url=url,
-                                       revision=revision, generation=generation, definition=definition,
-                                       direct=direct, diagnostics=read_diagnostics)
-                        self.events.put(('save_filter_definition', request))
-                        try:
-                            while not request['done'].wait(.05):
-                                checkpoint(stop)
-                        finally:
-                            request['done'].set()
-                        checkpoint(stop)
-                        if not request['saved']:
-                            raise DashboardReadError('filter_definition_save', retryable=False)
-                        if definition_only:
-                            self.events.put(('columns', (url, definition['columns'], revision, generation, True, True)))
+                        if definition_only or layout_only:
+                            report('filter_progress', 'odświeżanie metadanych z ServiceNow…')
+                        definition = self.read_shared_filter_definition(current, entry, stop, read_diagnostics,
+                                                                       revision, generation, part)
+                        if definition_only or layout_only:
+                            report('filter_progress', 'Zapisano zapytanie.' if definition_only else
+                                   'Zapisano układ. Filtry użyją go przy następnym odczycie.')
                             outcome = 'success'
                             return outcome
+                    elif ready_definition(entry):
+                        definition = entry['list_definition']
+                    else:
+                        raise DashboardReadError('filter_layout_account', retryable=False)
                     read_stage['stage'] = 'api_read'
                     while True:
                         read_stage['page'] = 1
                         try:
-                            incidents = read_filter_records(current, stop, read_diagnostics, definition)
+                            with measure_data_requests() as times:
+                                incidents = read_filter_records(current, stop, read_diagnostics, definition)
                             break
                         except DashboardReadError as error:
                             if retry_used or not error.retryable:
@@ -2646,7 +2784,9 @@ class App(DynamicColumns, TableLoading):
                                       if item['url'] == url), url)
             available = sorted(column['key'] for column in schema)
             for incident in incidents.values():
-                incident["_available_columns"] = available
+                values = incident.get('_values')
+                incident["_available_columns"] = (available if values is None else
+                                                   [key for key in available if key in values])
             read_stage['stage'] = 'history_write'
             from neto_incident_monitor.browser_actions import checkpoint
             read_diagnostics.record("filter_commit_start", records_read=len(incidents))
@@ -2665,19 +2805,22 @@ class App(DynamicColumns, TableLoading):
                         url, filter_name, [incidents[n] for n in sorted(numbers)]))
                     if not outside_schedule and hasattr(self, 'alert_writer') else None,
                     **instance)
-            read_diagnostics.record("filter_commit_complete", records_read=len(incidents))
+            duration = data_duration(times)
+            read_diagnostics.record("filter_commit_complete", records_read=len(incidents), api_data_ms=duration)
             outcome = "success"
-            self.events.put(("columns", (url, schema, revision, generation, outside_schedule)))
+            self.events.put(("columns", (url, schema, revision, generation, outside_schedule,
+                                          part is not None, layout_generation)))
             health.success(health_key)
             retry_urls.discard(url)
-            self.events.put(("snapshot", (url, incidents, revision, generation, outside_schedule)))
+            self.events.put(("snapshot", (url, incidents, revision, generation, outside_schedule, False,
+                                          layout_generation, (time.time(), duration))))
             if new and not outside_schedule:
                 if hasattr(self, "alert_writer"):
                     self.submit_alert_delivery()
                 else:
                     self.events.put(("filter_notification", (url, [incidents[n] for n in sorted(new)], revision, generation)))
-            report('read', (time.time(), filter_name))
-            report('filter_progress', f'{len(incidents)} zgłoszeń, nowych: {len(new)}.')
+            if part is None:
+                report('filter_progress', f'{len(incidents)} zgłoszeń, nowych: {len(new)}.')
         except FilterInvalidated:
             outcome = "discarded"
         except FilterListLimitExceeded as error:
@@ -2688,7 +2831,7 @@ class App(DynamicColumns, TableLoading):
             read_diagnostics.record('filter_read_error', filter_stage='api_read', page_index=1,
                                     read_reason=error.reason, total_rows=error.total, page_size=MAX_FILTER_RECORDS,
                                     final_failure=True)
-            self.events.put(('filter_limit', (url, error.total, revision, generation)))
+            self.events.put(('filter_limit', (url, error.total, revision, generation, False, False, layout_generation)))
         except Cancelled:
             outcome = 'cancelled' if is_current() else 'discarded'
             return outcome
@@ -2702,20 +2845,28 @@ class App(DynamicColumns, TableLoading):
                 self.session.connected = False
                 read_diagnostics.record('filter_read_error', filter_stage=read_stage['stage'],
                     page_index=read_stage['page'], read_reason='authentication_required', final_failure=True)
-                report('filter_error', 'Nie udało się przywrócić sesji ServiceNow dla tego odczytu. '
-                       'Zachowano poprzedni wynik.')
+                message = 'Nie udało się przywrócić sesji ServiceNow. Połącz się ponownie i odśwież filtr.'
+                if definition_only or layout_only:
+                    report('status', message)
+                else:
+                    report('filter_error', (message, 'authentication_required'))
                 return outcome
             outcome = "waiting_login"
             remaining_after_login[url] = (
                 seconds_left, read_diagnostics, revision, retry_used)
             report('phase', 'Oczekiwanie na logowanie')
             message = "Sesja ServiceNow wygasła. Zaloguj się w przeglądarce — monitoring wznowi się automatycznie."
-            report('status', message)
+            if part is None:
+                report('status', message)
             if health.authentication():
                 self.events.put(("session_expired", message))
             if not (self.session.authenticate(current, stop) if getattr(self, 'session', None)
                     else self.restore_login(current, url, settings)):
                 outcome = 'cancelled' if is_current() else 'discarded'
+                return outcome
+            if not is_current():
+                outcome = 'discarded'
+                remaining_after_login.pop(url, None)
                 return outcome
             health.resumed()
             retry_urls.add(url)
@@ -2735,18 +2886,23 @@ class App(DynamicColumns, TableLoading):
             if part is None:
                 report('phase', 'Błąd odczytu')
             if read_stage["stage"] == "history_write":
-                message = "Nie udało się zapisać historii i stanu filtra. Zachowano poprzedni wynik."
+                message = "Nie udało się zapisać historii i stanu filtra."
+            elif reason == 'api_timeout':
+                message = 'ServiceNow nie odpowiedział w wyznaczonym czasie.'
+            elif reason == 'api_network':
+                message = 'Połączenie przerwało się podczas odczytu. Spróbuj ponownie.'
             elif reason in ("query_mismatch", "view_mismatch"):
-                message = "ServiceNow zwrócił inne warunki lub widok listy. Zachowano poprzedni wynik."
+                message = "Warunki lub widok listy w ServiceNow różnią się od zapisanej definicji."
             elif reason in READ_MESSAGES:
-                message = READ_MESSAGES[reason] + ' Zachowano poprzedni wynik.'
+                message = READ_MESSAGES[reason]
             elif reason:
-                message = "Nie potwierdzono pełnego odczytu filtra. Zachowano poprzedni wynik."
-            elif outside_schedule:
-                message = "Odczyt filtra nie powiódł się. Możesz ponowić go przyciskiem Aktualizuj."
+                message = "ServiceNow nie zwróciło kompletnych danych filtra."
             else:
-                message = "Odczyt filtra nie powiódł się. Próba ponownie w kolejnym cyklu."
-            report('filter_error' if part is not None else 'status', message)
+                message = "Nie udało się pobrać listy zgłoszeń. Spróbuj ponownie."
+            if part is not None and not (definition_only or layout_only):
+                report('filter_error', (message, reason))
+            else:
+                report('status', message)
             if not outside_schedule and health.failure(health_key):
                 report('interruption', f'Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane.')
         finally:
@@ -2804,7 +2960,7 @@ class App(DynamicColumns, TableLoading):
         deadline = getattr(self, 'threatened_next_read', None)
         self.threatened_last_request = request
         from neto_incident_monitor.analytics_config import load_config
-        from neto_incident_monitor.analytics_api import READ_MESSAGES
+        from neto_incident_monitor.analytics_api import READ_MESSAGES, data_duration, measure_data_requests
         from neto_incident_monitor.threatened_api import read_threats
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
         diagnostics = LoginDiagnostics(source='dashboard', section='threatened', request_id=request)
@@ -2826,8 +2982,11 @@ class App(DynamicColumns, TableLoading):
             import sqlite3
             checkpoint(stop)
             config = load_config()
-            values, details = run_section(page, stop,
-                lambda: read_threats(page, stop, diagnostics, config), diagnostics, restore, state,
+            def read():
+                with measure_data_requests() as times:
+                    values, details = read_threats(page, stop, diagnostics, config)
+                return values, details, data_duration(times)
+            values, details, duration = run_section(page, stop, read, diagnostics, restore, state,
                 lambda result: set(result[0]) == set(KEYS)
                 and all(type(v) is int and v >= 0 for v in result[0].values())
                 and isinstance(result[1], dict))
@@ -2838,8 +2997,10 @@ class App(DynamicColumns, TableLoading):
                 try:
                     saved, arrivals = self.history.commit_threatened(
                         details, timestamp, lambda: checkpoint(stop),
-                        lambda incidents: self.prepare_threatened_alerts(incidents, request))
-                    diagnostics.record('threatened_details_complete', records_read=len(details), row_count=arrivals)
+                        lambda incidents: self.prepare_threatened_alerts(incidents, request),
+                        counters=values, duration_ms=duration)
+                    diagnostics.record('threatened_details_complete', records_read=len(details), row_count=arrivals,
+                                       api_data_ms=duration)
                     if arrivals:
                         self.submit_alert_delivery()
                 except (OSError, ValueError, sqlite3.Error) as exc:
@@ -2847,7 +3008,7 @@ class App(DynamicColumns, TableLoading):
             if saved is None:
                 diagnostics.record('threatened_details_incomplete')
             self.events.put(('threatened_result', (request, values, timestamp)))
-            self.events.put(('threatened_details', (request, saved)))
+            self.events.put(('threatened_details', (request, saved, duration)))
             return saved is not None
         except (TargetClosedError, BrowserClosedError):
             restarting = own_request
@@ -2886,7 +3047,7 @@ class App(DynamicColumns, TableLoading):
             return
         request_id, year, month = request
         from neto_incident_monitor.analytics_config import load_config
-        from neto_incident_monitor.analytics_api import READ_MESSAGES
+        from neto_incident_monitor.analytics_api import READ_MESSAGES, data_duration, measure_data_requests
         from neto_incident_monitor.dashboard_api import read_month, read_held, read_requests
         from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
         from neto_incident_monitor.browser_actions import checkpoint
@@ -2923,12 +3084,14 @@ class App(DynamicColumns, TableLoading):
                     settings = self.monitor_settings
                     return self.restore_operation_login(page, settings, stop)
                 try:
-                    result = run_section(page, stop, read, diagnostics, restore, state,
-                        lambda v: set(v) == set(expected) and all(type(n) is int and n >= 0 for n in v.values()))
+                    # Count queries reuse validated counters across a retry. Their timings follow the same scope.
+                    with measure_data_requests() as times:
+                        result = run_section(page, stop, read, diagnostics, restore, state,
+                            lambda v: set(v) == set(expected) and all(type(n) is int and n >= 0 for n in v.values()))
                     values.update(result)
                     state('Zaktualizowany')
                     metadata = {'section': alias, 'read_at': datetime.now().astimezone().isoformat(timespec='seconds'),
-                                'diagnostics': diagnostics, 'values': dict(result)}
+                                'diagnostics': diagnostics, 'values': dict(result), 'duration_ms': data_duration(times)}
                 except (TargetClosedError, BrowserClosedError, Cancelled, AuthenticationRequired, LoginTargetUnavailable):
                     raise
                 except Exception as exc:
@@ -2940,8 +3103,7 @@ class App(DynamicColumns, TableLoading):
                 self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, '', metadata)))
             message = ''
             if failures:
-                summary = 'Aktualizacja częściowa' if values else 'Nie udało się odczytać'
-                message = summary + ': ' + ', '.join(failures)
+                message = 'Sekcje bez nowego wyniku: ' + ', '.join(failures) + '.'
             self.events.put(('dashboard_result', (request_id, year, month, dict(values), None, message)))
             success = not failures and not stop.is_set()
         except (TargetClosedError, BrowserClosedError):
@@ -2977,7 +3139,9 @@ class App(DynamicColumns, TableLoading):
                 entry = dict(proposed[index - 1], list_definition=request['definition'])
                 if is_short_url(url):
                     entry['resolved_list_url'] = request['direct']
-                if not ready_definition(entry):
+                if (request['layout_generation'] is not self.session.layout_generation
+                        or self.session.layout_account is None
+                        or saved_query(entry, self.session.layout_account.key) is None):
                     return
                 proposed[index - 1] = entry
                 try:
@@ -3012,7 +3176,7 @@ class App(DynamicColumns, TableLoading):
                 request['done'].set()
         elif kind == 'session_waiting':
             self.session_state = 'waiting'
-            self.session_status.set('Sprawdzanie sesji ServiceNow')
+            self.session_status.set('Sprawdzanie sesji…')
             if hasattr(self, 'reconnect_button'):
                 self.reconnect_button.pack_forget()
             self.update_refresh_controls()
@@ -3026,9 +3190,8 @@ class App(DynamicColumns, TableLoading):
                 self.threatened_view.finish_request(request)
             self.update_refresh_controls()
         elif kind == 'session_activity':
-            message, tone, manual = value
-            self.session_status.set(message)
-            self.set_activity(message, tone, 'login')
+            _, _, manual = value
+            self.session_status.set('Wymagane logowanie' if manual else 'Łączenie…')
             if manual:
                 self.login_window_button.pack(side='left', padx=4)
             else:
@@ -3041,9 +3204,27 @@ class App(DynamicColumns, TableLoading):
             if dialog is not None and self.password_save_dialog is dialog:
                 self.password_save_dialog = None
                 dialog.destroy()
+        elif kind in ('session_layout_account', 'session_layout_saved'):
+            if kind == 'session_layout_account':
+                self.update_filter_info_button()
+                self.updating_filter_url = None
+        elif kind == 'session_default_layout_started':
+            if value == self.default_layout_refresh[0]:
+                self.default_layout_refresh = (value, 'running', ())
+        elif kind == 'session_default_layout_result':
+            request_id, outcome, completed = value
+            if request_id == self.default_layout_refresh[0]:
+                self.default_layout_refresh = (None, outcome, completed)
+        elif kind == 'session_dashboard_scope_started':
+            if value == self.dashboard_scope_refresh[0]:
+                self.dashboard_scope_refresh = (value, 'running')
+        elif kind == 'session_dashboard_scope_result':
+            request_id, outcome = value
+            if request_id == self.dashboard_scope_refresh[0]:
+                self.dashboard_scope_refresh = (None, outcome)
         elif kind == 'session_ready':
             self.session_state = 'ready'
-            self.session_status.set('Sesja ServiceNow aktywna')
+            self.session_status.set('Połączono')
             self.login_window_button.pack_forget()
             if self.connection_dialog:
                 self.connection_dialog.destroy()
@@ -3052,7 +3233,6 @@ class App(DynamicColumns, TableLoading):
                 self.reconnect_button.pack_forget()
             if self.window_restoring:
                 self.set_phase('Gotowy do uruchomienia')
-                self.status.set('Możesz uruchomić monitoring albo zlecić pojedynczy odczyt.')
                 if self.apply_startup and self.start_minimized.get():
                     if not (self.minimize_to_tray.get() and self.tray_ready):
                         self.root.iconify()
@@ -3067,12 +3247,11 @@ class App(DynamicColumns, TableLoading):
             self.update_refresh_controls()
         elif kind == 'session_problem':
             self.session_state = 'failed'
-            self.session_status.set('Brak połączenia z ServiceNow')
+            self.session_status.set('Brak połączenia')
             self.login_window_button.pack_forget()
             self.update_refresh_controls()
             if not self.quitting:
                 if self.session.ready_once:
-                    self.status.set('Odczyty wstrzymane. Połącz ponownie, aby wznowić pracę.')
                     self.show_reconnect_action()
                 else:
                     self.show_connection_problem()
@@ -3081,26 +3260,29 @@ class App(DynamicColumns, TableLoading):
             if self.cycle_active == active:
                 self.next_check = next_read
                 self.check_deadlines = deadlines
-                if self.session_state == 'ready' and self.activity_kind not in (
-                        'dashboard_error', 'threatened_error', 'filter_error'):
-                    self.set_activity('Oczekiwanie na kolejne sprawdzenie' if active else 'Gotowy do odczytu', 'success')
-        elif kind in ('session_job_running', 'session_job_finished'):
-            scope = value if kind == 'session_job_running' else value[0]
-            label = {'all': 'Pełna aktualizacja', 'dashboard': 'Dashboard', 'threatened': 'Incydenty zagrożone',
-                     'filter': 'Odczyt filtra', 'filter_definition': 'Odświeżenie definicji filtra',
-                     'favorites': 'Import Ulubionych'}[scope]
-            if kind == 'session_job_running':
-                self.status.set(f'{label} • w trakcie')
-            else:
-                skipped = value[2] if len(value) > 2 else 0
-                result = 'zakończono' if value[1] else 'niepełny odczyt lub anulowanie'
-                if skipped:
-                    result += f' • pominięto po zmianie filtrów: {skipped}'
-                if value[1] or self.activity_kind != 'filter_error':
-                    self.status.set(f'{label} • {result}')
-                self.update_refresh_controls()
+        elif kind == 'session_part_started':
+            self.session_part = value
+            self.session_work_detail = ''
+        elif kind == 'session_part_finished':
+            if self.session_part and self.session_part[0] is value:
+                self.session_part = None
+                self.session_work_detail = ''
+        elif kind == 'session_job_finished':
+            skipped = value[2] if len(value) > 2 else 0
+            if skipped and not self.status.get():
+                self.status.set(f'Pominięte odczyty po zmianie filtrów: {skipped}.')
         else:
             return False
+        if kind in ('session_waiting', 'session_ready', 'session_problem', 'session_layout_account', 'session_layout_saved',
+                    'session_default_layout_started', 'session_default_layout_result'):
+            refresh_preview = getattr(self, 'refresh_saved_layout_preview', None)
+            if refresh_preview is not None:
+                refresh_preview()
+        if kind in ('session_waiting', 'session_ready', 'session_problem', 'session_layout_account',
+                    'session_dashboard_scope_started', 'session_dashboard_scope_result'):
+            refresh_scope_preview = getattr(self, 'refresh_dashboard_scope_preview', None)
+            if refresh_scope_preview is not None:
+                refresh_scope_preview()
         return True
 
     def show_password_save_prompt(self, request):
@@ -3160,7 +3342,7 @@ class App(DynamicColumns, TableLoading):
         y = max(0, (dialog.winfo_screenheight() - height) // 2)
         geometry = f'+{x}+{y}'
         dialog.geometry(geometry)
-        self.session_status.set('Oczekiwanie na decyzję w sprawie zapisu poświadczeń')
+        self.session_status.set('Oczekiwanie na zapis poświadczeń')
         self.set_activity('Oczekiwanie na zapis poświadczeń w Chromium', 'waiting', 'login')
         dialog.deiconify()
 
@@ -3205,8 +3387,9 @@ class App(DynamicColumns, TableLoading):
     def show_reconnect_action(self):
         from neto_incident_monitor.widgets import RoundedButton
         if not hasattr(self, 'reconnect_button'):
-            self.reconnect_button = RoundedButton(self.controls, text='Połącz ponownie',
-                                                   command=self.session.retry, background=BG)
+            self.reconnect_button = RoundedButton(self.footer_actions, text='Połącz ponownie',
+                                                   command=self.session.retry,
+                                                   background=self.footer_actions.cget('background'), compact=True)
         self.reconnect_button.pack(side='left', padx=4)
 
     def drain(self):
@@ -3232,10 +3415,13 @@ class App(DynamicColumns, TableLoading):
                 if getattr(self, 'session', None) and kind.startswith('session_') and self.handle_session_event(kind, value):
                     continue
                 outside_schedule = preserve_layout = False
+                flags = ()
                 if kind in ("snapshot", "columns", "filter_notification", 'filter_activity', 'filter_limit') and len(value) >= 4:
                     url, payload, revision, generation, *flags = value
                     if (generation is not getattr(self, "monitor_generation", None) or
                             revision is not getattr(self, "filter_revisions", {}).get(url)):
+                        continue
+                    if len(flags) > 2 and flags[2] is not None and flags[2] is not self.session.layout_generation:
                         continue
                     value = (url, payload)
                     outside_schedule = bool(flags and flags[0])
@@ -3249,22 +3435,28 @@ class App(DynamicColumns, TableLoading):
                             continue
                         kind, value = payload
                         name = self.filters[index - 1]['name']
-                        if kind == 'read':
-                            value = (value[0], name)
-                        elif kind == 'filter_progress':
-                            kind, value = 'status', f'{name}: {value}'
+                        if kind == 'filter_progress':
+                            if value.endswith('…'):
+                                self.session_work_detail = f'{name}: {value}'
+                            continue
                         elif kind == 'filter_error':
-                            self.set_activity(f'Błąd odczytu: {name}', 'error', 'filter_error')
-                            kind, value = 'status', f'{name}: {value}'
+                            detail, reason = value
+                            title = 'Nie udało się połączyć z ServiceNow' if reason in ('api_network', 'api_timeout') else ''
+                            self.update_filter_read_result(url, error=detail, title=title)
+                            continue
                 if kind == 'refresh_state':
                     self.update_refresh_controls()
                     continue
                 if kind == 'threatened_state':
                     self.threatened_view.set_state(*value)
+                    if (self.session_part and self.session_part[1].scope == 'threatened'
+                            and self.threatened_view.pending and value[0] == self.threatened_view.request_id):
+                        self.session_work_detail = ('Ponawia odczyt zagrożeń SLA'
+                                                    if value[1] == 'Ponawianie odczytu' else '')
                     continue
                 if kind == 'threatened_result':
                     self.threatened_view.apply_result(*value)
-                    if value[0] == self.threatened_view.request_id and value[1] is None:
+                    if not getattr(self, 'session', None) and value[0] == self.threatened_view.request_id and value[1] is None:
                         self.set_activity('Błąd odczytu: Incydenty zagrożone', 'error', 'threatened_error')
                     continue
                 if kind == 'threatened_details':
@@ -3282,9 +3474,13 @@ class App(DynamicColumns, TableLoading):
                     activity = self.dashboard_view.set_section_activity(*value)
                     if activity is not None:
                         self.set_activity(*activity)
+                        if self.session_part and self.session_part[1].scope == 'dashboard':
+                            self.session_work_detail = activity[0] if activity[1] in ('working', 'waiting') else ''
                     continue
                 if kind == 'dashboard_updating':
                     if not self.dashboard_view.set_updating(*value):
+                        continue
+                    if getattr(self, 'session', None):
                         continue
                     updating = self.dashboard_view.active_request is not None
                     self.dashboard_button.updating = updating
@@ -3308,6 +3504,8 @@ class App(DynamicColumns, TableLoading):
                     continue
                 if kind == "filter_updating":
                     self.updating_filter_url = value
+                    if getattr(self, 'session', None):
+                        continue
                     index = self.event_filter_index(value)
                     self.filter_table.updating_item = str(index - 1) if index is not None else None
                     self.filter_table.redraw()
@@ -3397,9 +3595,6 @@ class App(DynamicColumns, TableLoading):
                     self.set_phase("Błąd odczytu" if error else "Monitoring aktywny")
                     if not error:
                         self.set_activity('Oczekiwanie na kolejne sprawdzenie', 'success')
-                elif kind == "read":
-                    timestamp, name = value
-                    self.last_read.set(f"Ostatnia aktualizacja: {time.strftime('%H:%M:%S', time.localtime(timestamp))} • {name}")
                 elif kind == "columns":
                     index, available = value
                     index = self.event_filter_index(index)
@@ -3419,6 +3614,10 @@ class App(DynamicColumns, TableLoading):
                     if not outside_schedule and not self.filters[filter_index - 1].get("enabled", True):
                         continue
                     self.snapshots[filter_index] = incidents
+                    url = self.filters[filter_index - 1]['url']
+                    timing = flags[3] if len(flags) > 3 else None
+                    if timing is not None:
+                        self.update_filter_read_result(url, accepted=timing)
                     self.refresh_current()
                     self.refresh_history()
                     self.apply_visible_columns()
@@ -3480,10 +3679,6 @@ class App(DynamicColumns, TableLoading):
                         (self.refresh_current if table is self.current_table else self.refresh_history)()
                     else:
                         self.apply_sort(table)
-        def remaining(kind):
-            deadline = self.check_deadlines.get(kind)
-            return "-" if deadline is None else f"{max(0, int(deadline - now + 0.999))} s"
-        self.countdown.set(f"Następna aktualizacja INC: {remaining('inc')}  SCTASK/REQ/RITM: {remaining('task')}")
         self.update_refresh_controls()
         if not self.quitting:
             self.root.after(200, self.drain)

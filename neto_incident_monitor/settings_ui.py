@@ -222,6 +222,14 @@ def build_settings(app, settings):
         Toggle(controls, app.hide_browser).pack(side="right")
 
     data = section("DANE APLIKACJI")
+    from neto_incident_monitor.filter_layout_ui import show_saved_layouts
+    controls = row(data, 'Układy kolumn list ServiceNow',
+                   'Domyślne układy INC, REQ, RITM i SCTASK zapisane dla aktualnego konta.')
+    RoundedButton(controls, text='Pokaż', command=lambda: show_saved_layouts(app, window)).pack(side='right')
+    from neto_incident_monitor.dashboard_scope_ui import show_dashboard_scope
+    controls = row(data, 'Agenci i lokalizacje Dashboardu SLA',
+                   'Zapisane identyfikatory ograniczające zakres odczytu dashboardu.')
+    RoundedButton(controls, text='Pokaż', command=lambda: show_dashboard_scope(app, window)).pack(side='right')
     controls = row(data, "Przywrócenie stanu początkowego",
                    "Usuń lokalne dane monitora i zamknij aplikację.")
     RoundedButton(controls, text="Usuń wszystkie dane aplikacji…", command=app.request_data_reset).pack(side="right")

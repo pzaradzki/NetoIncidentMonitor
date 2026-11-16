@@ -9,11 +9,49 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
+from neto_incident_monitor.filter_layouts import read_account
+from neto_incident_monitor.filter_metadata import metadata_from_address
 from neto_incident_monitor.monitoring import ReadPart, ReadQueue
 from neto_incident_monitor.shared_session import SharedSession
 
 
+def metadata_for(app, page, entry, direct=None):
+    page.evaluate.return_value = ['f' * 32, 'pl']
+    app.session.layout_account = read_account(page, threading.Event())
+    definition = dict(metadata_from_address(direct or entry['url']), version=2, source_url=entry['url'],
+                      instance=entry.get('filter_instance'), account=app.session.layout_account.key)
+    return definition
+
+
 class ReadQueueTests(unittest.TestCase):
+    def test_browser_closure_finishes_layout_refresh_and_keeps_the_next_request(self):
+        from playwright._impl._errors import TargetClosedError
+        from neto_incident_monitor.filter_layouts import LayoutAccount
+
+        app = Mock(threatened_next_read=None)
+        session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        session.connected = True
+        page = Mock()
+        page.is_closed.return_value = False
+        part = ReadPart('default_layouts', LayoutAccount('a', 'pl'), {'requested_at': 1, 'completed': []})
+        dashboard = ReadPart('dashboard', (2026, 11))
+        job_id, _ = session.work.submit('default_layouts', [part])
+        session.work.submit('dashboard', [dashboard])
+
+        def execute(*_):
+            part.data['completed'].append('INC')
+            raise TargetClosedError('SYNTHETIC_PRIVATE_DETAIL')
+
+        app.execute_session_part.side_effect = execute
+        with patch('neto_incident_monitor.shared_session.authentication_required', return_value=False):
+            with self.assertRaises(TargetClosedError):
+                session.serve(page)
+        app.events.put.assert_any_call(('session_default_layout_started', job_id))
+        app.events.put.assert_any_call(('session_default_layout_result', (job_id, 'error', ('INC',))))
+        self.assertEqual(session.work.pending_refreshes(), (False, {dashboard}))
+        self.assertNotIn('SYNTHETIC_PRIVATE_DETAIL', str(session.log.record.call_args_list))
+
     def test_browser_closure_completes_active_import_without_discarding_other_work(self):
         from queue import Queue
         from playwright._impl._errors import TargetClosedError
@@ -590,8 +628,6 @@ class SharedApplicationTests(unittest.TestCase):
                     active_url = app.selected_filter_url()
                     active = app.session.manual_filter_parts[active_url]
                     from tests.test_filter_api import filter_definition
-                    app.filters[0]['list_definition'] = dict(filter_definition(active_url),
-                                                             instance=app.filters[0].get('filter_instance'))
                     record = LoginDiagnostics.record
 
                     def delete_before_history(diagnostics, event, **facts):
@@ -601,7 +637,9 @@ class SharedApplicationTests(unittest.TestCase):
 
                     page = Mock()
                     page.is_closed.return_value = False
-                    with patch('neto_incident_monitor.filter_api.read_filter_records', return_value={'INC1': {'number': 'INC1'}}), \
+                    app.filters[0]['list_definition'] = metadata_for(app, page, app.filters[0])
+                    with patch.object(app.session, 'filter_layout', return_value=filter_definition(active_url)['columns']), \
+                            patch('neto_incident_monitor.filter_api.read_filter_records', return_value={'INC1': {'number': 'INC1'}}), \
                             patch.object(LoginDiagnostics, 'record', autospec=True, side_effect=delete_before_history):
                         result = app.read_filter(page, active_url, 'Inny adres', 1, {},
                                                  FilterState(folder / 'seen.json'), app.session.health,
@@ -866,8 +904,10 @@ class SharedApplicationTests(unittest.TestCase):
                 part, source = app.session.next_part(None)
                 page = Mock()
                 page.is_closed.return_value = False
+                app.filters[0]['list_definition'] = metadata_for(app, page, app.filters[0])
                 incident = {'number': 'INC0000001', 'url': url}
-                with patch('neto_incident_monitor.filter_api.read_filter_records', return_value={incident['number']: incident}), \
+                with patch.object(app.session, 'filter_layout', return_value=filter_definition(url)['columns']), \
+                        patch('neto_incident_monitor.filter_api.read_filter_records', return_value={incident['number']: incident}), \
                         patch('neto_incident_monitor.app.STATE', Path(directory) / 'seen.json'), \
                         self.assertLogs(_logger, level='INFO') as captured:
                     self.assertTrue(app.execute_session_part(page, part, app.session.closed, source))
@@ -882,7 +922,8 @@ class SharedApplicationTests(unittest.TestCase):
                 root.destroy()
 
     def test_filter_definition_is_saved_once_and_enables_selected_filter_preview(self):
-        url = 'https://adeo.service-now.com/incident_list.do'
+        url = 'https://adeo.service-now.com/now/nav/ui/classic/__tinyId__/synthetic_id_1234'
+        direct = 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue'
         settings = {'filters': [{'name': 'Test', 'url': url, 'enabled': True}]}
         with TemporaryDirectory() as directory:
             root = tk.Tk()
@@ -902,11 +943,23 @@ class SharedApplicationTests(unittest.TestCase):
                     app.handle_session_event('session_ready', None)
                     app.filter_table.selection_set('0')
                     app.filter_selected()
-                    self.assertFalse(app.filter_info_button.enabled)
+                    from neto_incident_monitor.filter_settings import show_filter_settings
+                    from neto_incident_monitor.widgets import RoundedButton
+                    window = show_filter_settings(app, 0)
+                    def buttons(parent):
+                        for child in parent.winfo_children():
+                            if isinstance(child, RoundedButton):
+                                yield child
+                            yield from buttons(child)
+                    query_button = next(button for button in buttons(window) if button.text == 'Zapytanie')
+                    self.assertEqual(query_button.icon, 'info')
+                    self.assertEqual(query_button.pack_info()['side'], 'left')
+                    self.assertFalse(query_button.enabled)
                     page = Mock()
                     page.is_closed.return_value = False
                     from tests.test_filter_api import filter_definition
-                    definition = filter_definition(url)
+                    definition = metadata_for(app, page, app.filters[0], direct)
+                    columns = filter_definition(url)['columns']
                     enqueue = app.events.put
 
                     def send(event):
@@ -916,10 +969,13 @@ class SharedApplicationTests(unittest.TestCase):
                             enqueue(event)
 
                     def read(*args):
-                        self.assertEqual(read_json(config, {})['filters'][0]['list_definition'], args[3])
+                        self.assertEqual(read_json(config, {})['filters'][0]['list_definition'],
+                                         {k: v for k, v in args[3].items() if k != 'columns'})
+                        self.assertEqual(args[3]['columns'], columns)
                         return {}
 
-                    with patch('neto_incident_monitor.app.discover_definition', return_value=(definition, url)) as discover, \
+                    with patch('neto_incident_monitor.app.discover_query', return_value=(definition, direct)) as discover, \
+                            patch.object(app.session, 'filter_layout', return_value=columns), \
                             patch.object(app.events, 'put', side_effect=send), \
                             patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read) as api:
                         for _ in range(2):
@@ -931,7 +987,7 @@ class SharedApplicationTests(unittest.TestCase):
                         discover.assert_called_once()
                         self.assertEqual(api.call_count, 2)
                         updated = dict(definition, query='active=false')
-                        discover.return_value = updated, url
+                        discover.return_value = updated, direct.replace('true', 'false')
                         self.assertTrue(app.enqueue_refresh('filter_definition', url))
                         part, source = app.session.next_part(None)
                         with patch.object(app, 'persist_filters', side_effect=OSError('synthetic')):
@@ -945,10 +1001,15 @@ class SharedApplicationTests(unittest.TestCase):
                         self.assertEqual(api.call_count, 2)
                     saved = read_json(config, {})['filters'][0]['list_definition']
                     self.assertEqual(saved, updated)
-                    self.assertTrue(app.filter_info_button.enabled)
-                    with patch('neto_incident_monitor.filter_definition_ui.show_filter_definition') as preview:
-                        app.filter_info_button.invoke()
-                    self.assertEqual(preview.call_args.args, (root, 'Test', saved))
+                    self.assertTrue(query_button.enabled)
+                    query_button.invoke()
+                    preview = next(child for child in window.winfo_children() if isinstance(child, tk.Toplevel))
+                    self.assertEqual(preview.title(), 'Definicja filtra – Test')
+                    self.assertIs(root.grab_current(), preview)
+                    next(button for button in buttons(preview) if button.text == 'Zamknij').invoke()
+                    self.assertIs(root.grab_current(), window)
+                    next(button for button in buttons(window) if button.text == 'Zapisz').invoke()
+                    self.assertEqual(read_json(config, {})['filters'][0]['list_definition'], updated)
                     self.assertEqual(app.filters[0]['list_definition'], updated)
                     app.session.work.complete_part(part, manual=True, success=True)
                     app.session.next_part(None)
@@ -962,7 +1023,8 @@ class SharedApplicationTests(unittest.TestCase):
                     reloaded.handle_session_event('session_ready', None)
                     self.assertTrue(reloaded.enqueue_refresh('filter', url))
                     part, source = reloaded.session.next_part(None)
-                    with patch('neto_incident_monitor.app.discover_definition') as discover, \
+                    with patch('neto_incident_monitor.app.discover_query') as discover, \
+                            patch.object(reloaded.session, 'filter_layout', return_value=columns), \
                             patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read):
                         self.assertTrue(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
                     discover.assert_not_called()
@@ -983,8 +1045,10 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertTrue(read_json(config, {})['filters'][0]['enabled'])
                     self.assertTrue(reloaded.enqueue_refresh('filter', url))
                     part, source = reloaded.session.next_part(None)
-                    page.evaluate.return_value = dict(status=200, result=[], next=True, total='6817')
-                    self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
+                    page.evaluate.side_effect = lambda _script, arg: (['f' * 32, 'pl'] if isinstance(arg, str)
+                        else dict(status=200, result=[], next=True, total='6817'))
+                    with patch.object(reloaded.session, 'filter_layout', return_value=columns):
+                        self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
                     reloaded.session.active_job_success = False
                     reloaded.session.work.complete_part(part, manual=True, success=False)
                     reloaded.session.next_part(None)
@@ -1000,11 +1064,12 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertFalse(reloaded.filter_table.enabled_rows['0'])
                     self.assertEqual(reloaded.session.filter_parts, ())
                     self.assertIn('INC0000123', reloaded.snapshots[1])
-                    self.assertEqual(reloaded.status.get(),
-                                     'Filtr „Test” zwraca 6 817 zgłoszeń. Maksymalna dopuszczalna liczba to 1000.')
+                    self.assertEqual(reloaded.filter_read_bar.title.cget('text'), 'Filtr wyłączony z harmonogramu')
+                    self.assertIn('Lista zawiera 6 817 zgłoszeń.', reloaded.filter_read_bar.detail.cget('text'))
                     self.assertTrue(reloaded.enqueue_refresh('filter', url))
                     part, source = reloaded.session.next_part(None)
-                    self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
+                    with patch.object(reloaded.session, 'filter_layout', return_value=columns):
+                        self.assertFalse(reloaded.execute_session_part(page, part, reloaded.session.closed, source))
                     with patch('neto_incident_monitor.app.messagebox.showinfo') as notice:
                         reloaded.drain()
                     notice.assert_not_called()
@@ -1229,8 +1294,9 @@ root.mainloop()
             self.assertEqual([item[0] for item in calls], ['dashboard', 'threatened', 'filter'])
             self.assertTrue(all(item[1] is page and item[2] == app.session.thread.ident for item in calls))
             self.assertEqual(app.favorites_import.rows[0]['name'], 'Przykład')
-            page.evaluate.assert_called_once()
-            self.assertEqual(page.evaluate.call_args.args[1]['route'], '/api/now/ui/navigator/favorites')
+            routes = [call.args[1]['route'] for call in page.evaluate.call_args_list
+                      if len(call.args) > 1 and isinstance(call.args[1], dict) and 'route' in call.args[1]]
+            self.assertEqual(routes, ['/api/now/ui/navigator/favorites'])
             self.assertFalse(app.cycle_active)
             launch.assert_called_once()
             self.assertTrue(launch.call_args.kwargs['visible'])
@@ -1250,7 +1316,9 @@ root.mainloop()
             self.assertFalse(app.import_button.enabled)
             wait_for(lambda: app.favorites_import.result is not None)
             self.assertTrue(app.cycle_active)
-            self.assertEqual(page.evaluate.call_count, 2)
+            routes = [call.args[1]['route'] for call in page.evaluate.call_args_list
+                      if len(call.args) > 1 and isinstance(call.args[1], dict) and 'route' in call.args[1]]
+            self.assertEqual(routes, ['/api/now/ui/navigator/favorites'] * 2)
             context.new_page.assert_not_called()
             app.favorites_import.cancel()
             app.stop_monitoring()

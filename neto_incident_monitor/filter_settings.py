@@ -5,6 +5,7 @@ from tkinter import ttk
 from neto_incident_monitor.theme import SURFACE
 from neto_incident_monitor.widgets import RoundedButton, Toggle
 from neto_incident_monitor import themed_dialogs as messagebox
+from neto_incident_monitor.filter_definition_ui import show_filter_definition
 
 
 from neto_incident_monitor.template_library_ui import show_channel_settings
@@ -12,6 +13,10 @@ from neto_incident_monitor.template_library_ui import show_channel_settings
 
 def show_filter_settings(app, index):
     entry = app.filters[index]
+    url, instance = entry['url'], entry.get('filter_instance')
+
+    def find_filter(filters):
+        return next((item for item in filters if item['url'] == url and item.get('filter_instance') == instance), None)
     window = tk.Toplevel(app.root)
     window.title("Ustawienia filtra")
     window.configure(background=SURFACE)
@@ -104,21 +109,22 @@ def show_filter_settings(app, index):
         except ValueError as error:
             messagebox.showerror('Ustawienia filtra', str(error), parent=window)
             return
-        previous = dict(entry)
         previous_filters = app.filters
         previous_library = getattr(app, 'notification_library', None)
-        entry.update({key: value.get() for key, value in values.items()})
-        entry.update(addresses)
-        entry['notification_templates'] = templates
-        draft_filters[index] = entry
-        clear_missing(draft_filters, library)
-        app.filters = draft_filters
-        app.notification_library = library
+        current_library, current_filters = migrate(library, previous_filters)
+        current = find_filter(current_filters)
+        if current is None:
+            messagebox.showerror('Ustawienia filtra', 'Filtr został zmieniony. Otwórz jego ustawienia ponownie.', parent=window)
+            return
+        current.update({key: value.get() for key, value in values.items()})
+        current.update(addresses)
+        current['notification_templates'] = templates
+        clear_missing(current_filters, current_library)
+        app.filters = current_filters
+        app.notification_library = current_library
         try:
             app.persist_filters()
         except (OSError, ValueError):
-            entry.clear()
-            entry.update(previous)
             app.filters = previous_filters
             app.notification_library = previous_library
             messagebox.showerror("Ustawienia filtra", 'Nie udało się zapisać ustawień filtra.', parent=window)
@@ -130,6 +136,31 @@ def show_filter_settings(app, index):
 
     footer = ttk.Frame(panel, style="White.TFrame")
     footer.pack(fill="x", pady=(18, 0))
+
+    def get_query():
+        current = find_filter(app.filters)
+        return (current, app.filter_info_definition(current)) if current is not None else (None, None)
+
+    def open_query():
+        current, definition = get_query()
+        if definition is not None:
+            show_filter_definition(window, current['name'], definition,
+                                   refresh=lambda: app.enqueue_refresh('filter_definition', url))
+
+    query_button = RoundedButton(footer, text='Zapytanie', icon='info', command=open_query)
+    query_button.pack(side='left')
+
+    def update_query():
+        _, definition = get_query()
+        query_button.configure(state='normal' if definition is not None else 'disabled')
+
+    def clear_query(event):
+        if event.widget is window and app.update_open_filter_query is update_query:
+            app.update_open_filter_query = None
+
+    app.update_open_filter_query = update_query
+    window.bind('<Destroy>', clear_query, add='+')
+    update_query()
     RoundedButton(footer, text="Zapisz", command=save, primary=True).pack(side="right")
     RoundedButton(footer, text="Anuluj", command=window.destroy).pack(side="right", padx=8)
     window.bind("<Escape>", lambda event: window.destroy())
@@ -138,3 +169,4 @@ def show_filter_settings(app, index):
     height = window.winfo_reqheight()
     window.geometry(f"{width}x{height}+{max(0, (window.winfo_screenwidth()-width)//2)}+{max(0, (window.winfo_screenheight()-height)//2)}")
     window.grab_set()
+    return window

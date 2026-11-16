@@ -7,8 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from neto_incident_monitor.app import App
-from neto_incident_monitor.filter_definition import read_list_headers
-from neto_incident_monitor.list_context import ListTarget
 from neto_incident_monitor.dynamic_columns import LOCAL_KEYS, load_profiles, update_profile
 from neto_incident_monitor.widgets import RoundedButton
 
@@ -25,32 +23,6 @@ def descendants(widget):
 
 
 class ProfileTests(unittest.TestCase):
-    def test_real_servicenow_headers_exclude_controls_and_search_row(self):
-        from playwright.sync_api import sync_playwright
-        fixture = (Path(__file__).parent/'fixtures'/'incident_headers.html').read_text(encoding='utf-8')
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                page.route('https://adeo.service-now.com/**', lambda r: r.fulfill(body=''))
-                page.goto(URL)
-                for table_name in ('incident', 'sc_task'):
-                    html = fixture.replace('incident', table_name)
-                    page.set_content('<table>'+html+'</table>')
-                    for search_visible in (True, False):
-                        page.locator('.list_header_search_row').evaluate('(el, show) => el.style.display = show ? "" : "none"', search_visible)
-                        schema = read_list_headers(ListTarget.find(page, URL))['schema']
-                        self.assertEqual(len(schema), 14)
-                        self.assertEqual(schema[0], {'key': 'number', 'label': 'Numer', 'field': 'number'})
-                        self.assertIn({'key': 'sn:u_ci_category', 'label': 'CI category', 'field': 'u_ci_category'}, schema)
-                        self.assertNotIn('sn:search', {column['key'] for column in schema})
-                        self.assertFalse(any('przeszukiwania' in column['label'] for column in schema))
-                    page.locator('thead').evaluate('el => el.appendChild(el.rows[0].cloneNode(true))')
-                    with self.assertRaisesRegex(Exception, 'Ambiguous ServiceNow column headers'):
-                        read_list_headers(ListTarget.find(page, URL))
-            finally:
-                browser.close()
-
     def test_changed_set_resets_but_source_reordering_preserves_preferences(self):
         profile = update_profile(None, SCHEMA)
         self.assertEqual(profile['visible'], ['number', 'sn:u_custom', 'state'])
@@ -81,23 +53,6 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(refreshed['visible'], ['state', 'time', 'sn:added'])
         self.assertEqual(refreshed['order'], ['state', 'number', *LOCAL_KEYS, 'sn:added'])
         self.assertEqual(refreshed['widths'], {'state': 211})
-
-    def test_reader_discovers_unknown_fields_in_empty_and_populated_list(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            try:
-                page = browser.new_page()
-                page.route('https://adeo.service-now.com/**', lambda r: r.fulfill(body=''))
-                page.goto(URL)
-                headers = '<tr><th></th><th name="incident.u_custom">Pole własne</th><th name="incident.number">Numer</th><th name="incident.state">Stan</th><th name="incident.hidden" style="display:none">Ukryta</th></tr>'
-                page.set_content('<table>'+headers+'</table>')
-                schema = read_list_headers(ListTarget.find(page, URL))['schema']
-                self.assertEqual([c['key'] for c in schema], ['sn:u_custom', 'number', 'state'])
-                self.assertEqual(schema[0]['field'], 'u_custom')
-            finally:
-                browser.close()
-
 
 class DynamicUITests(unittest.TestCase):
     def setUp(self):

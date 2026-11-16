@@ -74,23 +74,6 @@ def normalize_list_url(value, allow_short=True):
     return parsed._replace(netloc=TENANT_HOST).geturl()
 
 
-def resolved_list_url(page, requested):
-    """Resolve a short link from a loaded, visible list frame, never foreign content."""
-    if not is_short_url(requested):
-        return normalize_list_url(requested, allow_short=False)
-    candidates = set()
-    for frame in page.frames:
-        try:
-            direct = normalize_list_url(frame.url, allow_short=False)
-        except ValueError:
-            continue
-        if frame.locator('body').is_visible():
-            candidates.add(direct)
-    if len(candidates) > 1:
-        raise ValueError('Skrót wskazuje więcej niż jedną listę. Użyj bezpośredniego adresu filtra.')
-    return next(iter(candidates), None)
-
-
 def effective_list_url(url, filters):
     if is_short_url(url):
         for entry in filters:

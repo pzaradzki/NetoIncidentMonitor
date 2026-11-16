@@ -2,13 +2,13 @@
 import tkinter as tk
 from tkinter import ttk
 
-from neto_incident_monitor.columns import LOCAL_FIELDS
 from neto_incident_monitor.theme import BG, MUTED, SURFACE, TEXT
 from neto_incident_monitor.widgets import RoundedButton
-from neto_incident_monitor.window_style import apply_window_style
+from neto_incident_monitor.window_style import apply_window_style, current_grab_path
 
 
 def show_filter_definition(parent, name, definition, *, refresh):
+    parent_had_grab = str(current_grab_path(parent)) == str(parent)
     dialog = tk.Toplevel(parent)
     dialog.withdraw()
     dialog.title(f'Definicja filtra – {name}')
@@ -17,9 +17,6 @@ def show_filter_definition(parent, name, definition, *, refresh):
     content = tk.Frame(dialog, bg=BG, padx=20, pady=16)
     content.pack(fill='both', expand=True)
 
-    view = definition['view'] or 'nieokreślony w adresie'
-    tk.Label(content, text=f"Tabela {definition['table']}   •   Widok {view}",
-             bg=BG, fg=MUTED).pack(anchor='w', pady=(0, 8))
     query = definition['query']
     query_area = tk.Frame(content, bg=BG)
     query_area.pack(fill='x')
@@ -32,31 +29,18 @@ def show_filter_definition(parent, name, definition, *, refresh):
     query_text.insert('1.0', query or '(Puste zapytanie)')
     query_text.configure(state='disabled')
 
-    tk.Label(content, text='Kolumny', bg=BG, fg=TEXT).pack(anchor='w', pady=(12, 6))
-    columns_area = tk.Frame(content, bg=BG)
-    columns_area.pack(fill='both', expand=True)
-    columns = ttk.Treeview(columns_area, columns=('label', 'field'), show='headings', height=8)
-    columns.heading('label', text='Nazwa')
-    columns.heading('field', text='Pole ServiceNow')
-    columns.column('label', width=240)
-    columns.column('field', width=260)
-    scroll = ttk.Scrollbar(columns_area, command=columns.yview)
-    columns.configure(yscrollcommand=scroll.set)
-    scroll.pack(side='right', fill='y')
-    columns.pack(fill='both', expand=True)
-    for column in definition['columns']:
-        columns.insert('', 'end', values=(column['label'], column.get('field') or 'Nie rozpoznano pola'))
-    for key, label, _ in LOCAL_FIELDS:
-        if key != 'age_minutes' or definition['table'] == 'incident':
-            columns.insert('', 'end', values=(label, 'Kolumna lokalna'))
-
     def copy_query():
         parent.clipboard_clear()
         parent.clipboard_append(query)
 
+    def close_preview():
+        dialog.destroy()
+        if parent_had_grab and parent.winfo_viewable() and not current_grab_path(parent):
+            parent.grab_set()
+
     actions = tk.Frame(content, bg=BG)
     actions.pack(fill='x', pady=(12, 0))
-    close = RoundedButton(actions, text='Zamknij', command=dialog.destroy, background=BG)
+    close = RoundedButton(actions, text='Zamknij', command=close_preview, background=BG)
     close.pack(side='right')
     copy = RoundedButton(actions, text='Kopiuj zapytanie', command=copy_query, background=BG)
     copy.pack(side='right', padx=(0, 8))
@@ -64,16 +48,17 @@ def show_filter_definition(parent, name, definition, *, refresh):
         copy.configure(state='disabled')
     def refresh_definition():
         if refresh():
-            dialog.destroy()
+            close_preview()
         else:
             refresh_status.configure(text='Odświeżanie jest dostępne po zalogowaniu do ServiceNow.')
 
     refresh_status = tk.Label(content, bg=BG, fg=MUTED)
     refresh_status.pack(anchor='w')
-    refresh_button = RoundedButton(actions, text='Odśwież definicję z SNOW',
+    refresh_button = RoundedButton(actions, text='Odśwież zapytanie z SNOW',
                                    command=refresh_definition, background=BG)
     refresh_button.pack(side='left')
-    dialog.bind('<Escape>', lambda _: dialog.destroy())
+    dialog.protocol('WM_DELETE_WINDOW', close_preview)
+    dialog.bind('<Escape>', lambda _: close_preview())
     dialog.update_idletasks()
     width, height = dialog.winfo_reqwidth(), dialog.winfo_reqheight()
     x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2

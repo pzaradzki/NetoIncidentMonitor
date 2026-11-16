@@ -1,8 +1,7 @@
 import unittest
-from unittest.mock import Mock
 
 from neto_incident_monitor.app import load_filters
-from neto_incident_monitor.service_now_urls import normalize_list_url, resolved_list_url, effective_list_url
+from neto_incident_monitor.service_now_urls import normalize_list_url, effective_list_url
 
 BASE = 'https://adeo.service-now.com'
 SHORT = BASE + '/now/nav/ui/classic/__tinyId__/' + 'Abc123xyz456' * 3
@@ -19,15 +18,8 @@ class ShortLinkTests(unittest.TestCase):
             with self.subTest(url=bad), self.assertRaises(ValueError):
                 normalize_list_url(bad)
 
-    def test_only_visible_trusted_list_frames_resolve(self):
-        foreign = Mock(url='https://evil.test/sc_task_list.do')
-        admin = Mock(url=BASE + '/admin')
-        hidden = Mock(url=BASE + '/incident_list.do')
-        hidden.locator.return_value.is_visible.return_value = False
-        trusted = Mock(url=BASE + '/sc_task_list.do?sysparm_query=active%3Dtrue')
-        trusted.locator.return_value.is_visible.return_value = True
-        self.assertIsNone(resolved_list_url(Mock(frames=[foreign, admin, hidden]), SHORT))
-        target = resolved_list_url(Mock(frames=[foreign, trusted]), SHORT)
-        self.assertEqual(target, trusted.url)
+    def test_only_trusted_saved_targets_are_used_for_shortcuts(self):
+        foreign = 'https://evil.test/sc_task_list.do'
+        target = BASE + '/sc_task_list.do?sysparm_query=active%3Dtrue'
         self.assertEqual(effective_list_url(SHORT, [{'url': SHORT, 'resolved_list_url': target}]), target)
-        self.assertEqual(effective_list_url(SHORT, [{'url': SHORT, 'resolved_list_url': foreign.url}]), SHORT)
+        self.assertEqual(effective_list_url(SHORT, [{'url': SHORT, 'resolved_list_url': foreign}]), SHORT)

@@ -73,12 +73,19 @@ def load_snapshot(path):
                 completed = None
         except ValueError:
             completed = None
-        return {'schema': 2, 'sections': sections, 'last_complete_read_at': completed}
+        period = data.get('last_complete_period')
+        if not (completed and isinstance(period, list) and len(period) == 2 and valid_period(*period)):
+            period = None
+        duration = data.get('last_complete_duration_ms')
+        if period is None or type(duration) is not int or duration < 0:
+            duration = None
+        return {'schema': 2, 'sections': sections, 'last_complete_read_at': completed,
+                'last_complete_period': period, 'last_complete_duration_ms': duration}
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None
 
 
-def save_sections(path, sections, last_complete_read_at=None):
+def save_sections(path, sections, last_complete_read_at=None, *, period=None, duration_ms=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -87,7 +94,8 @@ def save_sections(path, sections, last_complete_read_at=None):
                 prefix=path.name + '.', suffix='.tmp', delete=False) as stream:
             temporary = stream.name
             json.dump({'schema': 2, 'sections': sections,
-                       'last_complete_read_at': last_complete_read_at}, stream, ensure_ascii=False)
+                       'last_complete_read_at': last_complete_read_at, 'last_complete_period': period,
+                       'last_complete_duration_ms': duration_ms}, stream, ensure_ascii=False)
         for attempt in range(4):
             try:
                 os.replace(temporary, path)

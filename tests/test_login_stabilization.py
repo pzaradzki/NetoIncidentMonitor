@@ -209,7 +209,7 @@ class LoginCoordinatorTests(unittest.TestCase):
   from tests.test_login_observation import page_with,frame_with
   from neto_incident_monitor.app import wait_for_login
   page=page_with(frame_with(session_signal=True));page.is_closed.return_value=False
-  with patch('neto_incident_monitor.app.discover_definition',side_effect=AssertionError('No list during login')):
+  with patch('neto_incident_monitor.app.discover_query',side_effect=AssertionError('No list during login')):
    self.assertTrue(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',threading.Event()))
  def test_unknown_waits_and_recovers_until_stop_not_false_success(self):
   import threading

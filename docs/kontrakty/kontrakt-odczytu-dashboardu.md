@@ -8,6 +8,18 @@ Zagrożenia obejmują sześć kategorii. P1–P5 liczą SLA rozwiązania z proga
 
 Pigułki pokazują kolejkę, odczyt, logowanie, ponowienie i wynik. Diagnostyka REST zapisuje cel i numer wywołania, kod HTTP, czas, wynik walidacji oraz zapis danych. Szczegóły konfiguracji i odbioru opisują [instrukcja REST](../servicenow-api-sesja-przegladarki.md) i [decyzja 033](../decyzje/033-odczyty-analityki-przez-api.md).
 
+Belka widoku pokazuje wynik próby, datę pełnego odczytu i sumę czasów odpowiedzi składających się na pełny wynik. Dashboard wiąże metadane z okresem SLA. Częściowy dashboard może zachować aktualizację sekcji i poprzedni czas pełnego odczytu. Zagrożenia odtwarzają liczniki i metadane z tej samej transakcji co zapisana lista. Starsza historia bez takiego potwierdzenia pozostaje dostępna z pustymi polami czasu. [Decyzja 039](../decyzje/039-statusy-widokow-i-kolejki.md).
+
+## Ręczne odświeżanie agentów i lokalizacji
+
+W ustawieniach, w sekcji **Dane aplikacji**, podgląd pokazuje wyłącznie zapisane identyfikatory ServiceNow. **Aktualizuj** dodaje jedno zadanie do wspólnej kolejki przy aktywnym lub zatrzymanym monitoringu. Zamknięcie podglądu pozostawia zlecenie w kolejce. Widok zablokuje ponowne zlecenie, dopóki poprzednie się nie zakończy.
+
+Czytnik otwiera Dashboard SLA na współdzielonej karcie i nie zmienia okresu. Dla każdej z kategorii **Lokalizacja** i **Przypisany do** potwierdza pełne zaznaczenie i stosuje wybór. W stanie częściowym potwierdza najpierw pusty wybór, a potem zaznacza wszystkie pozycje. Następnie otwiera wynik kafelka **Zgłoszenia P1** na tej samej karcie i odczytuje wyłącznie `task.locationIN` oraz `task.assigned_toIN` z potwierdzonej listy `task_sla`. Kafelek z zerem może dostarczyć kompletny zakres. Ukryty Chromium korzysta z `HiddenRendering` podczas pracy z dashboardem.
+
+Po potwierdzeniu obu list aplikacja zapisuje je atomowo w lokalnym `dashboard-api.json`. Kolejny odczyt REST używa nowego zakresu zgodnie z istniejącymi regułami poszczególnych sekcji. Błąd, brak warunku lub przerwanie przed zapisem zachowuje dotychczasową konfigurację. Diagnostyka rejestruje ID zlecenia, etapy, czas, wynik oraz łączną liczbę identyfikatorów. Nazwy, identyfikatory i pełne zapytanie pozostają poza diagnostyką.
+
+Na instancji ADEO potwierdzono przejście z częściowego wyboru do pełnego, otwarcie pustej listy P1 na tej samej karcie oraz obecność obu list w zapytaniu. Osobne testy lokalne weryfikują mechanizm zapisu i zachowanie kolejki.
+
 ## Historyczny kontrakt odczytu przez DOM
 
 Stan kontraktu: 1 listopada 2026; lokalny build 1.8.0 z 2 listopada zawiera wdrożenie i przeszedł offline smoke-test. Nie jest to pełny rzeczywisty test odczytu z EXE. Odbiór: [raport](../weryfikacja/odbior-stabilizacji-dashboardu.md).

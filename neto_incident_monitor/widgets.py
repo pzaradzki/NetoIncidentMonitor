@@ -5,6 +5,15 @@ from PIL import Image, ImageDraw, ImageOps, ImageTk
 from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
 
 
+def update_grid_scrollbar(scrollbar, first, last):
+    scrollbar.set(first, last)
+    needed = float(first) > 0.000001 or float(last) < 0.999999
+    if needed and not scrollbar.winfo_manager():
+        scrollbar.grid()
+    elif not needed and scrollbar.winfo_manager():
+        scrollbar.grid_remove()
+
+
 def checkbox_images(master, background):
     """Shared checkbox geometry; None keeps table/selection backgrounds visible."""
     images = []
@@ -384,6 +393,10 @@ class RoundedButton(tk.Canvas):
             line([(10, 2), (10, 14)])
         elif self.icon == "gear":
             draw_gear(draw, x, y, color)
+        elif self.icon == "info":
+            draw.ellipse(box(1, 1, 15, 15), outline=color, width=6)
+            draw.ellipse(box(7.25, 4, 8.75, 5.5), fill=color)
+            line([(8, 7), (8, 11.5)])
 
     def configure(self, cnf=None, **kwargs):
         state = kwargs.pop("state", None)
@@ -396,14 +409,17 @@ class RoundedButton(tk.Canvas):
 
 
 UPDATING_BADGE_WIDTH = 77
+WORK_BADGES = {'running': ('Aktualizuje', '#2c435c', '#a9cdf5'),
+               'queued': ('W kolejce', '#4d3e25', '#f5cd87')}
 
 
-def draw_updating_badge(canvas, draw, left, center_y):
+def draw_updating_badge(canvas, draw, left, center_y, running):
+    text, background, foreground = WORK_BADGES['running' if running else 'queued']
     right = left + UPDATING_BADGE_WIDTH
     draw.rounded_rectangle((left * 4, (center_y - 11) * 4, right * 4, (center_y + 11) * 4),
-                           radius=44, fill='#244b37')
-    canvas.create_text((left + right) / 2, center_y, text='Aktualizuje',
-                       fill='#8ee2ac', font=('Segoe UI', 8))
+                           radius=44, fill=background)
+    canvas.create_text((left + right) / 2, center_y, text=text,
+                       fill=foreground, font=('Segoe UI', 8))
 
 
 class ThreatenedIncidentsButton(RoundedButton):
@@ -413,6 +429,7 @@ class ThreatenedIncidentsButton(RoundedButton):
         self.healthy = False
         self.selected = False
         self.updating = False
+        self.queued = False
         self.pulse_timer = None
         self.pulse_started = 0
         super().__init__(parent, text='Incydenty zagrożone', command=lambda: None, icon='warning')
@@ -470,7 +487,7 @@ class ThreatenedIncidentsButton(RoundedButton):
         # Use the actual text item bounds: equal gaps, centered as one group.
         icon_positions = (bounds[0] - 26, bounds[2] + 10)
         label_y = badge_y = height / 2
-        if self.updating:
+        if self.updating or self.queued:
             extra_width = 8 + UPDATING_BADGE_WIDTH
             side_space = 34 if self.alert else 8
             if bounds[2] - bounds[0] + extra_width + 2 * side_space <= width:
@@ -493,8 +510,8 @@ class ThreatenedIncidentsButton(RoundedButton):
                               ((x + 16) * 4, (y + 15) * 4)], fill='#ffe0a3')
                 draw.line(((x + 8) * 4, (y + 5) * 4, (x + 8) * 4, (y + 9) * 4), fill='#61232e', width=6)
                 draw.ellipse(((x + 7.2) * 4, (y + 11) * 4, (x + 8.8) * 4, (y + 12.6) * 4), fill='#61232e')
-        if self.updating:
-            draw_updating_badge(self, draw, badge_left, badge_y)
+        if self.updating or self.queued:
+            draw_updating_badge(self, draw, badge_left, badge_y, self.updating)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         background = self.create_image(0, 0, image=self.picture, anchor='nw')
         self.tag_lower(background)
@@ -563,6 +580,7 @@ class DashboardButton(RoundedButton):
     """Sidebar dashboard navigation with a monitoring-style activity badge."""
     def __init__(self, parent):
         self.updating = False
+        self.queued = False
         self.selected = False
         super().__init__(parent, text="DASHBOARD", command=lambda: None)
         from tkinter.font import Font
@@ -590,13 +608,13 @@ class DashboardButton(RoundedButton):
                    (width - 20) * 4, 34 * 4), fill="#A9BDDA", width=6, joint="curve")
         label_x = width / 2
         badge_y = height / 2
-        if self.updating:
+        if self.updating or self.queued:
             gap = 8
             group_width = self.label_width + gap + UPDATING_BADGE_WIDTH
             left = max(48, (width - group_width) / 2)
             label_x = left + self.label_width / 2
             badge_left = left + self.label_width + gap
-            draw_updating_badge(self, draw, badge_left, badge_y)
+            draw_updating_badge(self, draw, badge_left, badge_y, self.updating)
         self.picture = ImageTk.PhotoImage(picture.resize((width, height), Image.Resampling.LANCZOS), master=self)
         background = self.create_image(0, 0, image=self.picture, anchor="nw")
         self.tag_lower(background)
@@ -622,6 +640,7 @@ class FilterList(tk.Canvas):
         self.notification_rows = {}
         self.notification_images = {}
         self.updating_item = None
+        self.queued_items = frozenset()
         self.on_toggle = None
         self.on_select = None
         self.on_activate = None
@@ -764,29 +783,30 @@ class FilterList(tk.Canvas):
         for index, (iid, name) in enumerate(self.rows.items()):
             chosen = self.show_selection and iid == self.selected
             enabled = self.enabled_rows.get(iid, True)
-            updating = iid == self.updating_item
-            key = (chosen, bool(enabled), updating)
+            state = 'running' if iid == self.updating_item else 'queued' if iid in self.queued_items else None
+            key = (chosen, bool(enabled), state)
             photo = self.card_images.get(key)
             if photo is None:
-                photo = self.card_image(width, chosen, enabled, badge if updating else None)
+                photo = self.card_image(width, chosen, enabled, badge if state else None, state)
                 self.card_images[key] = photo
             self.pictures.append(photo)
             y = index * self.ROW
             self.create_image(0, y, image=photo, anchor="nw")
-            label_key = (name, updating)
+            label_key = (name, bool(state))
             if label_key not in self.labels:
                 label = name
-                label_limit = width - icon_width - (162 if updating and badge_inline else 72)
+                label_limit = width - icon_width - (162 if state and badge_inline else 72)
                 while label and font.measure(label) > label_limit:
                     label = label[:-1]
                 if label != name:
                     label = label[:-1] + "…"
                 self.labels[label_key] = label
-            name_y = 13 if updating and not badge_inline else 22
+            name_y = 13 if state and not badge_inline else 22
             self.create_text(27, y + name_y, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
-            if updating:
-                self.create_text((badge[0] + badge[2]) / 2, y + (badge[1] + badge[3]) / 2, text="Aktualizuje",
-                                 fill="#8ee2ac", font=("Segoe UI", 8))
+            if state:
+                text, _, foreground = WORK_BADGES[state]
+                self.create_text((badge[0] + badge[2]) / 2, y + (badge[1] + badge[3]) / 2, text=text,
+                                 fill=foreground, font=("Segoe UI", 8))
             states = self.notification_rows.get(iid, ())
             for slot, (channel, active) in enumerate(zip(self.notification_channels, states)):
                 self.create_image(first_icon + slot * self.ICON_SLOT, y + name_y,
@@ -806,14 +826,14 @@ class FilterList(tk.Canvas):
                                                  ImageTk.PhotoImage(color, master=self))
         return self.notification_images[channel][active]
 
-    def card_image(self, width, chosen, enabled, badge):
+    def card_image(self, width, chosen, enabled, badge, state):
         picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
         draw = ImageDraw.Draw(picture)
         draw.rounded_rectangle((0, 2 * 4, width * 4 - 1, 42 * 4), radius=8 * 4,
                                fill="#432e36" if chosen else "#30353e",
                                outline=ACCENT if chosen else "#444b56", width=4)
         if badge is not None:
-            draw.rounded_rectangle(tuple(value * 4 for value in badge), radius=11 * 4, fill="#244b37")
+            draw.rounded_rectangle(tuple(value * 4 for value in badge), radius=11 * 4, fill=WORK_BADGES[state][1])
         left = width - 38
         draw.rounded_rectangle((left*4, 13*4, (left+30)*4, 31*4), radius=9*4,
                                fill=ACCENT if enabled else "#555c68")

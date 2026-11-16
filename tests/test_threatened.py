@@ -187,6 +187,11 @@ class ThreatenedPresentationTests(unittest.TestCase):
             values['P2'] = 3
             app.refresh_coordinator().finish()
             panel.apply_result(request, values, 100)
+            self.assertFalse(app.threatened_incidents_button.alert)
+            panel.request_refresh()
+            request = panel.request_id
+            app.refresh_coordinator().finish()
+            panel.apply_result(request, values, 100)
             self.assertTrue(app.threatened_incidents_button.alert)
             self.assertTrue(panel.refresh_button.enabled)
             for bad in (None, {}, {'P1': 0}, dict.fromkeys(KEYS, False)):

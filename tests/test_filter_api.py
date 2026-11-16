@@ -7,14 +7,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
-from playwright.sync_api import sync_playwright
-
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.filter_api import FilterListLimitExceeded, read_filter_records
-from neto_incident_monitor.filter_definition import discover_definition, ready_definition
+from neto_incident_monitor.filter_definition import ready_definition
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics
 from neto_incident_monitor.read_errors import Cancelled
-from tests.list_fixture import URL, classic_list
+from tests.list_fixture import URL
 
 
 def filter_definition(url):
@@ -26,88 +24,29 @@ def filter_definition(url):
 
 
 class FilterApiTests(unittest.TestCase):
+    def test_ritm_workflow_column_can_be_unavailable_without_hiding_a_required_field(self):
+        definition = dict(table='sc_req_item', query='number=RITM1', columns=[
+            {'key': 'sn:cat_item.workflow', 'field': 'cat_item.workflow'},
+            {'key': 'short_description', 'field': 'short_description'},
+        ])
+        row = {'number': 'RITM1', 'sys_id': '1' * 32, 'short_description': ''}
+        page = Mock()
+        page.evaluate.return_value = dict(status=200, result=[row], next=False, total='1')
+        diagnostics = Mock()
+        records = read_filter_records(page, threading.Event(), diagnostics, definition)
+        self.assertEqual(records['RITM1']['_values'], {'short_description': ''})
+        fields = page.evaluate.call_args.args[1]['params']['sysparm_fields'].split(',')
+        self.assertIn('cat_item.workflow', fields)
+        self.assertEqual(diagnostics.record.call_args.kwargs['optional_field_omissions'], 1)
+        del row['short_description']
+        with self.assertRaisesRegex(DashboardReadError, 'api_schema'):
+            read_filter_records(page, threading.Event(), diagnostics, definition)
+
     def test_definition_is_bound_to_conditions_and_rejects_related_list_context(self):
         self.assertTrue(ready_definition(dict(url=URL, list_definition=filter_definition(URL))))
         self.assertFalse(ready_definition(dict(url=URL, list_definition=dict(filter_definition(URL), query=''))))
         related = URL + '&sysparm_fixed_query=state%3D1'
         self.assertFalse(ready_definition(dict(url=related, list_definition=filter_definition(related))))
-
-    def test_metadata_from_empty_list_then_rest_on_same_card(self):
-        from neto_incident_monitor.app import navigate
-
-        calls = []
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-
-            def respond(route):
-                url = urlsplit(route.request.url)
-                calls.append(url.path)
-                if url.path == '/incident_list.do':
-                    route.fulfill(content_type='text/html', body=classic_list(total=0, size=20,
-                        size_menu=True) + '<script>window.g_ck = "synthetic";</script>')
-                elif url.path == '/api/now/table/incident':
-                    route.fulfill(json={'result': []}, headers={'X-Total-Count': '0'})
-                else:
-                    route.abort()
-
-            page.route('**/*', respond)
-            stop = threading.Event()
-            definition, direct = discover_definition(page, {'url': URL}, stop,
-                navigate, lambda *_: False)
-            self.assertEqual(direct, URL)
-            self.assertEqual([column['field'] for column in definition['columns']], ['number', 'short_description'])
-            self.assertEqual(read_filter_records(page, stop, Mock(), definition), {})
-            self.assertTrue(ready_definition(dict(url=URL, list_definition=definition)))
-            self.assertEqual(read_filter_records(page, stop, Mock(), definition), {})
-            self.assertEqual(calls, ['/incident_list.do', '/api/now/table/incident', '/api/now/table/incident'])
-            self.assertEqual(len(page.context.pages), 1)
-            self.assertIsNone(page.evaluate('localStorage.menuOpens ?? null'))
-            browser.close()
-
-    def test_short_link_binds_definition_to_its_resolved_view_in_one_tab(self):
-        from neto_incident_monitor.app import navigate
-
-        short = 'https://adeo.service-now.com/now/nav/ui/classic/__tinyId__/synthetic-short-link'
-        direct = URL + '&sysparm_view=synthetic'
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-
-            def respond(route):
-                if route.request.url == short:
-                    route.fulfill(content_type='text/html', body=f'<iframe src="{direct}"></iframe>')
-                elif route.request.url == direct:
-                    route.fulfill(content_type='text/html', body=classic_list(total=0))
-                else:
-                    route.abort()
-
-            page.route('**/*', respond)
-            entry = {'url': short, 'filter_instance': 'synthetic-instance'}
-            definition, resolved = discover_definition(page, entry, threading.Event(),
-                navigate, lambda *_: False)
-            self.assertEqual((resolved, definition['view']), (direct, 'synthetic'))
-            persisted = dict(entry, resolved_list_url=resolved, list_definition=definition)
-            self.assertTrue(ready_definition(persisted))
-            self.assertFalse(ready_definition(dict(persisted, filter_instance='different-instance')))
-            self.assertFalse(ready_definition(dict(persisted, resolved_list_url=URL + '&sysparm_view=other')))
-            self.assertEqual(len(page.context.pages), 1)
-            browser.close()
-
-    def test_headers_without_technical_field_are_not_a_ready_definition(self):
-        from neto_incident_monitor.app import navigate
-
-        html = classic_list(total=0).replace(' glide_field="incident.short_description"', ' name="invalid field"')
-        # With no marked headers, the visible label can be presented to the user,
-        # but the invalid technical field must not be used in API queries.
-        html = html.replace('glide_field="incident.number"', 'name="incident.number"')
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.route('**/*', lambda route: route.fulfill(content_type='text/html', body=html))
-            with self.assertRaisesRegex(DashboardReadError, 'filter_definition_columns'):
-                discover_definition(page, {'url': URL}, threading.Event(), navigate, lambda *_: False)
-            browser.close()
 
     def test_table_errors_do_not_turn_into_empty_snapshots(self):
         definition = filter_definition('https://adeo.service-now.com/sc_task_list.do')
@@ -156,11 +95,13 @@ class FilterApiTests(unittest.TestCase):
 
     def test_shared_filter_retries_once_after_recovering_session(self):
         from neto_incident_monitor.app import App
+        from neto_incident_monitor.filter_layouts import LayoutAccount
+        from neto_incident_monitor.filter_metadata import metadata_from_address
         from neto_incident_monitor.filter_state import FilterState
         from neto_incident_monitor.history import History
         from neto_incident_monitor.monitoring import Health, ReadPart
 
-        url = 'https://adeo.service-now.com/sc_request_list.do'
+        url = 'https://adeo.service-now.com/sc_request_list.do?sysparm_query=active%3Dtrue'
         row = {'number': 'REQ1', 'sys_id': '1' * 32}
         later = {'number': 'REQ2', 'sys_id': '2' * 32}
         expired = dict(status=401)
@@ -171,7 +112,8 @@ class FilterApiTests(unittest.TestCase):
                 app = App.__new__(App)
                 app.events = queue.Queue()
                 app.history = History(directory / 'history.json')
-                app.filters = [{'name': 'Synthetic', 'url': url, 'list_definition': filter_definition(url)}]
+                entry = dict(metadata_from_address(url), source_url=url, version=2, account='a')
+                app.filters = [{'name': 'Synthetic', 'url': url, 'list_definition': entry}]
                 app.disabled_filter_urls = frozenset()
                 app.filter_revisions = {url: object()}
                 app.monitor_generation = object()
@@ -179,7 +121,9 @@ class FilterApiTests(unittest.TestCase):
                 part = ReadPart('filter', (url, app.filter_revisions[url]),
                                 {'name': 'Synthetic', 'index': 1, 'resolved': url, 'scheduled': True})
                 app.session = Mock(manual_filter_parts={url: part}, active_job=None, connected=True,
-                                   legacy_membership=FilterState(directory / 'legacy.json'), health=Health())
+                                   legacy_membership=FilterState(directory / 'legacy.json'), health=Health(),
+                                   layout_account=LayoutAccount('a', 'pl'), layout_generation=object())
+                app.session.filter_layout.return_value = filter_definition(url)['columns']
                 app.session.authenticate.return_value = True
                 page = Mock()
                 page.is_closed.return_value = False

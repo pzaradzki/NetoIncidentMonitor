@@ -12,6 +12,9 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Ujednolicenie statusów i nagłówków widoków](zakonczone/ujednolicenie-statusow-i-naglowkow.md) | Wdrożono w źródłach. Tk na Windows przy skali 100% i 125%, 522 testy zaliczone i 2 pominięte. |
+| [Walidacja zmiennych katalogowych i złożonych warunków filtrów ServiceNow](zakonczone/walidacja-warunkow-filtrow-servicenow.md) | ADEO: Wnioski, SCTASK i RITM z progiem 4 dni, jedna sesja. 516 zaliczonych testów, 2 pominięte. |
+| [Definicje filtrów ServiceNow bez otwierania klasycznej listy](zakonczone/definicje-filtrow-bez-klasycznej-listy.md) | ADEO: cztery typy list, skrót INC i widok nazwany REQ. 509 zaliczonych testów, 1 pominięty. |
 | [Migracja importu Ulubionych ServiceNow na REST API](zakonczone/migracja-importu-ulubionych-na-api.md) | ADEO: 37 zakładek zgodnych z menu, w tym 34 obsługiwane filtry. 506 zaliczonych testów, 2 pominięte. |
 | [Migracja odczytu filtrów ServiceNow na REST API](zakonczone/migracja-odczytu-filtrow-na-api.md) | 515 zaliczonych testów, 2 pominięte. Usunięto czytnik wierszy i paginację DOM. Szczegółowy odbiór na ServiceNow celowo pominięto. |
 | [Wspólna sesja ServiceNow, jedna karta i kolejka operacji](zakonczone/wspolna-sesja-servicenow.md) | Pozostałe próby odbiorowe zaliczone według potwierdzenia użytkownika z 14 listopada 2026. |

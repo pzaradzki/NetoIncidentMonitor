@@ -10,7 +10,7 @@ from neto_incident_monitor.login_diagnostics import LoginDiagnostics
 from neto_incident_monitor.read_errors import Cancelled
 from playwright._impl._errors import TargetClosedError
 
-LIST = 'https://adeo.service-now.com/incident_list.do'
+LOGIN = 'https://idpb2e.adeo.com/login'
 
 @unittest.skipUnless(sys.platform=='win32','Windows integration')
 class NativeHiddenRuntimeTests(unittest.TestCase):
@@ -32,26 +32,22 @@ class NativeHiddenRuntimeTests(unittest.TestCase):
     self.assertTrue(wait_for_login(page,HOME,stop,runtime=runtime,browser_window=window))
     self.assertFalse(runtime.manual_required)
     self.assertFalse(window.is_visible())  # Confirmed login resumes hidden filters.
-    page.goto(LIST)
-    with runtime.definition_read(page,log):
-     runtime.definition_rendering.sync(page,True)
-     self.assertFalse(window.is_visible());self.assertIsNotNone(runtime.definition_rendering.client)
-     options.toggle_debug_browser();runtime.tick()
-     self.assertTrue(window.is_visible());self.assertIsNone(runtime.definition_rendering.client)
-     options.toggle_debug_browser();runtime.tick()
-     self.assertFalse(window.is_visible());self.assertIsNotNone(runtime.definition_rendering.client)
-     runtime.commands.put('show');runtime.tick()
-     self.assertTrue(window.is_visible())
-    with runtime.definition_read(page,log):
-     self.assertTrue(window.is_visible())
-    runtime.commands.put('hide');runtime.tick()
+    options.toggle_debug_browser()
+    runtime.tick()
+    self.assertTrue(window.is_visible())
+    options.toggle_debug_browser()
+    runtime.tick()
+    self.assertFalse(window.is_visible())
+    runtime.commands.put('show')
+    runtime.tick()
+    self.assertTrue(window.is_visible())
+    runtime.commands.put('hide')
+    runtime.tick()
+    self.assertFalse(window.is_visible())
     with self.assertRaises(Cancelled):
-     with runtime.definition_read(page,log):
-      runtime.definition_rendering.sync(page,True)
-      token=ACTION_TICK.set(lambda:stop.set())
-      try:ready_control(page.get_by_role('button',name='Ready'),stop)
-      finally:ACTION_TICK.reset(token)
-    self.assertIsNone(runtime.definition_rendering.client)
+     token=ACTION_TICK.set(lambda:stop.set())
+     try:ready_control(page.get_by_role('button',name='Ready'),stop)
+     finally:ACTION_TICK.reset(token)
    finally:
     runtime.close()
     try:context.close()
@@ -63,16 +59,14 @@ class NativeHiddenRuntimeTests(unittest.TestCase):
    page=context.pages[0];window=BrowserWindow(context.browser)
    log=LoginDiagnostics(source='dashboard',section='sla')
    runtime=BrowserRuntime(page,BrowserOptions({'hide_browser':True}),lambda:window,lambda *a:None,log,lambda *a:None)
-   context.route('**/*',lambda r:r.fulfill(content_type='text/html',body='<script>window.g_user={userID:"synthetic"}</script>'))
+   context.route('**/*',lambda r:r.fulfill(content_type='text/html',body='<input type="password">'))
    try:
-    page.goto(LIST)
-    with runtime.definition_read(page,log):
-     runtime.definition_rendering.sync(page,True)
-     self.assertIsNotNone(runtime.definition_rendering.client)
-     with self.assertNoLogs('asyncio',level='ERROR'):
-      page.close()
-     self.assertIsNone(runtime.definition_rendering.client)
-    self.assertIsNone(runtime.definition_rendering.client)
+    page.goto(LOGIN)
+    runtime.login_rendering.sync(page,True)
+    self.assertIsNotNone(runtime.login_rendering.client)
+    with self.assertNoLogs('asyncio',level='ERROR'):
+     page.close()
+    self.assertIsNone(runtime.login_rendering.client)
    finally:
     runtime.close()
     try:context.close()

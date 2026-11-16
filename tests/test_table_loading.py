@@ -14,6 +14,33 @@ OTHER = 'https://adeo.service-now.com/sc_request_list.do?test=b'
 
 
 class TableLoadingTests(unittest.TestCase):
+    def test_scrollbars_follow_overflow_on_both_table_tabs(self):
+        from tkinter import ttk
+
+        self.app.show_incident_view()
+        for index, table in enumerate((self.app.current_table, self.app.table)):
+            with self.subTest(tab=index):
+                self.app.tabs.select(index)
+                self.root.update()
+                bars = {str(bar['orient']): bar for bar in table.master.winfo_children()
+                        if isinstance(bar, ttk.Scrollbar)}
+
+                def visibility():
+                    self.root.update()
+                    return {axis for axis, bar in bars.items() if bar.winfo_manager()}
+
+                table.configure(displaycolumns=('number',))
+                table.column('number', width=100)
+                self.assertEqual(visibility(), set())
+                rows = [table.insert('', 'end') for _ in range(100)]
+                self.assertEqual(visibility(), {'vertical'})
+                table.column('number', width=table.winfo_width() + 200)
+                self.assertEqual(visibility(), {'vertical', 'horizontal'})
+                table.delete(*rows)
+                self.assertEqual(visibility(), {'horizontal'})
+                table.column('number', width=100)
+                self.assertEqual(visibility(), set())
+
     def setUp(self):
         self.root = tk.Tk()
         self.folder = tempfile.TemporaryDirectory()
@@ -26,8 +53,11 @@ class TableLoadingTests(unittest.TestCase):
 
     def tearDown(self):
         self.app.stop_table_loads()
+        root_commands = set(self.root._tclCommands or ())
         for timer in self.root.tk.call('after', 'info'):
-            self.root.after_cancel(timer)
+            callback, _ = self.root.tk.splitlist(self.root.tk.call('after', 'info', timer))
+            if callback in root_commands:
+                self.root.after_cancel(timer)
         self.root.destroy()
         self.folder.cleanup()
 

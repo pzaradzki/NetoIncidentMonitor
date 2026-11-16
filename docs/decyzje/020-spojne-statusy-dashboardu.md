@@ -2,6 +2,8 @@
 
 Data: 5 listopada 2026. **Status: przyjęta; wdrożona w źródłach i lokalnym EXE; testy automatyczne oraz offline zakończone.** Rozszerza [010](010-cykl-zycia-zadania-dashboardu.md).
 
+**Prezentacja statusów zastąpiona.** W bieżących źródłach obowiązuje [decyzja 039](039-statusy-widokow-i-kolejki.md). Ochrona identyfikatora, okresu i wyniku końcowego nadal obowiązuje.
+
 **Decyzja:** zdarzenia sekcji bieżącego aktywnego żądania sterują wspólnie pigułką sekcji, główną aktywnością i opisem pod dashboardem. Obejmuje to czytanie, ponawianie, oczekiwanie na logowanie i błąd. Aktualizowanie aktywności używa istniejącego set_activity i nie zmienia fazy monitoringu, flag logowania ani dostępności przycisków.
 
 **Powód:** po odzyskaniu logowania faza ustawiała główną pigułkę na Oczekiwanie. Obsługa sekcji nie uwzględniała Ponawianie odczytu, a opis pod dashboardem pozostawał tekstem z kolejkowania. UI prezentował sprzeczne etapy tej samej operacji.

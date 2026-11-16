@@ -27,7 +27,7 @@ def normalize_schema(schema):
             continue
         seen.add(key)
         result.append({'key': key, 'label': ' '.join(str(item.get('label') or key).split())[:160]})
-    return result if 'number' in seen else []
+    return result
 
 
 def load_profiles(value):
@@ -330,6 +330,16 @@ class DynamicColumns:
                 self.filter_selected()
             dialog.destroy()
         RoundedButton(footer, text='Przywróć domyślne', command=restore, background=BG).pack(side='left')
+        if getattr(self, 'session', None) is not None and self.filter_info_definition(
+                next((entry for entry in self.filters if entry['url'] == url), {})) is not None:
+            def refresh_layout():
+                if self.enqueue_refresh('filter_layout', url):
+                    dialog.destroy()
+                else:
+                    messagebox.showinfo('Kolumny', 'Odświeżanie układu jest dostępne po zalogowaniu.', parent=dialog)
+
+            RoundedButton(header, text='Odśwież układ z SNOW', command=refresh_layout,
+                          background=BG).pack(anchor='w', pady=(10, 0))
         RoundedButton(footer, text='Zapisz', command=save, primary=True, background=BG).pack(side='right')
         RoundedButton(footer, text='Anuluj', command=dialog.destroy, background=BG).pack(side='right', padx=8)
         dialog.bind('<Escape>', lambda _: dialog.destroy())

@@ -1,15 +1,9 @@
-from html import escape
-import threading
 import unittest
 from urllib.parse import urlencode
 
-from playwright.sync_api import sync_playwright
-
-from neto_incident_monitor.app import navigate
-from neto_incident_monitor.dashboard_context import DashboardReadError
-from neto_incident_monitor.filter_definition import discover_definition
+from neto_incident_monitor.filter_definition import api_query
+from neto_incident_monitor.filter_metadata import metadata_from_address
 from neto_incident_monitor.list_context import list_conditions, compare_list_conditions
-from tests.list_fixture import classic_list
 
 LEGACY = 'javascript:gs.daysAgoStart(7)'
 CANONICAL = 'javascript:gs.beginningOfLast7Days()'
@@ -44,21 +38,8 @@ class DateAliasUnitTests(unittest.TestCase):
             self.assertEqual(list_conditions(value), value)
         self.assertEqual(compare_list_conditions(QUERY, None), 'mismatch')
 
-    def test_discovery_accepts_known_alias_but_rejects_changed_conditions(self):
+    def test_address_keeps_history_of_the_exact_query_including_the_date_alias(self):
         url = 'https://adeo.service-now.com/incident_list.do?' + urlencode({'sysparm_query': QUERY})
-        canonical = QUERY.replace(LEGACY, CANONICAL)
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-
-            def discover(observed):
-                page.unroute_all()
-                html = classic_list(total=0).replace('query="active=true"', f'query="{escape(observed)}"')
-                page.route('**/*', lambda route: route.fulfill(content_type='text/html', body=html))
-                return discover_definition(page, {'url': url}, threading.Event(), navigate, lambda *_: False)
-
-            definition, _ = discover(canonical)
-            self.assertEqual(definition['query'], canonical)
-            with self.assertRaisesRegex(DashboardReadError, 'api_filter_mismatch'):
-                discover(canonical.replace('state=3', 'state=2'))
-            browser.close()
+        definition = metadata_from_address(url)
+        self.assertEqual(definition['query'], QUERY)
+        self.assertEqual(api_query(definition['query'])[0], QUERY + '^ORDERBYsys_id')

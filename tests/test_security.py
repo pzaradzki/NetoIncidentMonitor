@@ -4,7 +4,6 @@ from urllib.parse import quote
 
 from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
 from neto_incident_monitor.app import load_filters, navigate
-from neto_incident_monitor.list_context import ListTarget
 from neto_incident_monitor.teams_notifications import payload
 from neto_incident_monitor.google_chat_notifications import payloads
 
@@ -79,15 +78,6 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(safe_record_url(record, 'INC123', BASE + '/incident_list.do'), record)
         self.assertEqual(safe_record_url(record + '&sysparm_action=unexpected', 'INC123'), record)
         self.assertEqual(safe_record_url(BASE + '/incident.do?sys_id=invalid', 'INC123'), '')
-
-    def test_metadata_reader_ignores_untrusted_frames(self):
-        foreign = Mock(url='https://evil.test/incident_list.do')
-        trusted = Mock(url=BASE + '/incident_list.do', parent_frame=None)
-        trusted.locator.return_value.evaluate_all.return_value = [
-            {'type': 'incident', 'classic': True, 'number': True, 'id': 'incident_table', 'list': 'incident'}]
-        target = ListTarget.find(Mock(frames=[foreign, trusted]), trusted.url)
-        foreign.locator.assert_not_called()
-        self.assertIs(target.frame, trusted)
 
     def test_external_text_cannot_create_markdown_links_or_mentions(self):
         text = 'INC123 - [kliknij](https://evil.test) *pilne* _test_ ~x~ `x` \x00\u202e'

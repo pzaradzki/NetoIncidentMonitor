@@ -103,7 +103,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
             ticks[0] += 1
             if ticks[0] >= 5: stop.set()
         page.wait_for_timeout.side_effect = pulse
-        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.discover_definition') as discover:
+        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.discover_query') as discover:
             self.assertFalse(wait_for_login(page,TARGET,stop))
         discover.assert_not_called()
         self.assertLessEqual(navigate.call_count, 4)

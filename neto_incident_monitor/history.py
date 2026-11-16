@@ -91,16 +91,27 @@ class History:
             db.executemany("INSERT INTO alert_outbox VALUES (?, 'pending', ?)",
                            ((uuid4().hex, json.dumps(alert, ensure_ascii=False)) for alert in alerts))
 
-    def threatened_snapshot(self):
+    def threatened_snapshot(self, *, with_summary=False):
         if not self.store.exists():
-            return {}
+            return ({}, None) if with_summary else {}
         with closing(sqlite3.connect(self.store.resolve().as_uri() + '?mode=ro', uri=True)) as db:
+            db.execute('BEGIN')
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'threatened_history'").fetchone():
-                return {}
-            return {key: json.loads(value) for key, value in db.execute(
-                "SELECT key, value FROM threatened_history")}
+                return ({}, None) if with_summary else {}
+            rows = {key: json.loads(value) for key, value in db.execute('SELECT key, value FROM threatened_history')}
+            if not with_summary:
+                return rows
+            summary = None
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name = 'threatened_read'").fetchone():
+                saved = db.execute('SELECT value FROM threatened_read WHERE id = 1').fetchone()
+                if saved:
+                    try:
+                        summary = json.loads(saved[0])
+                    except (TypeError, ValueError):
+                        pass  # Legacy rows are still usable without a verified summary.
+            return rows, summary
 
-    def commit_threatened(self, incidents, timestamp, checkpoint, prepare_alerts):
+    def commit_threatened(self, incidents, timestamp, checkpoint, prepare_alerts, *, counters=None, duration_ms=None):
         with self.lock:
             checkpoint()
             self.store.parent.mkdir(parents=True, exist_ok=True)
@@ -121,6 +132,10 @@ class History:
                                         appearances=old.get("appearances", 0) + int(arrived))
                 self._write_changes(db, "threatened_history", previous, updated)
                 self._enqueue_alerts(db, tuple(prepare_alerts(arrivals)) if arrivals else ())
+                if counters is not None:
+                    db.execute('CREATE TABLE IF NOT EXISTS threatened_read (id INTEGER PRIMARY KEY, value TEXT NOT NULL)')
+                    db.execute('INSERT OR REPLACE INTO threatened_read VALUES (1, ?)', (json.dumps({
+                        'counters': counters, 'read_at': timestamp, 'duration_ms': duration_ms}),))
                 checkpoint()
             return updated, len(arrivals)
 

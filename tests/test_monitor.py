@@ -59,6 +59,9 @@ class MonitorTests(unittest.TestCase):
         root = tk.Tk()
         root.withdraw()
         temporary = tempfile.TemporaryDirectory(dir=Path(__file__).parent)
+        config_path = patch('neto_incident_monitor.app.CONFIG', Path(temporary.name) / 'config.json')
+        config_path.start()
+        self.addCleanup(config_path.stop)
         try:
             with patch("neto_incident_monitor.app.read_json", return_value={"highlight_unread": True, "filters": [
                 {"name": "Gdańsk", "url": URL},
@@ -90,9 +93,10 @@ class MonitorTests(unittest.TestCase):
                         "location": "Gdańsk", "created": "2026-10-07 10:00:00"}
             monitor.history.add(incident, "Gdańsk", URL)
             monitor.history.add(incident, "Gdynia", URL + "&second=1")
-            monitor.events.put(("snapshot", (1, {incident["number"]: incident})))
+            monitor.events.put(("snapshot", (URL, {incident["number"]: incident},
+                               monitor.filter_revisions.get(URL), getattr(monitor, 'monitor_generation', None),
+                               False, False, None, (time.time(), 210))))
             monitor.events.put(("snapshot", (2, {incident["number"]: incident})))
-            monitor.events.put(("read", (time.time(), "Gdynia")))
             monitor.events.put(("waiting", (time.monotonic() + 60, False)))
             monitor.drain()
             self.assertEqual(monitor.current_count.get(), "1")
@@ -109,10 +113,12 @@ class MonitorTests(unittest.TestCase):
             monitor.drain()
             self.assertIn("Monitoring aktywny", monitor.phase.get())
             self.assertFalse(hasattr(monitor, "ready_button"))
-            monitor.events.put(("check_deadlines", {"inc": time.monotonic() + 60, "task": time.monotonic() + 3600}))
+            deadlines = {"inc": time.monotonic() + 60, "task": time.monotonic() + 3600}
+            monitor.events.put(("check_deadlines", deadlines))
             monitor.drain()
-            self.assertIn("INC: 60 s", monitor.countdown.get())
-            self.assertIn("SCTASK/REQ/RITM: 3600 s", monitor.countdown.get())
+            self.assertEqual(monitor.check_deadlines, deadlines)
+            self.assertFalse(hasattr(monitor, 'countdown'))
+            self.assertEqual(monitor.filter_read_bar.fields[2].get(), 'Zapytanie 0,21 s')
             monitor.events.put(("phase", "Oczekiwanie na logowanie"))
             monitor.drain()
             self.assertIsNone(monitor.next_check)

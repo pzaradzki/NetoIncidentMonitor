@@ -1,29 +1,27 @@
 import unittest
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 from playwright.sync_api import Error
-from neto_incident_monitor.browser_rendering import HiddenRendering
-from neto_incident_monitor.dashboard_context import DashboardReadError
+from neto_incident_monitor.browser_rendering import HiddenRendering, LoginRenderingUnavailable
 from neto_incident_monitor.browser_policy import BrowserRuntime, BrowserOptions
 
 
 class RenderingTests(unittest.TestCase):
     def setUp(self):
-        self.page = Mock(url='https://adeo.service-now.com/incident_list.do')
+        self.page = Mock(url='https://idpb2e.adeo.com/signin')
         self.page.is_closed.return_value = False
         self.log = Mock()
-        self.guard = HiddenRendering(self.log, scope='filter_definition')
+        self.guard = HiddenRendering(self.log, scope='login')
         self.client = self.page.context.new_cdp_session.return_value
-        self.auth = patch('neto_incident_monitor.authentication.authentication_required', return_value=False)
+        login = SimpleNamespace(state='authentication', facts={})
+        self.auth = patch('neto_incident_monitor.authentication.login_observation', return_value=login)
         self.auth.start()
         self.addCleanup(self.auth.stop)
-        self.session = patch('neto_incident_monitor.authentication.authenticated_session', return_value=True)
-        self.session.start()
-        self.addCleanup(self.session.stop)
         self.addCleanup(self.guard.close)
 
-    def test_unknown_session_defers_until_positive_confirmation(self):
-        with patch('neto_incident_monitor.authentication.authenticated_session', return_value=False):
+    def test_unknown_session_defers_until_login_is_confirmed(self):
+        with patch('neto_incident_monitor.authentication.login_observation', return_value=SimpleNamespace(state='unknown', facts={})):
             self.guard.sync(self.page, True)
         self.page.context.new_cdp_session.assert_not_called()
         self.guard.sync(self.page, True)
@@ -39,7 +37,7 @@ class RenderingTests(unittest.TestCase):
         self.guard.close()
         self.client.detach.assert_called_once()
         self.assertNotIn('SYNTHETIC_SECRET', str(self.log.record.call_args_list))
-        self.log.record.assert_any_call('rendering_stop', rendering_scope='filter_definition', rendering_reason='read_finished',
+        self.log.record.assert_any_call('rendering_stop', rendering_scope='login', rendering_reason='read_finished',
             duration_ms=unittest.mock.ANY, frame_count=1, ack_count=1, cleanup_errors=0)
 
     def test_reentrant_stop_retains_its_own_start_time(self):
@@ -58,17 +56,15 @@ class RenderingTests(unittest.TestCase):
         self.guard.navigation(self.page.main_frame)
         self.assertIsNone(self.guard.client)
         self.guard.sync(self.page, True)
-        with patch('neto_incident_monitor.authentication.authentication_required', return_value=True):
+        with patch('neto_incident_monitor.authentication.login_observation', return_value=SimpleNamespace(state='session', facts={})):
             self.guard.sync(self.page, True)
         self.assertIsNone(self.guard.client)
 
     def test_start_failure_does_not_retry_until_end_or_show(self):
         self.client.send.side_effect = Error('SYNTHETIC_TOKEN')
         for _ in range(2):
-            with self.assertRaises(DashboardReadError) as caught:
+            with self.assertRaisesRegex(LoginRenderingUnavailable, 'rendering_unavailable'):
                 self.guard.sync(self.page, True)
-            self.assertEqual(caught.exception.reason, 'rendering_unavailable')
-            self.assertFalse(caught.exception.retryable)
         self.page.context.new_cdp_session.assert_called_once()
         self.assertNotIn('SYNTHETIC_TOKEN', str(self.log.record.call_args_list))
         self.client.send.side_effect = None
@@ -81,7 +77,7 @@ class RenderingTests(unittest.TestCase):
         self.client.send.side_effect = Error('SECRET')
         self.client.detach.side_effect = Error('SECRET')
         self.guard.frame({'sessionId': 1})
-        with self.assertRaises(DashboardReadError):
+        with self.assertRaises(LoginRenderingUnavailable):
             self.guard.sync(self.page, True)
         self.guard.close()
         self.assertFalse(self.guard.failed)
@@ -101,19 +97,10 @@ class RenderingTests(unittest.TestCase):
         self.client.detach.assert_called_once()
         self.assertIsNone(self.guard.client)
 
-    def test_debug_toggle_keeps_manual_login_visible_and_updates_definition_rendering(self):
+    def test_debug_toggle_keeps_manual_login_visible(self):
         options = BrowserOptions({'hide_browser': True, 'auto_login': True})
         window = Mock()
         runtime = BrowserRuntime(self.page, options, lambda: window, Mock(), self.log, Mock())
-        runtime.definition_rendering = Mock()
-        with runtime.definition_read(self.page, self.log):
-            options.toggle_debug_browser()
-            runtime.tick()
-            options.toggle_debug_browser()
-            runtime.tick()
-            self.assertEqual([call.args[1] for call in runtime.definition_rendering.sync.call_args_list],
-                             [False, True])
-
         options.toggle_debug_browser()
         runtime.set_activity('login')
         runtime.manual_required = True
