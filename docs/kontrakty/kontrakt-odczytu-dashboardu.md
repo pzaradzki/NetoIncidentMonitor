@@ -2,7 +2,11 @@
 
 ## Obowiązujący kontrakt REST
 
-Oba odczyty działają w kolejce `SharedSession` na tej samej karcie i sesji ServiceNow. Konfiguracja lokalna powstaje z arkusza. Dashboard wykonuje jedną grupowaną agregację SLA dla wybranego okresu, dwie agregacje Wstrzymanych L1 i pięć agregacji Wniosków L1. WJRUW powstaje z tej samej migawki SLA. Odczyty L1 pokazują stan bieżący. Cache przechowuje trzy niezależne migawki i czas ostatniego pełnego sukcesu.
+Oba odczyty działają w kolejce `SharedSession` na tej samej karcie i sesji ServiceNow. Pełne odświeżenie dashboardu wykonuje jedenaście agregacji bez ponowień. Dashboard SLA korzysta z grupowanej agregacji miesięcznej `task_sla`, osobnego miesięcznego zapytania o nieprzypisane SLA i bieżącego licznika zagubionych incydentów na `incident`. WJRUW nadal wynika z grupowanej agregacji SLA. Wstrzymane L1 pokazują stan bieżący z dwóch agregacji `incident_metric` i jednej agregacji `incident` według daty ostatniej aktualizacji. Wnioski L1 korzystają z pięciu agregacji.
+
+Zapytanie „Nieprzypisane zgłoszenia” wymaga pustego przypisania i korzysta ze wspólnej listy lokalizacji. „Zagubione zgłoszenia” wykluczają grupę SLA i drugą grupę zapisaną w konfiguracji lokalnej. Import arkusza zachowuje dotychczasowe listy agentów i lokalizacji. Cache przechowuje trzy niezależne migawki. Przy odczycie cache sprzed dodania kafelków widok pokazuje zapisane wartości, a dla nowych pól wyświetla `—` do poprawnego odczytu. Stary komplet nie ustala czasu odczytu rozszerzonego dashboardu.
+
+Próba ADEO potwierdziła odpowiedzi Aggregate API dla wszystkich trzech nowych liczników. Odrębne porównania z Table API oraz ich ograniczenia opisano w [odbiorze nowych kafelków](../plany/zakonczone/nowe-kafelki-dashboardu-sla.md).
 
 Zagrożenia obejmują sześć kategorii. P1–P5 liczą SLA rozwiązania z progami 1, 2, 4, 24 i 48 godzin. Podjęcie liczy SLA odpowiedzi z progiem 5 minut. Każdy próg obejmuje terminy już przekroczone. Przed zapisaniem bieżącej listy, historii i alertów aplikacja potwierdza komplet rekordów. Liczniki dotyczą wierszy SLA, a lista grupuje je według incydentu. Zapis niepełnej listy jest odrzucany z zachowaniem poprzedniej migawki.
 

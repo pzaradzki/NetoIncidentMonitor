@@ -24,14 +24,14 @@ def bind_dashboard_wheel(widget, callback):
 def build_dashboard(parent, app, cache_path=None):
     from neto_incident_monitor.runtime_paths import DATA
     from neto_incident_monitor.dashboard_cache import load_snapshot, save_sections, valid_values, NAMES
-    from neto_incident_monitor.dashboard import measured_record
+    from neto_incident_monitor.dashboard import HELD_TITLES, LOST_TITLE, REQUEST_TITLES, UNASSIGNED_TITLE, measured_record
     from pathlib import Path
     cache_path = Path(cache_path) if cache_path is not None else DATA / 'dashboard-cache.json'
     panel = tk.Frame(parent, bg=BG)
     panel.read_bar = ReadStatusBar(panel, date_label='Pełny odczyt')
     panel.read_bar.pack(side='bottom', fill='x')
     view = tk.Frame(panel, bg=BG)
-    view.pack(fill='both', expand=True)
+    view.pack(fill='both', expand=True, pady=(0, 8))
     canvas = tk.Canvas(view, bg=BG, highlightthickness=0, borderwidth=0)
     scroll = ttk.Scrollbar(view, orient='vertical', command=canvas.yview)
     canvas.pack(side='left', fill='both', expand=True)
@@ -295,13 +295,10 @@ def build_dashboard(parent, app, cache_path=None):
                   background=BG).pack(side='left', anchor='s', padx=(8, 0))
     metrics = tk.Frame(content, bg=BG)
     metrics.grid(row=1, column=0, sticky="ew")
-    metrics.columnconfigure(0, weight=5, uniform="metrics")
-    for row in (0, 1):
-        metrics.rowconfigure(row, weight=1, uniform='metric_rows')
-    for column in range(1, 6):
-        metrics.columnconfigure(column, weight=4, uniform="metrics")
+    metrics.columnconfigure(tuple(range(5)), weight=1, uniform='metrics')
+    metrics.rowconfigure((0, 1, 2), weight=1, uniform='metric_rows')
 
-    def tile(title, column, row, rowspan=1, total=False, dot=None, title_wrap=0, columns=6):
+    def tile(title, column, row, *, span=1, muted_value=False, dot=None, title_wrap=0):
         color = SURFACE
         accent = '#8db7e8'
         if title == 'WJRUW':
@@ -310,14 +307,14 @@ def build_dashboard(parent, app, cache_path=None):
             accent = dot
         elif title.startswith('Przekroczone'):
             accent = '#e2b669'
-        elif title.startswith('Wstrzymane'):
+        elif title in HELD_TITLES:
             accent = '#c8a7ec'
-        elif title.startswith(('Wnioski', 'Otwarte wnioski', 'Nieprzypisane')):
+        elif title in REQUEST_TITLES:
             accent = '#83c9b9'
         card = AnimatedMetricTile(metrics, accent, padx=12, pady=16)
-        card.grid(row=row, column=column, rowspan=rowspan, sticky="nsew",
-                  padx=(0 if column == 0 else 6, 0 if column == columns - 1 else 6),
-                  pady=(0 if row == 0 else 6, 0 if row == 1 else 6))
+        card.grid(row=row, column=column, columnspan=span, sticky="nsew",
+                  padx=6,
+                  pady=(0 if row == 0 else 12, 0))
         label = tk.Frame(card, bg=color)
         label.pack(anchor="w")
         if dot:
@@ -326,30 +323,30 @@ def build_dashboard(parent, app, cache_path=None):
                  wraplength=title_wrap, justify='left').pack(side="left")
         variable = panel.values[title] = tk.StringVar(panel, value="—")
         value_label = panel.value_labels[title] = tk.Label(
-            card, textvariable=variable, bg=color, fg=TEXT if row == 0 or total else MUTED,
+            card, textvariable=variable, bg=color, fg=MUTED if muted_value else TEXT,
             font=("Segoe UI", 28))
         value_label.pack(anchor="w", expand=True, pady=(18, 0))
-        card.bind_content(label, *label.winfo_children(), value_label)
-    tile("Liczba zgłoszeń", 0, 0, total=True)
-    tile("WJRUW", 0, 1, total=True)
-    for priority in range(1, 6):
-        tile(f"Zgłoszenia P{priority}", priority, 0, dot=PriorityDots.COLORS[str(priority)])
-        tile(f"Przekroczone P{priority}", priority, 1)
+        card.bind_content(*card.winfo_children(), *label.winfo_children())
+    tile('Liczba zgłoszeń', 0, 0, span=2)
+    tile(UNASSIGNED_TITLE, 2, 0, title_wrap=112)
+    tile(LOST_TITLE, 3, 0, title_wrap=112)
+    tile('WJRUW', 4, 0)
+    for column, priority in enumerate(range(1, 6)):
+        tile(f'Zgłoszenia P{priority}', column, 1, dot=PriorityDots.COLORS[str(priority)])
+        tile(f'Przekroczone P{priority}', column, 2, muted_value=True)
     section_header(content, 'Wstrzymane L1').grid(row=2, column=0, sticky='w', pady=(24, 14))
     metrics = tk.Frame(content, bg=BG)
     metrics.grid(row=3, column=0, sticky='ew')
-    for column in range(2):
+    for column, title in enumerate(HELD_TITLES):
         metrics.columnconfigure(column, weight=1, uniform='held')
-    tile('Wstrzymane L1 >14 dni', 0, 0, columns=2)
-    tile('Wstrzymane L1 >7 dni', 1, 0, columns=2)
+        tile(title, column, 0)
     section_header(content, 'Wnioski L1').grid(row=4, column=0, sticky='w', pady=(24, 14))
     metrics = tk.Frame(content, bg=BG)
     metrics.grid(row=5, column=0, sticky='ew')
-    from neto_incident_monitor.dashboard import REQUEST_TITLES
     columns = len(REQUEST_TITLES)
     for column, title in enumerate(REQUEST_TITLES):
         metrics.columnconfigure(column, weight=1, uniform='requests')
-        tile(title, column, 0, title_wrap=112, columns=columns)
+        tile(title, column, 0, title_wrap=112)
 
     def render_snapshots():
         from datetime import datetime

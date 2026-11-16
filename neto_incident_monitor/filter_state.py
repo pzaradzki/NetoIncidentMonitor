@@ -39,17 +39,17 @@ class FilterState:
                 current[field] = sorted(set(current[field]) | set(state.get(field, [])))
         self.filters = normalized
 
-    def arrivals(self, url, numbers, first_only=False):
+    def arrivals(self, url, numbers):
         state = self.filters.get(url, {})
         # Legacy data tracked lifetime sightings, not confirmed membership.
         previous = set(state.get("present", []))
-        return set(numbers) - set(state.get("ever", [])) if first_only else set(numbers) - previous
+        return set(numbers) - previous
 
-    def notification_arrivals(self, url, numbers, first_only=False):
+    def notification_arrivals(self, url, numbers):
         # A persisted empty baseline counts too; a failed traversal/commit does not.
         if url not in self.filters:
             return set()
-        return self.arrivals(url, numbers, first_only)
+        return self.arrivals(url, numbers)
 
     def commit(self, url, numbers):
         updated = copy.deepcopy(self.filters)

@@ -20,7 +20,7 @@ class DashboardTests(unittest.TestCase):
                     patch('neto_incident_monitor.dashboard_api.read_month', return_value={t: 0 for t in TITLES}) as sla, patch(
                     'neto_incident_monitor.dashboard_api.read_held',
                     side_effect=ValueError('missing') if fail else None,
-                    return_value=dict(zip(HELD_TITLES, (19, 43)))) as held, patch(
+                    return_value=dict(zip(HELD_TITLES, (19, 43, 7)))) as held, patch(
                     'neto_incident_monitor.dashboard_api.read_requests', return_value={}):
                 app.read_dashboard_request(page)
             sla.assert_called_once()

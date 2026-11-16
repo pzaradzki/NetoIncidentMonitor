@@ -181,7 +181,7 @@ class FilterViewTests(unittest.TestCase):
         app.notify_filter('A', [incident])
         self.assertEqual(app.google_chat_sender.submit.call_count, count)
 
-    def test_legacy_read_settings_are_removed_on_config_roundtrip(self):
+    def test_obsolete_settings_are_removed_on_config_roundtrip(self):
         import json
         from neto_incident_monitor.app import read_json, save_json
 
@@ -189,6 +189,8 @@ class FilterViewTests(unittest.TestCase):
             path = Path(directory) / "config.json"
             config = {
                 "notification_revision": "0123456789abcdef0123456789abcdef",
+                "filters": [{"name": "Test", "url": "https://adeo.service-now.com/incident_list.do",
+                             "first_only": True, "notify_windows": False}],
                 "highlight_unread": True,
                 "visible_columns": ["read", "number"],
                 "column_widths": {"read": 140, "number": 155},
@@ -207,6 +209,9 @@ class FilterViewTests(unittest.TestCase):
                 save_json(path, loaded)
                 self.assertEqual(read_json(path, {}), loaded)
             self.assertNotIn("highlight_unread", loaded)
+            self.assertNotIn('first_only', loaded['filters'][0])
+            self.assertFalse(loaded['filters'][0]['notify_windows'])
+            self.assertNotIn('first_only', json.loads(path.read_text(encoding='utf-8'))['filters'][0])
             self.assertEqual(loaded["visible_columns"], ["number"])
             self.assertEqual(loaded["column_widths"], {"number": 155})
             self.assertEqual(loaded["filter_visible_columns"], {"A": ["number"]})
@@ -276,7 +281,6 @@ class FilterViewTests(unittest.TestCase):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
                 app.filters[1]["allow_large_list"] = True
-                app.filters[1]["first_only"] = True
                 self.assertTrue(app.configure_filter_button.enabled)
                 app.configure_filter_button.invoke()
                 root.update()
@@ -286,14 +290,11 @@ class FilterViewTests(unittest.TestCase):
                         yield child
                         yield from descendants(child)
                 toggles = [w for w in descendants(dialog) if isinstance(w, Toggle)]
-                self.assertEqual([w.enabled for w in toggles], [True])
-                self.assertTrue(toggles[0].variable.get())
-                toggles[0].toggle()
+                self.assertEqual(toggles, [])
                 from neto_incident_monitor.widgets import RoundedButton
                 with patch.object(app, "persist_filters") as persist:
-                    next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zapisz").invoke()
-                    persist.assert_called_once()
-                self.assertFalse(app.filters[1]["first_only"])
+                    next(w for w in descendants(dialog) if isinstance(w, RoundedButton) and w.text=="Zamknij").invoke()
+                    persist.assert_not_called()
         finally:
             for timer in root.tk.call("after", "info"):
                 root.tk.call('after', 'cancel', timer)

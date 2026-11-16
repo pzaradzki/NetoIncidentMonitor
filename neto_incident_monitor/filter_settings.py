@@ -11,6 +11,10 @@ from neto_incident_monitor.filter_definition_ui import show_filter_definition
 from neto_incident_monitor.template_library_ui import show_channel_settings
 
 
+NO_ENABLED_CHANNELS = ('Aby skonfigurować powiadomienia dla tego filtra, włącz co najmniej jeden kanał '
+                       'w sekcji Powiadomienia w ustawieniach aplikacji.')
+
+
 def show_filter_settings(app, index):
     entry = app.filters[index]
     url, instance = entry['url'], entry.get('filter_instance')
@@ -28,7 +32,6 @@ def show_filter_settings(app, index):
               font=("Segoe UI", 14, "bold"), wraplength=430).pack(anchor="w", pady=(0, 12))
     tk.Frame(panel, background="#3a3f48", height=1).pack(fill='x', pady=(0, 8))
     values = {}
-    controls = {}
     webhooks = {}
     import copy
     from neto_incident_monitor.template_library import migrate, clear_missing
@@ -72,7 +75,6 @@ def show_filter_settings(app, index):
         ("notify_windows", "Powiadomienia Windows", "Wymagają włączonych powiadomień globalnych.", app.notify.get()),
         ("notify_google_chat", "Powiadomienia Google Chat", "Wymagają włączonych powiadomień globalnych.", app.google_chat_enabled.get()),
         ("notify_teams", "Powiadomienia Microsoft Teams", "Wymagają włączonych powiadomień globalnych.", app.teams_enabled.get()),
-        ("first_only", "Tylko pierwsze wystąpienie", "Nie powiadamiaj ponownie, gdy incydent wróci do filtra.", True),
     ]:
         if not enabled:
             continue
@@ -81,10 +83,8 @@ def show_filter_settings(app, index):
         row.columnconfigure(0, weight=1)
         ttk.Label(row, text=title, style="White.TLabel", font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(row, text=description, style="WhiteMuted.TLabel", wraplength=350).grid(row=1, column=0, sticky="w", pady=(4, 0))
-        values[key] = tk.BooleanVar(value=entry.get(key, key in ("notify_windows", "notify_teams", "notify_google_chat")))
-        controls[key] = Toggle(row, values[key])
-        controls[key].grid(row=0, column=2, rowspan=2, padx=(10, 0))
-        controls[key].configure(state="normal" if enabled else "disabled")
+        values[key] = tk.BooleanVar(value=entry.get(key, True))
+        Toggle(row, values[key]).grid(row=0, column=2, rowspan=2, padx=(10, 0))
         if key in ('notify_teams', 'notify_google_chat'):
             webhook_key = key.removeprefix('notify_') + '_webhook'
             webhooks[webhook_key] = tk.StringVar(value=entry.get(webhook_key, ''))
@@ -93,6 +93,10 @@ def show_filter_settings(app, index):
                                  show_channel_settings(window, t, k, webhooks[k], templates[k], schema, entry['name'], app,
                                                        library, save_library, save_channel))
             gear.grid(row=0, column=1, rowspan=2, padx=(18, 0))
+
+    if not values:
+        ttk.Label(panel, text=NO_ENABLED_CHANNELS, style='WhiteMuted.TLabel',
+                  wraplength=430, justify='left').pack(anchor='w', pady=(8, 0))
 
     def save():
         from neto_incident_monitor.teams_notifications import validate_webhook as teams_validate
@@ -161,8 +165,11 @@ def show_filter_settings(app, index):
     app.update_open_filter_query = update_query
     window.bind('<Destroy>', clear_query, add='+')
     update_query()
-    RoundedButton(footer, text="Zapisz", command=save, primary=True).pack(side="right")
-    RoundedButton(footer, text="Anuluj", command=window.destroy).pack(side="right", padx=8)
+    if values:
+        RoundedButton(footer, text="Zapisz", command=save, primary=True).pack(side="right")
+        RoundedButton(footer, text="Anuluj", command=window.destroy).pack(side="right", padx=8)
+    else:
+        RoundedButton(footer, text="Zamknij", command=window.destroy).pack(side="right")
     window.bind("<Escape>", lambda event: window.destroy())
     window.update_idletasks()
     width = max(520, window.winfo_reqwidth())

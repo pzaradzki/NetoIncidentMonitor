@@ -9,7 +9,7 @@ from playwright.sync_api import TimeoutError
 
 from neto_incident_monitor.authentication import authentication_required
 from neto_incident_monitor.browser_actions import checkpoint, navigate_page
-from neto_incident_monitor.dashboard import TITLES, measured_record, operation
+from neto_incident_monitor.dashboard import MONTHLY_TITLES, measured_record, operation
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.favorites import HOME
 from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
@@ -17,7 +17,7 @@ from neto_incident_monitor.read_budget import remaining_ms
 from neto_incident_monitor.service_now_urls import RECORD_TABLES, TENANT_HOST, is_short_url
 
 ORIGIN = 'https://' + TENANT_HOST
-STATS_TABLES = ('task_sla', 'incident_metric', 'sc_task')
+STATS_TABLES = ('task_sla', 'incident_metric', 'sc_task', 'incident')
 TABLE_ROUTES = tuple('/api/now/table/' + table for table in ('task_sla', *RECORD_TABLES.values()))
 FAVORITES_ROUTE = '/api/now/ui/navigator/favorites'
 TIMEOUT_MS = 5000
@@ -301,7 +301,7 @@ def stats(page, stop, diagnostics, alias, table, query, *, group=None, ordinal=1
 def summarize_month(result):
     if not isinstance(result, list):
         raise DashboardReadError('api_schema', retryable=False)
-    totals = dict.fromkeys(TITLES, 0)
+    totals = dict.fromkeys(MONTHLY_TITLES, 0)
     seen = set()
     for row in result:
         try:
@@ -326,11 +326,15 @@ def summarize_month(result):
     return totals
 
 
-def read_counts(page, stop, diagnostics, alias, table, queries, completed):
-    for ordinal, (title, query) in enumerate(queries.items(), 1):
+def read_count(page, stop, diagnostics, alias, table, query, *, ordinal):
+    result = stats(page, stop, diagnostics, alias, table, query, ordinal=ordinal)
+    if not isinstance(result, dict) or not isinstance(result.get('stats'), dict):
+        raise DashboardReadError('api_schema', retryable=False)
+    return count(result['stats'].get('count'))
+
+
+def read_counts(page, stop, diagnostics, alias, table, queries, completed, *, start=1):
+    for ordinal, (title, query) in enumerate(queries.items(), start):
         if title not in completed:
-            result = stats(page, stop, diagnostics, alias, table, query, ordinal=ordinal)
-            if not isinstance(result, dict) or not isinstance(result.get('stats'), dict):
-                raise DashboardReadError('api_schema', retryable=False)
-            completed[title] = count(result['stats'].get('count'))
+            completed[title] = read_count(page, stop, diagnostics, alias, table, query, ordinal=ordinal)
     return dict(completed)

@@ -7,7 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
+from neto_incident_monitor.dashboard import (HELD_METRIC_TITLES, HELD_TITLES, LOST_TITLE, MONTHLY_TITLES,
+                                             REQUEST_TITLES, STALE_L1_TITLE, TITLES, UNASSIGNED_TITLE)
 from neto_incident_monitor.dashboard_ui import build_dashboard
 from neto_incident_monitor.dashboard_cache import load_snapshot
 
@@ -127,6 +128,53 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(set(restored.section_snapshots), {'sla', 'held'})
         self.assertIsNone(restored.last_complete_read_at)
         self.assertTrue(all(restored.values[title].get() == '—' for title in REQUEST_TITLES))
+
+    def test_previous_cache_keeps_known_counts_without_marking_new_counters_fresh(self):
+        self.complete_read()
+        data = json.loads(self.path.read_text(encoding='utf-8'))
+        for section, titles in (('sla', MONTHLY_TITLES), ('held', HELD_METRIC_TITLES)):
+            values = data['sections'][section]['values']
+            data['sections'][section]['values'] = {title: values[title] for title in titles}
+        self.path.write_text(json.dumps(data), encoding='utf-8')
+        for _ in range(2):
+            restored = build_dashboard(self.root, SimpleNamespace(), self.path)
+            self.assertEqual(restored.values[MONTHLY_TITLES[0]].get(), '1')
+            self.assertEqual(restored.values[HELD_METRIC_TITLES[0]].get(), '1')
+            self.assertEqual([restored.values[t].get() for t in (UNASSIGNED_TITLE, LOST_TITLE, STALE_L1_TITLE)], ['—'] * 3)
+            self.assertIsNone(restored.last_complete_read_at)
+            restored.apply_result((restored.request_id, 2026, 10, {}, None, '',
+                {'section': 'requests', 'values': dict.fromkeys(REQUEST_TITLES, 2),
+                 'read_at': '2026-10-01T12:00:00+02:00', 'diagnostics': Mock()}))
+            restored.destroy()
+
+    def test_new_cards_match_the_approved_grid(self):
+        top = ['Liczba zgłoszeń', UNASSIGNED_TITLE, LOST_TITLE, 'WJRUW']
+        expected = [(0, 0, 2), (0, 2, 1), (0, 3, 1), (0, 4, 1)]
+        expected += [(row, column, 1) for row in (1, 2) for column in range(5)]
+        expected += [(0, column, 1) for column in range(3)]
+        names = [*top, *MONTHLY_TITLES[1:], *HELD_TITLES]
+        self.panel.pack(fill='both', expand=True)
+        self.root.geometry('810x680')
+        self.root.deiconify()
+        for scaling in (96 / 72, 120 / 72):
+            with self.subTest(scaling=scaling):
+                self.root.tk.call('tk', 'scaling', scaling)
+                self.root.update()
+                cards = [self.panel.value_labels[title].master for title in names]
+                actual = [tuple(int(card.grid_info()[key]) for key in ('row', 'column', 'columnspan'))
+                          for card in cards]
+                self.assertEqual(actual, expected)
+                titles = [card.winfo_children()[0].winfo_children()[0] for card in cards[:3]]
+                self.assertEqual({label.cget('fg') for label in titles}, {titles[0].cget('fg')})
+                self.assertEqual(len(cards[2].winfo_children()), 2)
+                canvas = cards[0].master.master.master
+                canvas.yview_moveto(1)
+                self.assertEqual(float(canvas.yview()[1]), 1.0)
+                self.assertEqual(self.panel.read_bar.winfo_rooty() - canvas.winfo_rooty() - canvas.winfo_height(), 8)
+                for group in (cards[4:9], cards[9:14], cards[-3:]):
+                    widths = [card.winfo_width() for card in group]
+                    self.assertGreater(min(widths), 85)
+                    self.assertLessEqual(max(widths) - min(widths), 1)
 
     def test_request_tiles_share_one_row_in_title_order(self):
         cards = [self.panel.value_labels[title].master for title in REQUEST_TITLES]

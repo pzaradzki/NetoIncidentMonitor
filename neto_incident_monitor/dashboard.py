@@ -13,10 +13,15 @@ DASHBOARD_URL = ('https://adeo.service-now.com/now/platform-analytics-workspace/
                  'unified-filters-param/tinyurl/__state__/b64-tiny~WKEf3X0ASg6M0LcR1kiqt049NKRrAV35')
 
 
-TITLES = ('Liczba zgłoszeń',) + tuple(f'Zgłoszenia P{i}' for i in range(1, 6)) + tuple(f'Przekroczone P{i}' for i in range(1, 6))
+MONTHLY_TITLES = ('Liczba zgłoszeń',) + tuple(f'Zgłoszenia P{i}' for i in range(1, 6)) + tuple(f'Przekroczone P{i}' for i in range(1, 6))
+UNASSIGNED_TITLE = 'Nieprzypisane zgłoszenia'
+LOST_TITLE = 'Zagubione zgłoszenia'
+TITLES = (*MONTHLY_TITLES, UNASSIGNED_TITLE, LOST_TITLE)
 
 
-HELD_TITLES = ('Wstrzymane L1 >14 dni', 'Wstrzymane L1 >7 dni')
+HELD_METRIC_TITLES = ('Wstrzymane L1 >14 dni', 'Wstrzymane L1 >7 dni')
+STALE_L1_TITLE = 'L1 bez aktualizacji > 7 dni'
+HELD_TITLES = (*HELD_METRIC_TITLES, STALE_L1_TITLE)
 
 
 REQUEST_TITLES = ('Otwarte wnioski L1', 'Wnioski L1 >7 dni',

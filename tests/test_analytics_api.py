@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.analytics_api import ORIGIN, get, read_counts, summarize_month
-from neto_incident_monitor.analytics_config import monthly_query, request_queries
+from neto_incident_monitor.analytics_config import lost_incidents_query, monthly_query, request_queries, stale_l1_query
+from neto_incident_monitor.dashboard import LOST_TITLE, STALE_L1_TITLE, UNASSIGNED_TITLE
 from neto_incident_monitor.dashboard_api import read_held, read_month, read_requests
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.history import History
@@ -18,7 +19,7 @@ from neto_incident_monitor.threatened_api import read_threats
 CONFIG = dict(locations=['1' * 32], assignees=['2' * 32], monthly_group='3' * 32,
               l1_group_name='Example', smartphone_variable='4' * 32,
               smartphone_description='Example Task', threatened_group='5' * 32,
-              held_metric='7' * 32)
+              held_metric='7' * 32, lost_excluded_group='8' * 32)
 AS_OF = datetime(2026, 10, 1, 13, 0, tzinfo=timezone.utc)
 
 
@@ -29,21 +30,23 @@ def row(index, *, target='resolution', deadline='2026-10-01 13:20:00'):
 
 
 class AnalyticsApiTests(unittest.TestCase):
-    def test_dashboard_and_one_page_of_threats_make_nine_api_calls(self):
+    def test_dashboard_and_one_page_of_threats_make_twelve_api_calls(self):
         page = Mock()
         page.evaluate.side_effect = [
             dict(status=200, result=[], next=False),
-            *[dict(status=200, result={'stats': {'count': '0'}}, next=False)] * 7,
+            *[dict(status=200, result={'stats': {'count': '0'}}, next=False)] * 10,
             dict(status=200, result=[], next=False, total='0'),
         ]
         args = (page, threading.Event(), Mock(), CONFIG)
-        read_month(*args, 2026, 10)
-        read_held(*args, {})
+        monthly = read_month(*args, 2026, 10, {})
+        held = read_held(*args, {})
         read_requests(*args, {})
         read_threats(*args, as_of=AS_OF)
         paths = [call.args[1]['route'] for call in page.evaluate.call_args_list]
-        self.assertEqual(paths, ['/api/now/stats/task_sla', *['/api/now/stats/incident_metric'] * 2,
+        self.assertEqual(paths, ['/api/now/stats/task_sla', '/api/now/stats/task_sla', '/api/now/stats/incident',
+                                 *['/api/now/stats/incident_metric'] * 2, '/api/now/stats/incident',
                                  *['/api/now/stats/sc_task'] * 5, '/api/now/table/task_sla'])
+        self.assertEqual([monthly[UNASSIGNED_TITLE], monthly[LOST_TITLE], held[STALE_L1_TITLE]], [0, 0, 0])
         page.goto.assert_not_called()
 
     def test_filter_parameters_differ_by_period_and_reject_untrusted_values(self):
@@ -51,6 +54,33 @@ class AnalyticsApiTests(unittest.TestCase):
         self.assertIn('^assigned_toISEMPTY', request_queries(CONFIG)['Nieprzypisane wnioski L1'])
         with self.assertRaises(DashboardReadError):
             monthly_query(dict(CONFIG, assignees=['^NQactive=true']), 2026, 10)
+
+    def test_new_counts_use_the_right_scope(self):
+        config = dict(CONFIG, assignees=['a' * 32], locations=['b' * 32])
+        unassigned = set(monthly_query(config, 2028, 2, unassigned=True).split('^'))
+        self.assertTrue({'task.assigned_toISEMPTY', 'active=true', 'task.active=true',
+                         'task.locationIN' + 'b' * 32}.issubset(unassigned))
+        self.assertFalse(any(term.startswith(('task.assigned_toIN', 'stage')) for term in unassigned))
+        self.assertTrue(any('2028-02-29' in term for term in unassigned))
+        self.assertIn('assigned_toIN' + 'a' * 32, stale_l1_query(config).split('^'))
+        self.assertIn('sys_updated_onRELATIVELT@dayofweek@ago@7', stale_l1_query(config))
+        lost = lost_incidents_query(config).split('^')
+        self.assertEqual(lost[-2:], ['assignment_group!=' + '3' * 32, 'assignment_group!=' + '8' * 32])
+        self.assertIn('assigned_toISEMPTY', lost)
+
+    def test_monthly_retry_keeps_completed_calls_and_their_ordinals(self):
+        page, stop, diagnostics = Mock(), threading.Event(), Mock()
+        response = dict(status=200, next=False, result={'stats': {'count': '4'}})
+        page.evaluate.side_effect = [dict(status=200, result=[], next=False), response, dict(issue='timeout'), response]
+        completed = {}
+        args = (page, stop, diagnostics, CONFIG, 2026, 10, completed)
+        with self.assertRaisesRegex(DashboardReadError, 'api_timeout'):
+            read_month(*args)
+        result = read_month(*args)
+        self.assertEqual([result[UNASSIGNED_TITLE], result[LOST_TITLE]], [4, 4])
+        attempts = [call.kwargs['api_call'] for call in diagnostics.record.call_args_list
+                    if call.kwargs.get('outcome') == 'started' and 'api_call' in call.kwargs]
+        self.assertEqual(attempts, [1, 2, 3, 3])
 
     def test_grouping_counts_rows_across_categories_and_rejects_duplicates(self):
         def group(priority, breached, count):

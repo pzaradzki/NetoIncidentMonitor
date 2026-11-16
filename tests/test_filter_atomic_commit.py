@@ -23,7 +23,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
             next(iter(legacy_records.values()))['read'] = True
             path.write_text(json.dumps(legacy_records), encoding='utf-8')
             old_history, old_membership = path.read_bytes(), legacy_path.read_bytes()
-            notifications = history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
+            notifications = history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, lambda: None)
             self.assertEqual(notifications, set())
             script = ("from neto_incident_monitor.history import History; import sys, json;"
                       "h=History(sys.argv[1]); print(json.dumps([h.membership,h.snapshot('A')]))")
@@ -42,8 +42,8 @@ class FilterAtomicCommitTests(unittest.TestCase):
             path = Path(directory) / 'history.json'
             history = History(path)
             legacy = FilterState(path.with_name('seen.json'))
-            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
-            history.commit_filter(None, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, False, lambda: None,
+            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, lambda: None)
+            history.commit_filter(None, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, lambda: None,
                                   lambda arrivals: [{'test_count': len(arrivals)}])
             with closing(sqlite3.connect(history.store)) as db, db:
                 key = 'A\nINC1'
@@ -63,7 +63,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
             path = Path(directory) / 'history.json'
             history = History(path)
             legacy = FilterState(path.with_name('seen.json'))
-            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
+            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, lambda: None)
             calls = 0
 
             def checkpoint():
@@ -73,7 +73,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
                     raise Cancelled()
 
             with self.assertRaises(Cancelled):
-                history.commit_filter(None, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, False, checkpoint)
+                history.commit_filter(None, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, checkpoint)
             self.assertEqual(set(History(path).snapshot('A')), {'INC1'})
             self.assertEqual(History(path).membership['A']['present'], ['INC1'])
 
@@ -83,7 +83,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
             legacy_path = path.with_name('seen.json')
             legacy = FilterState(legacy_path)
             history = History(path)
-            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, False, lambda: None)
+            history.commit_filter(legacy, 'A', 'Filter', {'INC1': {'number': 'INC1'}}, lambda: None)
             before = history.store.read_bytes()
             write_changes = history._write_changes
 
@@ -94,7 +94,7 @@ class FilterAtomicCommitTests(unittest.TestCase):
 
             with patch.object(history, '_write_changes', side_effect=fail_after_history):
                 with self.assertRaises(OSError):
-                    history.commit_filter(legacy, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, False, lambda: None)
+                    history.commit_filter(legacy, 'A', 'Filter', {'INC2': {'number': 'INC2'}}, lambda: None)
             reopened = History(path)
             self.assertEqual(history.store.read_bytes(), before)
             self.assertEqual(set(reopened.snapshot('A')), {'INC1'})
@@ -151,9 +151,9 @@ class DurableAlertTests(unittest.TestCase):
             path = Path(directory) / "history.json"
             history = History(path)
             legacy = FilterState(path.with_name("seen.json"))
-            history.commit_filter(legacy, "A", "Filter", {}, False, lambda: None)
+            history.commit_filter(legacy, "A", "Filter", {}, lambda: None)
             history.commit_filter(None, "A", "Filter", {"INC1": {"number": "INC1"}},
-                                  False, lambda: None,
+                                  lambda: None,
                                   prepare_alerts=lambda _: [{"channel": "teams"}, {"channel": "windows"}])
             first, second = history.pending_alerts()
             self.assertTrue(history.transition_alert(first[0], "pending", "sending"))
@@ -171,10 +171,10 @@ class DurableAlertTests(unittest.TestCase):
             path = Path(directory) / "history.json"
             history = History(path)
             history.commit_filter(FilterState(path.with_name("seen.json")), "A", "Filter",
-                                  {}, False, lambda: None)
+                                  {}, lambda: None)
             job = dict(url="A", channel="teams", title="Alert", message="Test", links={})
             history.commit_filter(None, "A", "Filter", {"INC1": {"number": "INC1"}},
-                                  False, lambda: None,
+                                  lambda: None,
                                   prepare_alerts=lambda _: [dict(job, target="old"), dict(job, target="current")])
             app = SimpleNamespace(history=history, stop=threading.Event(), events=queue.Queue(),
                                   alert_routes=lambda _: {"teams": ("current", "synthetic")})
@@ -225,16 +225,16 @@ class NotificationRevisionTests(unittest.TestCase):
             history = History(path)
             checkpoint = lambda: None
             old = {'INC1': {'number': 'INC1', 'short_description': 'Stary zapis'}}
-            history.commit_filter(FilterState(path.with_name('seen.json')), 'A', 'Filtr', old, False, checkpoint)
+            history.commit_filter(FilterState(path.with_name('seen.json')), 'A', 'Filtr', old, checkpoint)
             alerts = Mock(return_value=())
             current = {'INC1': {'number': 'INC1'}, 'INC2': {'number': 'INC2'}}
-            self.assertEqual(history.commit_filter(None, 'A', 'Filtr', current, False, checkpoint,
+            self.assertEqual(history.commit_filter(None, 'A', 'Filtr', current, checkpoint,
                                                    alerts, filter_instance='new'), set())
             alerts.assert_not_called()
             self.assertEqual(history.record('INC1', 'A')['incident'], old['INC1'])
             reopened = History(path)
             current['INC3'] = {'number': 'INC3'}
-            self.assertEqual(reopened.commit_filter(None, 'A', 'Filtr', current, False, checkpoint,
+            self.assertEqual(reopened.commit_filter(None, 'A', 'Filtr', current, checkpoint,
                                                     alerts, filter_instance='new'), {'INC3'})
             alerts.assert_called_once_with({'INC3'})
 

@@ -151,7 +151,7 @@ class FilterStateTests(unittest.TestCase):
             self.assertEqual(cycle({"INC1": dict(incident)}, {"INC1": dict(incident)}), [settings["urls"][0]])
             app.filters[0]["first_only"] = True
             cycle({}, {})
-            self.assertEqual(cycle({"INC1": dict(incident)}, {}), [])
+            self.assertEqual(cycle({"INC1": dict(incident)}, {}), [settings['urls'][0]])
 
     def test_notification_baseline_survives_restart_and_is_independent_per_filter(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -160,7 +160,6 @@ class FilterStateTests(unittest.TestCase):
             initial = {f'INC{i}' for i in range(500)}
             self.assertEqual(state.arrivals('A', initial), initial)  # History is populated.
             self.assertEqual(state.notification_arrivals('A', initial), set())
-            self.assertEqual(state.notification_arrivals('A', initial, True), set())
             with patch.object(Path, 'write_text', side_effect=OSError('fixture')):
                 with self.assertRaises(OSError):
                     state.commit('A', initial)
@@ -174,9 +173,8 @@ class FilterStateTests(unittest.TestCase):
             self.assertEqual(state.notification_arrivals('B', {'INC_NEW'}), {'INC_NEW'})
             state.commit('A', set())
             self.assertEqual(state.notification_arrivals('A', {'INC1'}), {'INC1'})
-            self.assertEqual(state.notification_arrivals('A', {'INC1'}, True), set())
 
-    def test_independent_arrivals_restart_return_and_first_only(self):
+    def test_independent_arrivals_and_return_after_restart(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "seen.json"
             state = FilterState(path)
@@ -188,7 +186,6 @@ class FilterStateTests(unittest.TestCase):
             state.commit("A", set())
             state = FilterState(path)
             self.assertEqual(state.arrivals("A", {"INC1"}), {"INC1"})
-            self.assertEqual(state.arrivals("A", {"INC1"}, True), set())
             state.commit("A", {"INC1"})
             self.assertEqual(state.arrivals("A", {"INC1"}), set())
 

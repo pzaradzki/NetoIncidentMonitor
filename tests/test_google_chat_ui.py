@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.google_chat_ui import show_config
-from neto_incident_monitor.filter_settings import show_filter_settings
+from neto_incident_monitor.filter_settings import NO_ENABLED_CHANNELS, show_filter_settings
 from neto_incident_monitor.widgets import RoundedButton, Toggle
 from tests.test_google_chat import URL
 
@@ -64,18 +64,19 @@ class GoogleChatUITests(unittest.TestCase):
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         widgets = list(descendants(dialog))
         toggles = [w for w in widgets if isinstance(w, Toggle)]
-        self.assertEqual(len(toggles), 2)
+        self.assertEqual(len(toggles), 1)
         labels = [w.cget('text') for w in widgets if isinstance(w, ttk.Label)]
         self.assertNotIn('Powiadomienia Windows', labels)
         self.assertNotIn('Powiadomienia Microsoft Teams', labels)
         self.assertIn('Powiadomienia Google Chat', labels)
+        self.assertNotIn(NO_ENABLED_CHANNELS, labels)
         self.assertTrue(toggles[0].variable.get())
         toggles[0].toggle()
         next(w for w in widgets if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
         self.assertFalse(self.app.filters[0]['notify_google_chat'])
         self.app.persist_filters.assert_called_once()
 
-    def test_hidden_channels_keep_preferences_when_saved_and_reopened(self):
+    def test_disabled_global_channels_show_guidance_and_keep_filter_preferences(self):
         self.app.filters = [{'name': 'Test', 'url': 'filter',
                              'notify_windows': True, 'notify_teams': False,
                              'notify_google_chat': True}]
@@ -84,8 +85,12 @@ class GoogleChatUITests(unittest.TestCase):
         show_filter_settings(self.app, 0)
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel))
         widgets = list(descendants(dialog))
-        self.assertEqual(len([w for w in widgets if isinstance(w, Toggle)]), 1)
-        next(w for w in widgets if isinstance(w, RoundedButton) and w.text == 'Zapisz').invoke()
+        self.assertFalse(any(isinstance(w, Toggle) for w in widgets))
+        self.assertIn(NO_ENABLED_CHANNELS, [w.cget('text') for w in widgets if isinstance(w, ttk.Label)])
+        buttons = {w.text: w for w in widgets if isinstance(w, RoundedButton)}
+        self.assertEqual(set(buttons), {'Zapytanie', 'Zamknij'})
+        buttons['Zamknij'].invoke()
+        self.app.persist_filters.assert_not_called()
         for key, expected in [('notify_windows', True), ('notify_teams', False), ('notify_google_chat', True)]:
             self.assertEqual(self.app.filters[0][key], expected)
         self.app.notify.set(True)

@@ -2,7 +2,7 @@
 import json
 import re
 
-from neto_incident_monitor.dashboard import HELD_TITLES, REQUEST_TITLES, month_range
+from neto_incident_monitor.dashboard import HELD_METRIC_TITLES, REQUEST_TITLES, month_range
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.runtime_paths import DATA
 
@@ -79,16 +79,18 @@ def save_dashboard_scope(scope, path=None):
         raise DashboardReadError('dashboard_scope_save', retryable=False) from None
 
 
-def monthly_query(config, year, month):
+def monthly_query(config, year, month, *, unassigned=False):
     start, end = month_range(year, month)
     return '^'.join((
         'task.locationIN' + reference_set(config, 'locations'),
         'task.stateIN1,2,3,6,7,8',
-        'task.assigned_toIN' + reference_set(config, 'assignees'),
+        *(() if unassigned else ('task.assigned_toIN' + reference_set(config, 'assignees'),)),
         f"task.opened_atBETWEENjavascript:gs.dateGenerate('{start}','start')"
         f"@javascript:gs.dateGenerate('{end}','end')",
         'task.assignment_group=' + reference(config, 'monthly_group'),
-        'stage!=cancelled', 'sla.nameLIKE6/22', 'task.ref_incident.parent_incidentISEMPTY',
+        *(('active=true', 'task.active=true') if unassigned else ('stage!=cancelled',)),
+        'sla.nameLIKE6/22', 'task.ref_incident.parent_incidentISEMPTY',
+        *(('task.assigned_toISEMPTY',) if unassigned else ()),
     ))
 
 
@@ -101,8 +103,23 @@ def held_queries(config):
     return {
         title: '^'.join((*prefix, f'mi_startRELATIVELT@dayofweek@ago@{days}',
                          'inc_active=true', 'inc_parent_incidentISEMPTY'))
-        for title, days in zip(HELD_TITLES, (14, 7))
+        for title, days in zip(HELD_METRIC_TITLES, (14, 7))
     }
+
+
+def lost_incidents_query(config):
+    group = reference(config, 'monthly_group')
+    other = reference(config, 'lost_excluded_group')
+    if group == other:
+        raise DashboardReadError('api_configuration', retryable=False)
+    return ('assignment_group.nameSTARTSWITHLMPL-L1^stateIN1,2,3^assigned_toISEMPTY'
+            f'^assignment_group!={group}^assignment_group!={other}')
+
+
+def stale_l1_query(config):
+    return ('assigned_toIN' + reference_set(config, 'assignees') +
+            '^assignment_group=' + reference(config, 'monthly_group') +
+            '^stateIN2,3^sys_updated_onRELATIVELT@dayofweek@ago@7^parent_incidentISEMPTY')
 
 
 def group_name(config):

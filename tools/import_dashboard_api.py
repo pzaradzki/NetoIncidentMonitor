@@ -11,8 +11,9 @@ from zipfile import ZipFile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from neto_incident_monitor.analytics_config import held_queries, monthly_query, request_queries, reference
-from neto_incident_monitor.dashboard import HELD_TITLES, REQUEST_TITLES, TITLES
+from neto_incident_monitor.analytics_config import (dashboard_scope, held_queries, load_config, lost_incidents_query,
+                                                    monthly_query, reference, request_queries, stale_l1_query)
+from neto_incident_monitor.dashboard import HELD_TITLES, LOST_TITLE, REQUEST_TITLES, STALE_L1_TITLE, TITLES, UNASSIGNED_TITLE
 from neto_incident_monitor.runtime_paths import DATA
 
 NS = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -32,7 +33,7 @@ def read_rows(path):
             tree = ElementTree.fromstring(book.read(name))
             for cell in tree.findall('.//m:c', NS):
                 address = cell.attrib['r']
-                if not re.fullmatch(r'[BE](?:9|[12][0-9]|3[0-2])', address):
+                if not re.fullmatch(r'[BE](?:9|[12][0-9]|3[0-5])', address):
                     continue
                 if cell.find('m:f', NS) is not None:
                     raise ValueError('Formula in a definition cell')
@@ -43,7 +44,11 @@ def read_rows(path):
                     value = ''.join(part.text or '' for part in cell.findall('.//m:t', NS))
                 cells[address] = value
             if cells.get('B9') == TITLES[0]:
-                return {cells[f'B{i}']: cells[f'E{i}'].strip() for i in range(9, 33)}
+                end = 36 if any(cells.get(f'{column}{i}') for i in range(33, 36) for column in 'BE') else 33
+                rows = {' '.join(cells[f'B{i}'].split()): cells[f'E{i}'].strip() for i in range(9, end)}
+                if len(rows) != end - 9:
+                    raise ValueError('Duplicate widget definition')
+                return rows
     raise ValueError('Missing dashboard sheet')
 
 
@@ -52,9 +57,13 @@ def value_of(query, prefix):
 
 
 def conditions(query):
-    return Counter(','.join(sorted(term.split(','))) if ',' in term and
-                   re.match(r'^(task\.)?(location|assigned_to)IN|^inc_assigned_toIN', term) else term
-                   for term in query.split('^'))
+    terms = Counter()
+    for term in query.split('^'):
+        match = re.fullmatch(r'((?:task\.)?(?:location|assigned_to)IN|inc_assigned_toIN)(.+)', term)
+        if match:
+            term = match[1] + ','.join(sorted(match[2].split(',')))
+        terms[term] += 1
+    return terms
 
 
 def compile_config(rows):
@@ -64,7 +73,9 @@ def compile_config(rows):
     smart = rows[REQUEST_TITLES[-1]]
     risk = {name: query for name, query in rows.items()
             if name not in (*TITLES, *HELD_TITLES, *REQUEST_TITLES)}
-    if len(risk) != 6 or len(rows) != 24:
+    new_titles = {UNASSIGNED_TITLE, LOST_TITLE, STALE_L1_TITLE}
+    has_new = bool(new_titles.intersection(rows))
+    if len(risk) != 6 or len(rows) != (27 if has_new else 24) or (has_new and not new_titles.issubset(rows)):
         raise ValueError('Invalid number of widget definitions')
     config = {
         'version': 1,
@@ -80,7 +91,8 @@ def compile_config(rows):
     start = re.search(r"task\.opened_atBETWEENjavascript:gs\.dateGenerate\('(\d{4})-(\d{2})-01'", monthly)
     if start is None:
         raise ValueError('Missing monthly period')
-    query = monthly_query(config, *map(int, start.groups()))
+    period = tuple(map(int, start.groups()))
+    query = monthly_query(config, *period)
     expected = {TITLES[0]: query, **held_queries(config), **request_queries(config)}
     for priority in range(1, 6):
         expected[f'Zgłoszenia P{priority}'] = f'{query}^task.priority={priority}'
@@ -93,6 +105,19 @@ def compile_config(rows):
         title = next(name for name in risk if name.startswith(label))
         kind = f'resolution^task.priority={priority}' if priority <= 5 else 'response'
         expected[title] = f'{common}^sla.target={kind}^planned_end_timeRELATIVELT@{unit}@ahead@{window}'
+    if has_new:
+        prefix = 'assignment_group!='
+        exclusions = [term[len(prefix):] for term in rows[LOST_TITLE].split('^') if term.startswith(prefix)]
+        exclusions.remove(config['monthly_group'])
+        if len(exclusions) != 1:
+            raise ValueError('Invalid lost ticket exclusions')
+        config['lost_excluded_group'] = exclusions[0]
+        unassigned = monthly_query(config, *period, unassigned=True)
+        supplied = conditions(rows[UNASSIGNED_TITLE])
+        if supplied != conditions(unassigned) and supplied != conditions(
+                unassigned + '^task.assigned_toIN' + value_of(monthly, 'task.assigned_toIN')):
+            raise ValueError('Invalid unassigned ticket conditions')
+        expected.update({LOST_TITLE: lost_incidents_query(config), STALE_L1_TITLE: stale_l1_query(config)})
     if any(conditions(rows[title]) != conditions(query) for title, query in expected.items()):
         raise ValueError('Workbook conditions differ from supported definitions')
     return config
@@ -105,7 +130,13 @@ def main():
     args = parser.parse_args()
     pending = None
     try:
-        config = compile_config(read_rows(args.workbook))
+        rows = read_rows(args.workbook)
+        config = compile_config(rows)
+        if args.output.exists():
+            previous = load_config(args.output)
+            config.update(dashboard_scope(previous))
+            if 'lost_excluded_group' in previous and 'lost_excluded_group' not in config:
+                config['lost_excluded_group'] = reference(previous, 'lost_excluded_group')
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with NamedTemporaryFile(dir=args.output.parent, mode='w', encoding='utf-8', delete=False) as stream:
             pending = Path(stream.name)
@@ -116,7 +147,7 @@ def main():
     finally:
         if pending is not None:
             pending.unlink(missing_ok=True)
-    print(f"Sprawdzono 24 definicje, {len(config['assignees'])} osób i {len(config['locations'])} lokalizacje.")
+    print(f"Sprawdzono {len(rows)} definicji. Zapisano {len(config['assignees'])} agentów i {len(config['locations'])} lokalizacji.")
 
 
 if __name__ == '__main__':

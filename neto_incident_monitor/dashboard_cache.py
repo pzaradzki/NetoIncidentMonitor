@@ -5,15 +5,22 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
+from neto_incident_monitor.dashboard import HELD_METRIC_TITLES, HELD_TITLES, MONTHLY_TITLES, REQUEST_TITLES, TITLES
 
 SECTIONS = {'sla': TITLES, 'held': HELD_TITLES, 'requests': REQUEST_TITLES}
 NAMES = {'sla': 'Dashboard SLA', 'held': 'Wstrzymane L1', 'requests': 'Wnioski L1'}
+LEGACY_TITLES = {'sla': MONTHLY_TITLES, 'held': HELD_METRIC_TITLES}
 
 
 def valid_values(section, values):
     return (isinstance(values, dict) and set(values) == set(SECTIONS[section]) and
             all(type(v) is int and v >= 0 for v in values.values()))
+
+
+def legacy_values(section, values):
+    return (section in LEGACY_TITLES and isinstance(values, dict)
+            and set(values) == set(LEGACY_TITLES[section])
+            and all(type(value) is int and value >= 0 for value in values.values()))
 
 
 def valid_period(year, month):
@@ -39,9 +46,10 @@ def load_snapshot(path):
             sections = {}
             for section, titles in SECTIONS.items():
                 part = {t: values[t] for t in titles if t in values}
-                if valid_values(section, part):
+                complete = valid_values(section, part)
+                if complete or legacy_values(section, part):
                     sections[section] = {'values': part, 'read_at': None, 'last_attempt_at': None,
-                        'last_outcome': 'unknown', 'complete': True,
+                        'last_outcome': 'unknown', 'complete': complete,
                         'year': year if section == 'sla' else None, 'month': month if section == 'sla' else None}
             return {'schema': 2, 'sections': sections, 'last_complete_read_at': None} if sections else None
         if data.get('schema') != 2 or not isinstance(data.get('sections'), dict):
@@ -58,16 +66,25 @@ def load_snapshot(path):
             sections = {name: snapshot for name, snapshot in sections.items() if name != 'requests'}
             if not sections:
                 return None
+        historical = False
         for section, snapshot in sections.items():
-            if (not isinstance(snapshot, dict) or not valid_values(section, snapshot.get('values')) or
-                    snapshot.get('complete') is not True or not valid_time(snapshot.get('read_at')) or
+            if not isinstance(snapshot, dict):
+                return None
+            values = snapshot.get('values')
+            old = legacy_values(section, values)
+            complete = snapshot.get('complete')
+            if (not (valid_values(section, values) and complete is True or old and type(complete) is bool) or
+                    not valid_time(snapshot.get('read_at')) or
                     not valid_time(snapshot.get('last_attempt_at')) or
                     snapshot.get('last_outcome') not in ('success', 'error', 'unknown') or
                     (snapshot.get('last_outcome') == 'success' and snapshot.get('read_at') is None)):
                 return None
             if section == 'sla' and not valid_period(snapshot.get('year'), snapshot.get('month')):
                 return None
-        completed = None if legacy_requests else data.get('last_complete_read_at')
+            if old:
+                snapshot['complete'] = False
+                historical = True
+        completed = None if legacy_requests or historical else data.get('last_complete_read_at')
         try:
             if not valid_time(completed):
                 completed = None

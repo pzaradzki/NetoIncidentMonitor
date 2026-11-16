@@ -23,7 +23,7 @@ Rozwijanie skrótu i odczyt układu używają wewnętrznych kontraktów ServiceN
 
 ## Uruchomienie odczytów API
 
-Uruchom `.venv\Scripts\python.exe tools/import_dashboard_api.py data/dashboard-api-kafelki.xlsx`, aby utworzyć lokalną definicję `data/dashboard-api.json`. Bieżąca kopia w katalogu projektu pochodzi z 24 filtrów. Uruchom źródła poleceniem `.venv\Scripts\python.exe launcher.pyw`. Instalacja EXE korzysta z `%LOCALAPPDATA%\NetoIncidentMonitor\dashboard-api.json`.
+Uruchom `.venv\Scripts\python.exe tools/import_dashboard_api.py data/dashboard-api-kafelki.xlsx`, aby utworzyć lub zaktualizować lokalną definicję `data/dashboard-api.json` na podstawie 27 filtrów. Dla istniejącej konfiguracji importer zachowuje lokalne listy agentów i lokalizacji. Uruchom źródła poleceniem `.venv\Scripts\python.exe launcher.pyw`. Instalacja EXE korzysta z `%LOCALAPPDATA%\NetoIncidentMonitor\dashboard-api.json`.
 
 Po zalogowaniu porównaj Dashboard SLA dla dwóch miesięcy oraz Wstrzymane i Wnioski L1. W widoku zagrożeń porównaj sześć kafelków i bieżącą listę możliwie blisko w czasie. Uwzględnij niepusty wynik, gdy będzie dostępny. Na wybranych pozycjach porównaj kategorię, pozostały czas i procent. Do zgłoszenia wystarczy nazwa sekcji i różnica. [Plan i kryteria odbioru](plany/zakonczone/dashboard-servicenow-api.md)
 

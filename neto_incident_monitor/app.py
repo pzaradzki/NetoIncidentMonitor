@@ -67,11 +67,17 @@ def wait_for_browser_cycle(page, schedule, seconds, stop):
     return True
 
 
-def without_read_settings(settings):
+def without_legacy_settings(settings):
     from copy import copy
 
     cleaned = copy(settings)
     cleaned.pop("highlight_unread", None)
+    if isinstance(cleaned.get('filters'), list):
+        cleaned['filters'] = [
+            {key: value for key, value in entry.items() if key != 'first_only'}
+            if isinstance(entry, dict) and 'first_only' in entry else entry
+            for entry in cleaned['filters']
+        ]
     for key in ("visible_columns", "column_widths"):
         value = cleaned.get(key)
         if isinstance(value, list):
@@ -106,7 +112,7 @@ def without_read_column(profile):
 def read_json(path, default):
     if path == CONFIG:
         from neto_incident_monitor.secret_config import load_config
-        return without_read_settings(load_config(path, default))
+        return without_legacy_settings(load_config(path, default))
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
@@ -115,7 +121,7 @@ def read_json(path, default):
 def save_json(path, value):
     if path == CONFIG:
         from neto_incident_monitor.secret_config import save_config
-        return save_config(path, without_read_settings(value))
+        return save_config(path, without_legacy_settings(value))
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
@@ -1336,8 +1342,8 @@ class App(DynamicColumns, TableLoading):
         settings = read_json(CONFIG, {})
         previous = settings.get('filters', []) if proposed is None else self.filters
         filters = self.filters if proposed is None else proposed
-        old_policies = {
-            item["url"]: (bool(item.get("first_only")), item.get("enabled", True))
+        old_enabled = {
+            item["url"]: item.get("enabled", True)
             for item in previous if isinstance(item, dict) and "url" in item
         }
         settings["filters"] = filters
@@ -1345,12 +1351,12 @@ class App(DynamicColumns, TableLoading):
             settings["notification_library"] = self.notification_library
         settings["urls"] = [entry["url"] for entry in filters]
         save_json(CONFIG, settings)
-        current_policies = {
-            item["url"]: (bool(item.get("first_only")), item.get("enabled", True))
+        current_enabled = {
+            item["url"]: item.get("enabled", True)
             for item in filters
         }
-        changed = {url: object() for url in old_policies.keys() | current_policies.keys()
-                   if old_policies.get(url) != current_policies.get(url)}
+        changed = {url: object() for url in old_enabled.keys() | current_enabled.keys()
+                   if url not in old_enabled or url not in current_enabled or old_enabled[url] != current_enabled[url]}
         if changed:
             self.filter_revisions = {**getattr(self, "filter_revisions", {}), **changed}
         if proposed is not None:
@@ -2800,7 +2806,7 @@ class App(DynamicColumns, TableLoading):
                 filter_name = entry.get('name', filter_name)
                 instance = {'filter_instance': entry['filter_instance']} if entry.get('filter_instance') else {}
                 new = self.history.commit_filter(
-                    membership, url, filter_name, incidents, bool(entry.get('first_only')), confirm_commit,
+                    membership, url, filter_name, incidents, confirm_commit,
                     prepare_alerts=(lambda numbers: self.prepare_filter_alerts(
                         url, filter_name, [incidents[n] for n in sorted(numbers)]))
                     if not outside_schedule and hasattr(self, 'alert_writer') else None,
@@ -3078,7 +3084,7 @@ class App(DynamicColumns, TableLoading):
                     if config is None:
                         raise DashboardReadError('api_configuration', retryable=False)
                     if alias == 'sla':
-                        return reader(page, stop, diagnostics, config, year, month)
+                        return reader(page, stop, diagnostics, config, year, month, completed)
                     return reader(page, stop, diagnostics, config, completed)
                 def restore():
                     settings = self.monitor_settings
