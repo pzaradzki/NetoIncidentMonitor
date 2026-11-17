@@ -121,10 +121,15 @@ def main():
                 print(json.dumps(summary), flush=True)
             return summary
     # Native focus/visibility tests must never compete with another test window.
-    native = {'tests.test_browser_window', 'tests.test_hidden_runtime_native', 'tests.test_login_runtime_native'}
-    summaries = [run_module(module) for module in modules if module in native]
+    native = {'tests.test_browser_window', 'tests.test_hidden_runtime_native',
+              'tests.test_login_runtime_native', 'tests.test_shared_session'}
+    isolated, parallel = [], []
+    for target in modules:
+        module = '.'.join(target.split('.', 2)[:2])
+        (isolated if module in native else parallel).append(target)
+    summaries = [run_module(target) for target in isolated]
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as executor:
-        summaries.extend(executor.map(run_module, [module for module in modules if module not in native]))
+        summaries.extend(executor.map(run_module, parallel))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summaries, indent=2), encoding='utf-8')

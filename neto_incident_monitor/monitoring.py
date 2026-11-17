@@ -35,7 +35,7 @@ class ReadQueue:
         self.active = None
         self.ids = count(1)
 
-    def submit(self, scope, parts):
+    def submit(self, scope, parts, *, before_pending=False):
         with self.lock:
             jobs = ([self.active] if self.active is not None else []) + list(self.pending)
             parts = deque(parts)
@@ -45,6 +45,9 @@ class ReadQueue:
             else:
                 existing = next((job for job in jobs if requested.issubset(job.parts)), None)
             if existing is not None:
+                if before_pending and existing is not self.active:
+                    self.pending.remove(existing)
+                    self.pending.appendleft(existing)
                 return existing.id, True
             merged = False
             if scope == 'all':
@@ -56,7 +59,10 @@ class ReadQueue:
                     job.parts = remaining
                 self.pending = deque(job for job in self.pending if job.parts)
             job = ReadJob(next(self.ids), scope, parts, tuple(parts))
-            self.pending.append(job)
+            if before_pending:
+                self.pending.appendleft(job)
+            else:
+                self.pending.append(job)
             return job.id, merged
 
     def pending_refreshes(self):
@@ -122,39 +128,6 @@ class ReadQueue:
             self.active = None
             self.pending.clear()
             return jobs
-
-
-class RefreshControl:
-    """One reserved refresh at a time, shared by Tk and the browser worker."""
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.task = None
-
-    @property
-    def busy(self):
-        with self.lock:
-            return self.task is not None
-
-    def current(self):
-        with self.lock:
-            return self.task
-
-    def reserve(self, scope, url=None):
-        with self.lock:
-            if self.task is not None:
-                return False
-            self.task = (scope, url)
-            return True
-
-    def scheduled(self):
-        with self.lock:
-            if self.task is None:
-                self.task = ('scheduled', None)
-            return self.task
-
-    def finish(self):
-        with self.lock:
-            self.task = None
 
 
 class Schedule:

@@ -38,7 +38,9 @@ class FilterViewTests(unittest.TestCase):
                 teams_gray, teams_color = image('teams', False), image('teams', True)
                 self.assertEqual(images(), [windows_gray, chat_color, teams_gray, windows_color, chat_gray, teams_color])
 
-                table.updating_item = '0'
+                part = app.session.manual_filter_parts[app.filters[0]['url']]
+                app.events.put(('session_part_started', (object(), part)))
+                app.drain()
                 app.splitter.event_generate('<ButtonPress-1>', x=1, y=5)
                 app.splitter.event_generate('<ButtonRelease-1>', x=-160, y=5)
                 root.update()
@@ -230,10 +232,12 @@ class FilterViewTests(unittest.TestCase):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
                 root.update()
                 self.assertFalse(app.clear_history_button.winfo_manager())
-                app.events.put(("filter_updating", app.filters[1]["url"]))
+                token = object()
+                part = app.session.manual_filter_parts[app.filters[1]["url"]]
+                app.events.put(("session_part_started", (token, part)))
                 app.drain()
                 self.assertEqual(app.filter_table.updating_item, "1")
-                app.events.put(("filter_updating", None))
+                app.events.put(("session_part_finished", token))
                 app.drain()
                 self.assertIsNone(app.filter_table.updating_item)
                 first_url = app.filters[0]["url"]

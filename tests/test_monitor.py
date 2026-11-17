@@ -68,6 +68,11 @@ class MonitorTests(unittest.TestCase):
                 {"name": "Gdynia", "url": URL + "&second=1"}]}):
                 monitor = App(root, history_path=Path(temporary.name) / "history.json", enable_tray=False)
             monitor.show_window = Mock()
+            monitor.window_restoring = False
+            monitor.session.ready_once = True
+            monitor.handle_session_event('session_ready', None)
+            monitor.cycle_active = True
+            monitor.set_phase('Monitoring aktywny')
             self.assertEqual(monitor.filter_count.get(), "2")
             self.assertEqual(int(monitor.filter_table.cget("height")), 2 * monitor.filter_table.ROW)
             self.assertEqual(monitor.filter_scroll.winfo_manager(), "")
@@ -97,7 +102,6 @@ class MonitorTests(unittest.TestCase):
                                monitor.filter_revisions.get(URL), getattr(monitor, 'monitor_generation', None),
                                False, False, None, (time.time(), 210))))
             monitor.events.put(("snapshot", (2, {incident["number"]: incident})))
-            monitor.events.put(("waiting", (time.monotonic() + 60, False)))
             monitor.drain()
             self.assertEqual(monitor.current_count.get(), "1")
             self.assertEqual(len(monitor.current_table.get_children()), 1)
@@ -114,19 +118,19 @@ class MonitorTests(unittest.TestCase):
             self.assertIn("Monitoring aktywny", monitor.phase.get())
             self.assertFalse(hasattr(monitor, "ready_button"))
             deadlines = {"inc": time.monotonic() + 60, "task": time.monotonic() + 3600}
-            monitor.events.put(("check_deadlines", deadlines))
+            monitor.events.put(('session_idle', (True, deadlines['inc'], deadlines)))
             monitor.drain()
             self.assertEqual(monitor.check_deadlines, deadlines)
             self.assertFalse(hasattr(monitor, 'countdown'))
             self.assertEqual(monitor.filter_read_bar.fields[2].get(), 'Zapytanie 0,21 s')
-            monitor.events.put(("phase", "Oczekiwanie na logowanie"))
+            monitor.events.put(('session_waiting', None))
             monitor.drain()
-            self.assertIsNone(monitor.next_check)
-            self.assertIn("Oczekiwanie na logowanie", monitor.phase.get())
-            self.assertTrue(monitor.auth_waiting)
-            monitor.events.put(("waiting", (time.monotonic() + 60, True)))
+            self.assertEqual(monitor.session_state, 'waiting')
+            self.assertEqual(monitor.session_status.get(), 'Sprawdzanie sesji…')
+            monitor.events.put(('filter_activity', (URL, ('filter_error', ('Brak odpowiedzi.', 'api_timeout')),
+                monitor.filter_revisions.get(URL), monitor.monitor_generation)))
             monitor.drain()
-            self.assertIn("Błąd odczytu", monitor.phase.get())
+            self.assertEqual(monitor.filter_read_bar.fields[0].get(), 'Błąd odczytu')
             # Closing to the tray leaves the monitor running.
             monitor.tray = Mock()
             monitor.tray_ready = True
@@ -158,11 +162,11 @@ class MonitorTests(unittest.TestCase):
             self.assertEqual(len(monitor.table.get_children()), 0)
             self.assertEqual(len(monitor.current_table.get_children()), 1)
             self.assertEqual(History(Path(temporary.name) / "history.json").snapshot(URL), {})
-            monitor.auth_waiting = False
+            monitor.handle_session_event('session_ready', None)
             monitor.check_now()
             self.assertTrue(monitor.schedule.requested)
             monitor.schedule.consume()
-            monitor.auth_waiting = True
+            monitor.handle_session_event('session_problem', None)
             monitor.check_now()
             self.assertFalse(monitor.schedule.requested)
             with patch("plyer.notification.notify") as notification, patch.object(root, "bell"):
@@ -198,8 +202,8 @@ class MonitorTests(unittest.TestCase):
         import queue
         from neto_incident_monitor.tray import Tray
         events = queue.Queue()
-        browser_visible = [False]
-        tray = Tray(events, browser_visible=lambda: browser_visible[0])
+        login_waiting = [False]
+        tray = Tray(events, login_waiting=lambda: login_waiting[0])
         try:
             tray.start()
             kind, _ = events.get(timeout=5)
@@ -210,16 +214,14 @@ class MonitorTests(unittest.TestCase):
             # Exercise the menu dispatch without touching Tk from a tray thread.
             tray.icon.menu.items[0](tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "show")
-            tray.icon.menu.items[1](tray.icon)
+            self.assertNotIn("Pokaż okno logowania", [item.text for item in tray.icon.menu])
+            login_waiting[0] = True
+            action = next(item for item in tray.icon.menu if item.text == "Pokaż okno logowania")
+            action(tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "show_browser")
-            self.assertEqual(tray.icon.menu.items[1].text, "Pokaż przeglądarkę")
-            browser_visible[0] = True
-            self.assertEqual(tray.icon.menu.items[1].text, "Ukryj przeglądarkę")
-            tray.icon.menu.items[1](tray.icon)
-            self.assertEqual(events.get(timeout=2)[0], "hide_browser")
-            browser_visible[0] = False
-            self.assertEqual(tray.icon.menu.items[1].text, "Pokaż przeglądarkę")
-            tray.icon.menu.items[3](tray.icon)
+            login_waiting[0] = False
+            self.assertNotIn("Pokaż okno logowania", [item.text for item in tray.icon.menu])
+            next(item for item in tray.icon.menu.items if item.text == "Zakończ aplikację")(tray.icon)
             self.assertEqual(events.get(timeout=2)[0], "quit")
         finally:
             tray.stop()

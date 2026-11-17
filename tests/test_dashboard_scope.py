@@ -45,6 +45,31 @@ class DashboardScopeTests(unittest.TestCase):
             self.assertEqual(dashboard_scope(load_config(path)), scope)
             self.assertEqual(load_config(path)['monthly_group'], original['monthly_group'])
 
+    def test_packaged_defaults_work_before_the_first_local_save(self):
+        with TemporaryDirectory() as folder:
+            seed = Path(folder) / 'default.json'
+            local = Path(folder) / 'profile' / 'dashboard-api.json'
+            defaults = {'version': 1, 'lost_excluded_group': '3' * 32}
+            previous_bundle = {**defaults, 'assignees': [AGENT], 'locations': [LOCATION]}
+            seed.write_text(json.dumps(previous_bundle), encoding='utf-8')
+            scope = {'assignees': ['1' * 32], 'locations': ['2' * 32]}
+
+            with (patch('neto_incident_monitor.analytics_config.PACKAGED_CONFIG', seed),
+                  patch('neto_incident_monitor.analytics_config.CONFIG_PATH', local),
+                  patch('neto_incident_monitor.analytics_config.FROZEN', True)):
+                self.assertEqual(load_config(), defaults)
+                self.assertFalse(local.exists())
+                save_dashboard_scope(scope)
+                self.assertEqual(load_config(local), {'version': 1, **scope})
+                self.assertEqual(load_config(), {**defaults, **scope})
+                local.write_text(json.dumps({'version': 1, **scope, 'monthly_group': '4' * 32}), encoding='utf-8')
+                self.assertEqual(load_config(), {**defaults, **scope, 'monthly_group': '4' * 32})
+                local.write_text('{invalid', encoding='utf-8')
+                with self.assertRaises(DashboardReadError):
+                    load_config()
+                self.assertEqual(local.read_text(encoding='utf-8'), '{invalid')
+            self.assertEqual(json.loads(seed.read_text(encoding='utf-8')), previous_bundle)
+
     def test_p1_with_no_records_refreshes_both_lists_on_the_shared_card(self):
         classic = '/task_sla_list.do?sysparm_tiny=fixture'
         drilldown = CLASSIC_PREFIX + quote(classic.lstrip('/'), safe='')

@@ -1,5 +1,8 @@
 # Opisy wersji
 
+- [1.12.0-experimental.3](v1.12.0-experimental.3.md) — lokalna paczka z pobieraniem brakujących list agentów i lokalizacji po zalogowaniu.
+- [1.12.0-experimental.2](v1.12.0-experimental.2.md) — lokalna poprawka startu dashboardu bez ręcznego kopiowania plików.
+- [1.12.0-experimental.1](v1.12.0-experimental.1.md) — lokalna paczka testowa z migracją odczytów ServiceNow na REST i nowymi kafelkami Dashboardu SLA.
 - [1.11.2](v1.11.2.md) — poprawka rozwijanych list okresu i zmiany z lokalnych wersji 1.11.0 oraz 1.11.1.
 - [1.11.1](v1.11.1.md) — lokalna paczka z edycją interwałów i powiadomień Windows podczas monitoringu oraz poprawkami interfejsu.
 - [1.11.0](v1.11.0.md) — lokalna paczka z edycją filtrów podczas monitoringu, ikonami powiadomień i poprawionym przywracaniem okna.

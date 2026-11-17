@@ -1,159 +1,153 @@
-from concurrent.futures import Future
 import json
 from pathlib import Path
-import queue
 import tempfile
-import threading
+import time
+import tkinter as tk
 import unittest
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
+
+from playwright.sync_api import TimeoutError
 
 from tests.test_filter_api import filter_definition
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
-from neto_incident_monitor.history import History
+from neto_incident_monitor.filter_layouts import read_account
+from neto_incident_monitor.filter_metadata import metadata_from_address
+from neto_incident_monitor.read_errors import AuthenticationRequired
 from neto_incident_monitor.threatened import KEYS
 
 
 class UpdateOrderTests(unittest.TestCase):
-    def run_cycle(self, scope='startup', dashboard=True, mode='success', periodic=False):
-        with tempfile.TemporaryDirectory() as folder:
-            app = App.__new__(App)
-            app.stop, app.events = threading.Event(), queue.Queue()
-            app.schedule = Mock(woken_by_request=False)
-            url = 'https://adeo.service-now.com/incident_list.do'
-            app.filters = [dict(name='Synthetic', url=url, list_definition=filter_definition(url))]
-            app.disabled_filter_urls = frozenset()
-            app.history = History(Path(folder)/'history.json')
-            app.dashboard_requests, app.threatened_requests = queue.Queue(), queue.Queue()
-            if dashboard:
-                app.dashboard_requests.put((1, 2026, 11))
-            if scope != 'dashboard':
-                app.threatened_requests.put(1)
-            if periodic:
-                app.threatened_last_request, app.threatened_next_read = 1, 10
-            app.refresh_coordinator().reserve(scope)
-            clock, order = [0], []
-            app.restore_login = Mock(return_value=True)
-            page = Mock(url=url)
-            page.is_closed.return_value = False
-            playwright = MagicMock()
-            playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = Mock(pages=[page])
-            def sla(*args):
-                order.append('dashboard')
-                self.assertTrue(app.refresh_coordinator().busy)
-                clock[0] += 5 if mode == 'recovery' else 130
-                if mode == 'recovery':
-                    from playwright.sync_api import TimeoutError
-                    from neto_incident_monitor.read_errors import AuthenticationRequired
-                    if order.count('dashboard') == 1:
-                        raise TimeoutError('Synthetic document timeout')
-                    if order.count('dashboard') == 2:
-                        raise AuthenticationRequired()
-                if mode == 'stop':
-                    app.stop.set()
-                if mode == 'error':
-                    raise ValueError('Synthetic dashboard failure')
-                return dict.fromkeys(TITLES, 0)
-            def threatened(*args):
-                order.append('threatened')
-                self.assertTrue(app.refresh_coordinator().busy)
-                return dict.fromkeys(KEYS, 0), {}
-            def filters(*args, **kwargs):
-                order.append('filter')
-                self.assertTrue(app.refresh_coordinator().busy)
-                return {}
-            with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                    patch('neto_incident_monitor.browser_session.BrowserRuntime'), \
-                    patch('neto_incident_monitor.app.navigate'), \
-                    patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
-                    patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                    patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
-                    patch('neto_incident_monitor.dashboard_api.read_month', side_effect=sla), \
-                    patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
-                    patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)), \
-                    patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threatened), \
-                    patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=filters), \
-                    patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True), \
-                    self.assertLogs('neto.login_diagnostics', level='INFO') as logs:
-                app.monitor(dict(urls=[url], filters=app.filters, interval=60, task_interval=60))
-            self.assertFalse(app.refresh_coordinator().busy)
-            return order, [json.loads(record.getMessage()) for record in logs.records]
+    def run_shared_cycle(self, *, manual=False, dashboard=True, dashboard_error=False, recover_login=False):
+        filters = [
+            {'name': 'INC', 'url': 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue'},
+            {'name': 'SCTASK', 'url': 'https://adeo.service-now.com/sc_task_list.do?sysparm_query=active%3Dtrue'},
+            {'name': 'REQ', 'url': 'https://adeo.service-now.com/sc_request_list.do?sysparm_query=active%3Dtrue',
+             'enabled': False},
+        ]
+        order = []
+        page = Mock()
+        page.is_closed.return_value = False
+        page.evaluate.return_value = ['f' * 32, 'pl']
+        page.wait_for_timeout.side_effect = lambda milliseconds: time.sleep(milliseconds / 1000)
+
+        def reader(name, result):
+            def read(*_args):
+                order.append(name)
+                return result
+            return read
+
+        def read_filter(_page, _stop, _diagnostics, definition):
+            order.append(definition['table'])
+            return {}
+
+        month = ValueError('Synthetic dashboard failure') if dashboard_error else dict.fromkeys(TITLES, 0)
+        monthly_reads = iter([TimeoutError('Synthetic timeout'), AuthenticationRequired(), month]
+                             if recover_login else [month])
+
+        def read_month(*_args):
+            order.append('sla')
+            result = next(monthly_reads)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        def authenticate(*_args):
+            order.append('login')
+            return True
+
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            config = folder / 'config.json'
+            config.write_text(json.dumps({'filters': filters, 'dashboard_auto_refresh': dashboard}), encoding='utf-8')
+            root = tk.Tk()
+            root.withdraw()
+            app = None
+            try:
+                with patch('neto_incident_monitor.app.CONFIG', config), \
+                        patch('neto_incident_monitor.app.STATE', folder / 'seen.json'), \
+                        patch('neto_incident_monitor.app.DATA', folder), \
+                        patch('neto_incident_monitor.runtime_paths.DATA', folder), \
+                        patch('neto_incident_monitor.shared_session.sync_playwright'), \
+                        patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
+                        patch('neto_incident_monitor.analytics_config.load_config', return_value={
+                            'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
+                        patch('neto_incident_monitor.dashboard_api.read_month', side_effect=read_month), \
+                        patch('neto_incident_monitor.dashboard_api.read_held', side_effect=reader('held', dict.fromkeys(HELD_TITLES, 0))), \
+                        patch('neto_incident_monitor.dashboard_api.read_requests', side_effect=reader('requests', dict.fromkeys(REQUEST_TITLES, 0))), \
+                        patch('neto_incident_monitor.threatened_api.read_threats', side_effect=reader('threatened', (dict.fromkeys(KEYS, 0), {}))), \
+                        patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read_filter):
+                    app = App(root, history_path=folder / 'history.json', enable_tray=False,
+                              apply_startup=False)
+                    session = app.session
+                    account = session.layout_account = read_account(page, session.closed)
+                    for entry in app.filters:
+                        url = entry['url']
+                        entry['list_definition'] = dict(metadata_from_address(url), version=2, source_url=url,
+                                                        instance=entry.get('filter_instance'), account=account.key)
+                    session.open_and_serve = lambda _playwright: session.serve(page)
+                    app.window_restoring = False
+                    session.connected = session.ready_once = True
+                    app.handle_session_event('session_ready', None)
+                    with patch.object(session, 'filter_layout', return_value=filter_definition(filters[0]['url'])['columns']), \
+                            patch.object(session, 'authenticate', side_effect=authenticate):
+                        if manual:
+                            self.assertTrue(app.request_refresh('all'))
+                        else:
+                            app.start()
+                        self.assertEqual(app.dashboard_button.queued, manual or dashboard)
+                        self.assertTrue(app.threatened_incidents_button.queued)
+                        self.assertEqual(app.work_status.get(), 'Oczekuje w kolejce')
+                        session.thread.start()
+                        try:
+                            deadline = time.monotonic() + 6
+                            while session.last_idle is None and time.monotonic() < deadline:
+                                root.update()
+                                time.sleep(.01)
+                            self.assertIsNotNone(session.last_idle, order)
+                            app.drain()
+                            self.assertEqual(app.cycle_active, not manual)
+                            self.assertEqual(set(app.history.membership or ()), {entry['url'] for entry in filters[:2]})
+                            self.assertIsNotNone(app.threatened_view.last_full_read)
+                            expected_sections = {'sla', 'held', 'requests'} if manual or dashboard else set()
+                            if dashboard_error:
+                                expected_sections.remove('sla')
+                            self.assertEqual(set(app.dashboard_view.section_snapshots), expected_sections)
+                            self.assertEqual(app.dashboard_view.last_complete_read_at is not None,
+                                             expected_sections == {'sla', 'held', 'requests'})
+                        finally:
+                            session.shutdown()
+                            session.thread.join(3)
+                        self.assertFalse(session.thread.is_alive())
+            finally:
+                if app is not None:
+                    app.teams_sender.stop()
+                    app.google_chat_sender.stop()
+                    app.history_writer.shutdown(wait=True)
+                    app.alert_writer.shutdown(wait=True)
+                root.destroy()
+        return order
 
     def test_startup_and_all_use_dashboard_then_threats_then_filters(self):
-        for scope in ('startup', 'all'):
-            with self.subTest(scope=scope):
-                order, _ = self.run_cycle(scope)
-                self.assertEqual(order, ['dashboard', 'threatened', 'filter'])
+        for manual in (False, True):
+            with self.subTest(manual=manual):
+                order = self.run_shared_cycle(manual=manual, dashboard=not manual)
+                self.assertEqual(order, ['sla', 'held', 'requests', 'threatened', 'incident', 'sc_task'])
 
     def test_no_startup_dashboard_request_skips_dashboard(self):
-        order, _ = self.run_cycle(dashboard=False)
-        self.assertEqual(order, ['threatened', 'filter'])
+        order = self.run_shared_cycle(dashboard=False)
+        self.assertEqual(order, ['threatened', 'incident', 'sc_task'])
 
     def test_dashboard_section_error_does_not_block_other_work(self):
-        order, _ = self.run_cycle(mode='error')
-        self.assertEqual(order, ['dashboard', 'threatened', 'filter'])
+        for manual in (False, True):
+            with self.subTest(manual=manual):
+                order = self.run_shared_cycle(manual=manual, dashboard_error=True)
+                self.assertEqual(order, ['sla', 'held', 'requests', 'threatened', 'incident', 'sc_task'])
 
     def test_dashboard_login_recovery_finishes_before_threats_and_filters(self):
-        order, records = self.run_cycle(mode='recovery')
-        self.assertEqual(order, ['dashboard', 'dashboard', 'dashboard', 'threatened', 'filter'])
-        recovery = [r for r in records if r['event'] == 'section_login_recovery_end']
-        self.assertEqual(len(recovery), 1)
-        self.assertEqual(recovery[0]['outcome'], 'returned')
-
-    def test_stop_in_dashboard_prevents_threats_and_filters(self):
-        order, _ = self.run_cycle(mode='stop')
-        self.assertEqual(order, ['dashboard'])
-
-    def test_overdue_during_dashboard_runs_once_and_logs_dashboard_delay(self):
-        order, records = self.run_cycle(scope='dashboard', periodic=True)
-        self.assertEqual(order, ['dashboard', 'threatened'])
-        schedule = next(r for r in records if r['event'] == 'threatened_schedule')
-        self.assertEqual(schedule['delay_reason'], 'dashboard')
-        self.assertEqual(schedule['lateness_ms'], 120000)
-
-    def test_startup_message_matches_actual_dashboard_request(self):
-        import tkinter as tk
-        url = 'https://adeo.service-now.com/incident_list.do'
-        for saved in ({}, {'dashboard_auto_refresh': False}, {'dashboard_auto_refresh': True}):
-            enabled = saved.get('dashboard_auto_refresh', False)
-            with self.subTest(saved=saved), tempfile.TemporaryDirectory() as folder:
-                root = tk.Tk()
-                app = None
-                try:
-                    settings = dict(filters=[dict(name='Synthetic', url=url, list_definition=filter_definition(url))], **saved)
-                    with patch('neto_incident_monitor.app.read_json', return_value=settings), \
-                            patch('neto_incident_monitor.app.save_json'), \
-                            patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
-                        app = App(root, history_path=Path(folder)/'history.json', enable_tray=False, apply_startup=False)
-                        done = Future()
-                        done.set_result(None)
-                        with patch.object(app.alert_writer, 'submit', return_value=done), \
-                                patch('neto_incident_monitor.app.threading.Thread'):
-                            app.start()
-                        self.assertEqual(app.dashboard_requests.qsize(), int(enabled))
-                        self.assertEqual(app.threatened_requests.qsize(), 1)
-                        message = app.threatened_view.message.get()
-                        self.assertIn('po dashboardzie i przed filtrami' if enabled else 'przed filtrami', message)
-                        self.assertEqual('dashboardzie' in message, enabled)
-                finally:
-                    if app is not None:
-                        app.teams_sender.stop()
-                        app.google_chat_sender.stop()
-                        app.history_writer.shutdown(wait=True)
-                        app.alert_writer.shutdown(wait=True)
-                    root.destroy()
-
-    def test_full_refresh_message_describes_new_sequence(self):
-        app = App.__new__(App)
-        app.worker = Mock()
-        app.worker.is_alive.return_value = True
-        app.stop = threading.Event()
-        app.auth_waiting = app.quitting = False
-        app.dashboard_view, app.threatened_view = Mock(), Mock()
-        app.schedule, app.status, app.update_refresh_controls = Mock(), Mock(), Mock()
-        self.assertTrue(app.request_refresh('all'))
-        self.assertIn('dashboard → incydenty zagrożone → filtry', app.status.set.call_args.args[0])
+        order = self.run_shared_cycle(recover_login=True)
+        self.assertEqual(order, ['sla', 'sla', 'login', 'sla', 'held', 'requests', 'threatened', 'incident', 'sc_task'])
 
 
 if __name__ == '__main__':

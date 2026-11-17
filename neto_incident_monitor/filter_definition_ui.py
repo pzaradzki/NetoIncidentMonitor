@@ -4,7 +4,7 @@ from tkinter import ttk
 
 from neto_incident_monitor.theme import BG, MUTED, SURFACE, TEXT
 from neto_incident_monitor.widgets import RoundedButton
-from neto_incident_monitor.window_style import apply_window_style, current_grab_path
+from neto_incident_monitor.window_style import current_grab_path
 
 
 def show_filter_definition(parent, name, definition, *, refresh):
@@ -65,6 +65,5 @@ def show_filter_definition(parent, name, definition, *, refresh):
     y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
     dialog.geometry(f'+{max(0, x)}+{max(0, y)}')
     dialog.deiconify()
-    dialog.after_idle(lambda: apply_window_style(dialog))
     dialog.grab_set()
     close.focus_set()

@@ -1,13 +1,13 @@
 # ServiceNow REST API w zalogowanej sesji Chromium
 
-W bieżących źródłach Dashboard SLA, Wstrzymane L1, Wnioski L1, Incydenty zagrożone SLA, filtry użytkownika i import Ulubionych pobierają dane przez REST na karcie `SharedSession`. Ręczne i cykliczne odczyty przechodzą przez tę samą kolejkę. Szczegółowy odbiór ServiceNow dla filtrów użytkownika celowo pominięto. [Kontrakt dashboardu](kontrakty/kontrakt-odczytu-dashboardu.md) · [Kontrakt list](kontrakty/kontrakt-odczytu-list.md) · [Kontrakt importu](kontrakty/kontrakt-importu-ulubionych.md)
+W bieżących źródłach Dashboard SLA, Wstrzymane L1, Wnioski L1, Incydenty zagrożone SLA, filtry użytkownika i import Ulubionych pobierają dane przez REST na karcie `SharedSession`. Wątek sesji wybiera pracę z ręcznej kolejki i harmonogramu cyklu. Szczegółowy odbiór pierwszej migracji filtrów na ServiceNow celowo pominięto. [Kolejka](kontrakty/kolejka-i-trwalosc.md) · [Kontrakt dashboardu](kontrakty/kontrakt-odczytu-dashboardu.md) · [Kontrakt list](kontrakty/kontrakt-odczytu-list.md) · [Kontrakt importu](kontrakty/kontrakt-importu-ulubionych.md)
 
 ## Odczyty i zapis
 
 | Zakres | Źródło | Zapis wyniku |
 | --- | --- | --- |
-| Dashboard SLA | Jedno zapytanie Aggregate API do `task_sla` z grupowaniem po `task.priority,has_breached` | Migawka wybranego miesiąca, z której aplikacja oblicza WJRUW. |
-| Wstrzymane L1 | Dwie agregacje w `incident_metric` dla progów 7 i 14 dni | Migawka stanu bieżącego. |
+| Dashboard SLA | Grupowana agregacja `task_sla` dla wybranego miesiąca, agregacja nieprzypisanych SLA w `task_sla` oraz bieżąca agregacja zagubionych zgłoszeń w `incident` | Migawka sekcji. WJRUW pochodzi z agregacji grupowanej. |
+| Wstrzymane L1 | Dwie agregacje w `incident_metric` dla progów 7 i 14 dni oraz jedna w `incident` według daty ostatniej aktualizacji | Migawka stanu bieżącego. |
 | Wnioski L1 | Pięć agregacji w `sc_task`, także dla pustego przypisania i zmiennej katalogowej | Migawka stanu bieżącego. |
 | Incydenty zagrożone SLA | Table API w `task_sla`, do 100 wierszy na stronę i 10 stron | Jedna zweryfikowana migawka dla liczników, bieżącej listy, historii i alertów. |
 | Filtry użytkownika | Jedno żądanie Table API w `incident`, `sc_request`, `sc_req_item` lub `sc_task`, do 1000 rekordów | Zapytanie w konfiguracji filtra, osobny układ konta. Pełna migawka zasila bieżące zgłoszenia, historię, obecność i alerty. |
@@ -23,7 +23,9 @@ Rozwijanie skrótu i odczyt układu używają wewnętrznych kontraktów ServiceN
 
 ## Uruchomienie odczytów API
 
-Uruchom `.venv\Scripts\python.exe tools/import_dashboard_api.py data/dashboard-api-kafelki.xlsx`, aby utworzyć lub zaktualizować lokalną definicję `data/dashboard-api.json` na podstawie 27 filtrów. Dla istniejącej konfiguracji importer zachowuje lokalne listy agentów i lokalizacji. Uruchom źródła poleceniem `.venv\Scripts\python.exe launcher.pyw`. Instalacja EXE korzysta z `%LOCALAPPDATA%\NetoIncidentMonitor\dashboard-api.json`.
+Do uruchamiania ze źródeł polecenie `.venv\Scripts\python.exe tools/import_dashboard_api.py data/dashboard-api-kafelki.xlsx` przygotowuje lokalne `data/dashboard-api.json`. Importer zachowuje zapisane listy agentów i lokalizacji. Źródła uruchamia się poleceniem `.venv\Scripts\python.exe launcher.pyw`.
+
+Podczas budowy paczki Windows PyInstaller kompiluje parametry zapytań z 27 definicji w lokalnym arkuszu i pomija listy agentów oraz lokalizacji. Przy starcie EXE wartości zapisane w `%LOCALAPPDATA%\NetoIncidentMonitor\dashboard-api.json` mają pierwszeństwo. Po logowaniu aplikacja pobiera brakujący komplet list przez wspólną kolejkę. Na świeżym profilu zapis obejmuje wersję formatu i obie listy identyfikatorów. [Kontrakt zakresu dashboardu](kontrakty/kontrakt-odczytu-dashboardu.md#pobieranie-agentów-i-lokalizacji).
 
 Po zalogowaniu porównaj Dashboard SLA dla dwóch miesięcy oraz Wstrzymane i Wnioski L1. W widoku zagrożeń porównaj sześć kafelków i bieżącą listę możliwie blisko w czasie. Uwzględnij niepusty wynik, gdy będzie dostępny. Na wybranych pozycjach porównaj kategorię, pozostały czas i procent. Do zgłoszenia wystarczy nazwa sekcji i różnica. [Plan i kryteria odbioru](plany/zakonczone/dashboard-servicenow-api.md)
 

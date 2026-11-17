@@ -155,8 +155,11 @@ TEXT_FIELDS['condition_kind'] = {'field_schema', 'catalog_variable', 'catalog_me
 EVENTS.add('filter_condition_metadata')
 TEXT_FIELDS['queue_scope'].update({'filter_layout', 'default_layouts', 'dashboard_scope'})
 TEXT_FIELDS['operation'].update({'scope_open', 'scope_location', 'scope_assigned', 'scope_p1', 'scope_query', 'scope_save'})
-TEXT_FIELDS['read_reason'].update({'dashboard_scope_query', 'dashboard_scope_save', 'dashboard_scope_filter'})
-EVENTS.add('dashboard_scope_result')
+TEXT_FIELDS['read_reason'].update({'dashboard_scope_query', 'dashboard_scope_save', 'dashboard_scope_filter',
+                                  'dashboard_scope_missing'})
+EVENTS.update({'dashboard_scope_result', 'dashboard_scope_check'})
+TEXT_FIELDS['scope_trigger'] = {'automatic', 'manual'}
+TEXT_FIELDS['scope_state'] = {'present', 'missing', 'unavailable'}
 EVENTS.update({'filter_definition', 'filter_definition_discovery'})
 EVENTS.update({'filter_layout_read', 'filter_layout_cache', 'filter_layout_preview'})
 TEXT_FIELDS['filter_url_kind'] = {'short', 'direct'}

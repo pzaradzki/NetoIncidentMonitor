@@ -152,18 +152,17 @@ def build_settings(app, settings):
     app.task_interval_entry.pack(side="left")
     ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
 
-    if getattr(app, 'session', None) is not None:
-        app.schedule_interval_status = tk.StringVar(master=window)
-        interval_autosave = app.schedule_interval_autosave = ScheduleIntervalAutosave(
-            app.root, (app.interval, app.task_interval), app.schedule_interval_status, app.save_schedule_intervals)
-        ttk.Label(footer, textvariable=app.schedule_interval_status, style='WhiteMuted.TLabel',
-                  wraplength=330).pack(side='left', padx=(12, 0))
+    app.schedule_interval_status = tk.StringVar(master=window)
+    interval_autosave = app.schedule_interval_autosave = ScheduleIntervalAutosave(
+        app.root, (app.interval, app.task_interval), app.schedule_interval_status, app.save_schedule_intervals)
+    ttk.Label(footer, textvariable=app.schedule_interval_status, style='WhiteMuted.TLabel',
+              wraplength=330).pack(side='left', padx=(12, 0))
 
-        def cancel_on_destroy(event):
-            if event.widget is window:
-                interval_autosave.cancel()
+    def cancel_on_destroy(event):
+        if event.widget is window:
+            interval_autosave.cancel()
 
-        window.bind('<Destroy>', cancel_on_destroy, add='+')
+    window.bind('<Destroy>', cancel_on_destroy, add='+')
 
     controls = row(monitoring, "Automatycznie zaktualizuj dashboard przy starcie monitoringu",
                    "Pobierz dane dashboardu po zalogowaniu do ServiceNow. Kolejne odczyty uruchamiaj przyciskiem Aktualizuj.")
@@ -211,16 +210,6 @@ def build_settings(app, settings):
     app.auto_login = tk.BooleanVar(value=settings.get("auto_login", True))
     app.auto_login_check = Toggle(controls, app.auto_login)
     app.auto_login_check.pack(side="right")
-    if not getattr(app, 'session', None):
-        controls = row(browser, "Minimalizacja przeglądarki", "Minimalizuj Chromium podczas sprawdzania filtrów. Automatyczne logowanie i dashboard działają w tle; ręczne logowanie przywołuje przeglądarkę.")
-        app.minimize_browser = tk.BooleanVar(value=settings.get("minimize_browser", True))
-        app.minimize_browser_check = Toggle(controls, app.minimize_browser)
-        app.minimize_browser_check.pack(side="right")
-
-        controls = row(browser, "Całkowicie ukryj okno przeglądarki", "Ukrywaj Chromium także na pasku zadań podczas sprawdzania filtrów. Automatyczne logowanie i dashboard pozostają widoczne w tle; ręczne logowanie przechodzi na pierwszy plan.")
-        app.hide_browser = tk.BooleanVar(value=settings.get("hide_browser", True))
-        Toggle(controls, app.hide_browser).pack(side="right")
-
     data = section("DANE APLIKACJI")
     from neto_incident_monitor.filter_layout_ui import show_saved_layouts
     controls = row(data, 'Układy kolumn list ServiceNow',

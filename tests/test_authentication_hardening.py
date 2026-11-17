@@ -161,19 +161,27 @@ class AuthenticationHardeningTests(unittest.TestCase):
             self.assertNotIn('PRIVATE_', '\n'.join(captured.output))
 
     def test_browser_launch_failure_does_not_expose_exception_in_monitor_log(self):
-        app = App.__new__(App)
-        app.stop = threading.Event()
-        app.events = queue.Queue()
+        from neto_incident_monitor.shared_session import SharedSession
+
+        app = Mock()
+        session = SharedSession(app, Path('unused'))
+
+        def on_event(event):
+            if event[0] == 'session_problem':
+                session.shutdown()
+
+        app.events.put.side_effect = on_event
         playwright = MagicMock()
         playwright.__enter__.return_value.chromium.launch_persistent_context.side_effect = Error(
             'ProcessSingleton PRIVATE_LOGIN PRIVATE_PASSWORD SAMLRequest=PRIVATE_TOKEN')
-        with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                patch('neto_incident_monitor.filter_state.FilterState'), \
-                self.assertLogs('servicenow', level='ERROR') as monitor, \
+        with patch('neto_incident_monitor.shared_session.sync_playwright', return_value=playwright), \
                 self.assertLogs(_logger, level='INFO') as diagnostic:
-            app._monitor_browser({})
-        self.assertNotIn('PRIVATE_', '\n'.join(monitor.output + diagnostic.output))
-        self.assertIn('profile_locked', '\n'.join(diagnostic.output))
+            session.run()
+        app.events.put.assert_called_once_with(('session_problem', None))
+        self.assertNotIn('PRIVATE_', '\n'.join(diagnostic.output))
+        event, = [json.loads(record.getMessage()) for record in diagnostic.records
+                  if 'session_connection_error' in record.getMessage()]
+        self.assertEqual(event['error_category'], 'profile_locked')
 
     def test_exception_formatter_excludes_message_source_and_cached_trace(self):
         try:
@@ -223,19 +231,17 @@ class AuthenticationHardeningTests(unittest.TestCase):
                 app = App.__new__(App)
                 app.stop = threading.Event()
                 app.events = queue.Queue()
-                app.dashboard_requests = queue.Queue()
-                app.dashboard_requests.put((1, 2026, 10))
-                app.monitor_settings = {'urls': [TARGET]}
-                app.restore_login = Mock(return_value=True)
+                app.session = Mock()
+                app.session.authenticate.return_value = True
                 result = {t: 0 for t in TITLES}
                 attempts = [AuthenticationRequired(), AuthenticationRequired() if repeated_failure else result]
-                with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
                         patch('neto_incident_monitor.dashboard_api.read_month', side_effect=attempts) as read, \
                         patch('neto_incident_monitor.dashboard_api.read_held', return_value={t: 0 for t in HELD_TITLES}), \
                         patch('neto_incident_monitor.dashboard_api.read_requests', return_value={t: 0 for t in REQUEST_TITLES}):
-                    app.read_dashboard_request(Mock())
+                    app.read_dashboard_request(Mock(), request=(1, 2026, 10), stop=app.stop)
                 self.assertEqual(read.call_count, 2)
-                app.restore_login.assert_called_once()
+                app.session.authenticate.assert_called_once()
                 results = [value for kind, value in app.events.queue if kind == 'dashboard_result']
                 self.assertEqual(bool(results[-1][4]), repeated_failure)
 

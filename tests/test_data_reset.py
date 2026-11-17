@@ -35,6 +35,17 @@ class DataResetTests(unittest.TestCase):
         self.assertFalse(reset.staging.exists())
         self.startup.assert_called_once_with(False, packaged=False)
 
+    def test_source_reset_removes_dashboard_scope_but_preserves_definitions(self):
+        import json
+
+        path = self.data / 'dashboard-api.json'
+        params = {'version': 1, 'monthly_group': 'a' * 32}
+        path.write_text(json.dumps({**params, 'assignees': ['b' * 32], 'locations': ['c' * 32]}), encoding='utf-8')
+        reset = DataReset(self.data, packaged=False)
+        reset.request()
+        reset.finish()
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8')), params)
+
     def test_packaged_reset_resumes_after_staging(self):
         reset = DataReset(self.data, packaged=True)
         reset.request()

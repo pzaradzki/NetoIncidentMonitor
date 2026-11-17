@@ -2,6 +2,8 @@
 
 12 listopada 2026. **Status: przyjęta, wdrożona w źródłach.** Wyniki i zakres odbioru są w [planie](../plany/zakonczone/wspolna-sesja-servicenow.md).
 
+Bieżący konstruktor `App` zawsze korzysta z `SharedSession`. Kolejki, anulowanie i odczyt po ponownym połączeniu opisuje [aktualny kontrakt](../kontrakty/kolejka-i-trwalosc.md).
+
 Regułę ukrycia Chromium po potwierdzeniu sesji w przypadku ręcznego wpisania hasła przy włączonym autologowaniu zastępuje [decyzja 026](026-potwierdzenie-zapisu-poswiadczen.md).
 
 Zapis odstępów dla działającego harmonogramu i sposób liczenia nowego terminu opisuje [decyzja 030](030-odstepy-podczas-monitoringu.md).

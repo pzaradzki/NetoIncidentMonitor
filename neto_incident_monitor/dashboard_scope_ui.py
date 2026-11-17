@@ -96,7 +96,7 @@ def show_dashboard_scope(app, parent):
             status.set('Oczekiwanie na połączenie z ServiceNow.')
         else:
             status.set(messages.get(phase, 'Nie udało się odczytać zakresu dashboardu.' if phase else
-                                    '' if snapshot else 'Brak poprawnego zapisu zakresu dashboardu.'))
+                                    '' if snapshot else 'Brak zapisanych list agentów i lokalizacji.'))
         update.configure(state='normal' if config_available and app.can_refresh_dashboard_scope() else 'disabled')
 
     def clear(event):

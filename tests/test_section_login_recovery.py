@@ -1,7 +1,6 @@
 import json
 import logging
 from pathlib import Path
-import queue
 import threading
 import tempfile
 import unittest
@@ -150,49 +149,99 @@ class SectionLoginRecoveryTests(unittest.TestCase):
             self.assertEqual(sum(r['event'] == 'section_login_recovery_start' for r in records), 1)
             self.assertEqual(sum(r['event'] == 'section_login_recovery_end' for r in records), 1)
 
-    def test_browser_close_during_login_requeues_same_dashboard(self):
-        from neto_incident_monitor.app import App, BrowserClosedError
+    def shared_dashboard(self, request):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.monitoring import ReadPart, Schedule
+        from neto_incident_monitor.shared_session import SharedSession
+
         app = App.__new__(App)
-        app.stop, app.events, app.dashboard_requests = threading.Event(), queue.Queue(), queue.Queue()
+        app.schedule = Schedule()
+        app.threatened_next_read = None
+        app.quitting = False
+        session = app.session = SharedSession(app, Path('unused'))
+        session.log = Mock()
+        session.connected = True
+        app.dashboard_view = Mock(active_request=None)
+        events = []
+
+        def prepare_refresh(*, selected):
+            self.assertEqual(selected, request[1:])
+            app.dashboard_view.active_request = request
+            return request
+
+        def put(event):
+            events.append(event)
+            kind, value = event
+            if kind == 'session_prepare_read':
+                app.handle_session_event(kind, value)
+            elif kind == 'session_job_finished':
+                session.shutdown()
+
+        def wait_for_idle(_page, _schedule, _seconds, stop):
+            self.assertTrue(stop.is_set(), 'Dashboard job did not finish before the session went idle.')
+
+        idle = patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=wait_for_idle)
+        idle.start()
+        self.addCleanup(idle.stop)
+        app.dashboard_view.request_refresh.side_effect = prepare_refresh
+        app.events = Mock(put=Mock(side_effect=put))
+        part = ReadPart('dashboard', request[1:])
+        job_id, _ = session.work.submit('dashboard', [part])
+        return app, events, job_id
+
+    def test_browser_close_during_login_keeps_shared_dashboard_for_reconnect(self):
+        from neto_incident_monitor.app import BrowserClosedError
+        from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
+
         request = (41, 2026, 11)
-        app.dashboard_requests.put(request)
-        app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
-        app.restore_login = Mock(side_effect=BrowserClosedError('PRIVATE_SECRET'))
-        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
-                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=AuthenticationRequired()), \
-                patch('neto_incident_monitor.dashboard_api.read_held') as held, \
-                self.assertRaises(BrowserClosedError):
-            app.read_dashboard_request(Mock())
-        self.assertEqual(app.dashboard_requests.get_nowait(), request)
-        self.assertTrue(app.dashboard_requests.empty())
-        held.assert_not_called()
-        self.assertEqual([v for kind, v in app.events.queue if kind == 'dashboard_updating'],
-                         [(*request, 'running'), (*request, 'retrying')])
+        app, events, job_id = self.shared_dashboard(request)
+        session = app.session
+        page, reopened_page = Mock(), Mock()
+        page.is_closed.return_value = reopened_page.is_closed.return_value = False
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
+                patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
+                patch.object(session, 'authenticate', side_effect=BrowserClosedError('PRIVATE_SECRET')) as authenticate, \
+                patch('neto_incident_monitor.dashboard_api.read_month', side_effect=[
+                    AuthenticationRequired(), dict.fromkeys(TITLES, 0)]) as sla, \
+                patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)) as held, \
+                patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)):
+            with self.assertRaises(BrowserClosedError):
+                session.serve(page)
+            authenticate.assert_called_once_with(page, session.closed)
+            held.assert_not_called()
+            self.assertEqual(session.active_job.id, job_id)
+            self.assertEqual(session.active_job.parts[0].target, request[1:])
+            session.serve(reopened_page)
+        self.assertEqual([call.args[0] for call in sla.call_args_list], [page, reopened_page])
+        app.dashboard_view.request_refresh.assert_called_once()
+        self.assertIsNone(session.active_job)
+        self.assertEqual([v for kind, v in events if kind == 'dashboard_updating'],
+                         [(*request, 'running'), (*request, 'retrying'), (*request, 'running'), (*request, 'finished')])
 
     def test_recovered_dashboard_keeps_request_and_continues_other_sections(self):
-        from neto_incident_monitor.app import App
         from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
-        app = App.__new__(App)
-        app.stop, app.events, app.dashboard_requests = threading.Event(), queue.Queue(), queue.Queue()
-        app.dashboard_requests.put((41, 2026, 11))
-        app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
-        app.restore_login = Mock(return_value=True)
-        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+
+        request = (41, 2026, 11)
+        app, events, _ = self.shared_dashboard(request)
+        session = app.session
+        page = Mock()
+        page.is_closed.return_value = False
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
+                patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
+                patch.object(session, 'authenticate', return_value=True) as authenticate, \
                 patch('neto_incident_monitor.dashboard_api.read_month', side_effect=[
                 TimeoutError('synthetic'), AuthenticationRequired(), dict.fromkeys(TITLES, 0)]) as sla, \
                 patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)) as held, \
                 patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)) as requests:
-            app.read_dashboard_request(Mock())
+            session.serve(page)
         self.assertEqual(sla.call_count, 3)
-        app.restore_login.assert_called_once()
+        authenticate.assert_called_once_with(page, session.closed)
         held.assert_called_once()
         requests.assert_called_once()
-        events = list(app.events.queue)
         statuses = [value for kind, value in events if kind == 'dashboard_section_status']
-        self.assertTrue(all(value[0] == 41 for value in statuses))
+        self.assertTrue(all(value[0] == request[0] for value in statuses))
         self.assertFalse(any(value[2] == 'Błąd odczytu' for value in statuses))
         results = [value for kind, value in events if kind == 'dashboard_result']
-        self.assertTrue(all(value[:3] == (41, 2026, 11) for value in results))
+        self.assertTrue(all(value[:3] == request for value in results))
         self.assertEqual(set(results[-1][3]), set(TITLES) | set(HELD_TITLES) | set(REQUEST_TITLES))
         self.assertEqual([value[-1] for kind, value in events if kind == 'dashboard_updating'], ['running', 'finished'])
-        self.assertTrue(app.dashboard_requests.empty())

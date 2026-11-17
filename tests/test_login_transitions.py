@@ -67,24 +67,20 @@ class LoginTransitionTests(unittest.TestCase):
         app = App.__new__(App)
         app.stop = threading.Event()
         app.events = queue.Queue()
-        app.dashboard_requests = queue.Queue()
         runtime, _, window, state = self.runtime({'hide_browser': True})
         app.browser_runtime = runtime
         for request in (1, 2):
-            app.dashboard_requests.put((request, 2026, 10))
             def values(titles):
                 self.assertEqual(runtime.activity, 'filters')
                 self.assertIsNone(runtime.login_rendering.client)
                 return dict.fromkeys(titles, 0)
-            with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+            with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
                     patch('neto_incident_monitor.dashboard_api.read_month', side_effect=lambda *args: values(TITLES)), \
                     patch('neto_incident_monitor.dashboard_api.read_held', side_effect=lambda *args: values(HELD_TITLES)), \
                     patch('neto_incident_monitor.dashboard_api.read_requests', side_effect=lambda *args: values(REQUEST_TITLES)):
-                app.read_dashboard_request(runtime.page)
+                app.read_dashboard_request(runtime.page, request=(request, 2026, 10), stop=app.stop)
             self.assertEqual(runtime.activity, 'filters')
             self.assertIsNone(runtime.login_rendering.client)
-        window.reset_mock()
-        app.read_dashboard_request(runtime.page)
         window.show.assert_not_called()
         window.hide.assert_not_called()
 
@@ -134,29 +130,6 @@ class LoginTransitionTests(unittest.TestCase):
         window.show.assert_called_once_with(activate=True)
         runtime.page.bring_to_front.assert_called_once()
 
-    def test_crash_loop_stops_after_three_backoffs(self):
-        app = App.__new__(App)
-        app.stop = threading.Event()
-        app.events = queue.Queue()
-        app._monitor_browser = Mock(side_effect=BrowserClosedError('closed'))
-        with patch.object(app.stop, 'wait', return_value=False) as wait, \
-                patch('neto_incident_monitor.app.time.monotonic', return_value=100):
-            app.monitor({})
-        self.assertEqual(app._monitor_browser.call_count, 4)
-        self.assertEqual([call.args[0] for call in wait.call_args_list], [2, 4, 8])
-        self.assertTrue(any(kind == 'interruption' for kind, _ in app.events.queue))
-
-    def test_restart_budget_recovers_after_quiet_window(self):
-        app = App.__new__(App)
-        app.stop = threading.Event()
-        app.events = queue.Queue()
-        app._monitor_browser = Mock(side_effect=[BrowserClosedError('closed')] * 4 + [None])
-        with patch.object(app.stop, 'wait', return_value=False) as wait, \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=[0, 61, 122, 183]):
-            app.monitor({})
-        self.assertEqual(app._monitor_browser.call_count, 5)
-        self.assertEqual([call.args[0] for call in wait.call_args_list], [2, 2, 2, 2])
-
     def test_slow_navigation_can_be_cancelled_without_reissuing_request(self):
         page = Mock()
         stop = threading.Event()
@@ -204,21 +177,6 @@ class LoginTransitionTests(unittest.TestCase):
             self.assertFalse(wait_for_login(page,TARGET,stop))
         navigate.assert_called_once()
         self.assertTrue(stop.is_set())
-
-    def test_restore_login_does_not_set_stop_on_its_own(self):
-        app=App.__new__(App);app.stop=threading.Event();app.events=queue.Queue();app.browser_window=None
-        with patch('neto_incident_monitor.app.wait_for_login',return_value=False):
-            self.assertFalse(app.restore_login(Mock(),TARGET,{}))
-        self.assertFalse(app.stop.is_set())
-
-    def test_confirmed_session_updates_filter_phase_before_reads_start(self):
-        app = App.__new__(App)
-        app.stop = threading.Event()
-        app.events = queue.Queue()
-        app.browser_window = None
-        with patch('neto_incident_monitor.app.wait_for_login', return_value=True):
-            self.assertTrue(app.restore_login(Mock(), TARGET, {}))
-        self.assertEqual(app.events.get_nowait(), ('phase', 'Oczekiwanie'))
 
     def test_stale_identity_cannot_confirm_session_after_popup_close(self):
         from tests.test_login_observation import page_with, frame_with, signals

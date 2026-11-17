@@ -28,7 +28,11 @@ def main():
         app = None
         try:
             with patch.object(app_module, 'read_json', return_value=settings):
-                app = app_module.App(root, history_path=folder/'history.json', enable_tray=False, apply_startup=False)
+                app = app_module.App(root, history_path=folder/'history.json', enable_tray=False,
+                                     apply_startup=False)
+            app.window_restoring = False
+            app.session.ready_once = True
+            app.handle_session_event('session_ready', None)
             app.persist_filters()
             keys = {'number', 'short_description', 'priority', 'location', 'created'}
             app.accept_column_schema(url, [{'key': k, 'label': label} for k, label, _ in FIELDS if k in keys])
@@ -43,9 +47,11 @@ def main():
                     url='https://adeo.service-now.com/incident.do?sys_id='+f'{index+1:032x}')
                 incidents[number] = incident
                 app.history.add(incident, settings['filters'][0]['name'], url)
-            app.events.put(('snapshot', (1, incidents)))
-            app.events.put(('read', (time.time(), settings['filters'][0]['name'])))
-            app.events.put(('waiting', (time.monotonic()+51, False)))
+            app.cycle_active = True
+            app.set_phase('Monitoring aktywny')
+            app.events.put(('snapshot', (url, incidents, app.filter_revisions.get(url), app.monitor_generation,
+                                         False, False, app.session.layout_generation, (time.time(), None))))
+            app.events.put(('session_idle', (True, time.monotonic() + 51, {})))
             app.events.put(('status', 'Podgląd interfejsu — wyłącznie dane przykładowe.'))
             app.drain()
             app.show_incident_view()

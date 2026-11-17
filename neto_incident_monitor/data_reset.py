@@ -10,6 +10,7 @@ from neto_incident_monitor.runtime_paths import DATA, FROZEN
 RUNTIME_NAMES = {
     "config.json", "config.tmp", "seen.json", "seen.tmp", "history.json", "history.tmp",
     "dashboard-cache.json", "dashboard-cache.tmp", "browser-profile",
+    "dashboard-api.tmp",
     "filter-layouts.json", "filter-layouts.tmp",
     "history.state.sqlite3", "history.state.sqlite3-journal",
     "history.state.sqlite3-wal", "history.state.sqlite3-shm",
@@ -67,6 +68,8 @@ class DataReset:
                 check_tree(self.data)
                 self.data.rename(self.staging)
         elif self.data.exists():
+            from neto_incident_monitor.analytics_config import remove_dashboard_scope
+            remove_dashboard_scope(self.data / 'dashboard-api.json')
             targets = [path for path in self.data.iterdir()
                        if path.name in RUNTIME_NAMES or RUNTIME_EXTRA.fullmatch(path.name)]
             for path in targets:

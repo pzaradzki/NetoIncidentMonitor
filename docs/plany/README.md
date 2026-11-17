@@ -1,9 +1,10 @@
 # Plany i pozostałe prace
 
-Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
+Według [indeksu wersji](../wersje/README.md) ostatnia odnotowana paczka lokalna to [1.12.0-experimental.3](../wersje/v1.12.0-experimental.3.md), a ostatnie odnotowane wydanie publiczne to [1.11.2](../wersje/v1.11.2.md).
 
 ## Pozostałe tematy
 
+- [Pobranie brakujących list agentów i lokalizacji po logowaniu](startowy-odczyt-zakresu-dashboardu.md) jest wdrożone w źródłach i lokalnej paczce. Pozostaje rzeczywisty odbiór na ADEO.
 - Ustalić retencję outbox i lokalizację logów uruchomień ze źródeł. Pomiary opóźnień Tk odłożono do osobnej pracy. [Wyniki audytu](zakonczone/naprawy-audytu.md)
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu. [Opis obserwacji](../wersje/v1.8.1.md)
 - Potencjalny kanał e-mail. Potwierdzono pojedynczą wysyłkę i dostarczenie. Otwarte są zasady relay i działanie na innych komputerach. [Rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md)
@@ -12,6 +13,12 @@ Najnowsza lokalna i opublikowana wersja to [1.11.2](../wersje/v1.11.2.md).
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wycofanie starszej pętli monitoringu](zakonczone/wycofanie-starszej-petli.md) | Wdrożono w źródłach. Dashboard, zagrożenia SLA i filtry korzystają ze wspólnej sesji. W pełnej regresji Windows zaliczono 533 testy, a 2 pominięto. |
+| Okres dashboardu w `SharedSession` | Testy obejmują blokadę od zakolejkowania, ponowienie logowania, ponowne połączenie, spóźnione zdarzenia i Stop. Poprawiono odblokowanie odczytu automatycznego po zamknięciu Chromium. Pełna powtórzona regresja objęła 547 testów, z czego 546 zaliczono i jeden pominięto. [Testy okresu](../../tests/test_dashboard_period.py) |
+| Harmonogram zagrożeń SLA w `SharedSession` | Sprawdzono pojedynczy zaległy odczyt po dashboardzie i między filtrami, termin 60 s od zakończenia sukcesu, błędu lub ręcznej próby oraz Stop. Poprawiono zapis przyczyny opóźnienia i sprawdzono korelację w JSONL. Zaliczone 55 prób zakresowych na danych syntetycznych. [Testy harmonogramu](../../tests/test_refresh_requests.py) |
+| Kolejność odczytów w `SharedSession` | Testy startu cyklu i pełnego ręcznego odświeżenia ćwiczą normalne akcje `App`, kolejkę sesji i zapis migawek. Potwierdzono pominięcie wyłączonego dashboardu przy starcie, odczyt włączonych filtrów oraz kontynuację po błędzie sekcji. Regresja zakresowa na syntetycznych danych zaliczyła 76 testów. [Testy kolejności](../../tests/test_update_order.py) |
+| Regresja dialogu zapytania i wspólnej sesji | Na pulpicie Windows zaliczono 112 prób z syntetycznymi danymi, w tym obie natywne próby startu Chromium i zapisu hasła. Podgląd zamyka się bez błędu Tcl, a dwie próby odzyskiwania dashboardu używają `SharedSession`. [Testy sesji](../../tests/test_shared_session.py) · [Testy odzyskiwania](../../tests/test_section_login_recovery.py) |
+| [Restart po pierwszym zapisie zagrożeń SLA](../kontrakty/kolejka-i-trwalosc.md#lokalne-dane-i-migracja) | Naprawiono w źródłach. Regresja sprawdza kontrolę startową i zachowanie migawki z licznikiem oraz oczekującego alertu przed pierwszym zapisem filtra i po nim. [Test](../../tests/test_threatened_details.py) |
 | [Trzy nowe kafelki Dashboardu SLA](zakonczone/nowe-kafelki-dashboardu-sla.md) | Wdrożono w źródłach. Trzy liczniki potwierdzone w Aggregate API ADEO, 80 izolowanych testów zaliczonych. |
 | [Ujednolicenie statusów i nagłówków widoków](zakonczone/ujednolicenie-statusow-i-naglowkow.md) | Wdrożono w źródłach. Tk na Windows przy skali 100% i 125%, 522 testy zaliczone i 2 pominięte. |
 | [Walidacja zmiennych katalogowych i złożonych warunków filtrów ServiceNow](zakonczone/walidacja-warunkow-filtrow-servicenow.md) | ADEO: Wnioski, SCTASK i RITM z progiem 4 dni, jedna sesja. 516 zaliczonych testów, 2 pominięte. |

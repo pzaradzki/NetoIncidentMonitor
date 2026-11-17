@@ -14,7 +14,9 @@ Pigułki pokazują kolejkę, odczyt, logowanie, ponowienie i wynik. Diagnostyka 
 
 Belka widoku pokazuje wynik próby, datę pełnego odczytu i sumę czasów odpowiedzi składających się na pełny wynik. Dashboard wiąże metadane z okresem SLA. Częściowy dashboard może zachować aktualizację sekcji i poprzedni czas pełnego odczytu. Zagrożenia odtwarzają liczniki i metadane z tej samej transakcji co zapisana lista. Starsza historia bez takiego potwierdzenia pozostaje dostępna z pustymi polami czasu. [Decyzja 039](../decyzje/039-statusy-widokow-i-kolejki.md).
 
-## Ręczne odświeżanie agentów i lokalizacji
+## Pobieranie agentów i lokalizacji
+
+Po potwierdzeniu logowania wątek `SharedSession` sprawdza zapisany zakres z dwóch list. Przy istniejącym komplecie nie sprawdza ich aktualności w ServiceNow. Przy braku kompletu rejestruje jedno automatyczne zlecenie. Przed jego wykonaniem podejmuje cztery próby przygotowania układów w kolejności INC, REQ, RITM i SCTASK. Zlecenie zakresu wykonuje się przed oczekującym dashboardem, także przy zatrzymanym monitoringu. Po odmowie lub błędzie zapisu dashboard pozostaje przy poprzednich wynikach, a filtry i zagrożenia wracają do zwykłej kolejki.
 
 W ustawieniach, w sekcji **Dane aplikacji**, podgląd pokazuje wyłącznie zapisane identyfikatory ServiceNow. **Aktualizuj** dodaje jedno zadanie do wspólnej kolejki przy aktywnym lub zatrzymanym monitoringu. Zamknięcie podglądu pozostawia zlecenie w kolejce. Widok zablokuje ponowne zlecenie, dopóki poprzednie się nie zakończy.
 

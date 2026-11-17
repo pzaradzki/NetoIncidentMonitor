@@ -30,7 +30,7 @@ class History:
                         (key, json.loads(value)) for key, value in db.execute("SELECT key, value FROM membership")))
                 elif version != 0 or db.execute(
                         "SELECT 1 FROM sqlite_master WHERE type = 'table' "
-                        "AND name NOT IN ('threatened_history', 'alert_outbox')"
+                        "AND name NOT IN ('threatened_history', 'threatened_read', 'alert_outbox')"
                 ).fetchone():
                     raise ValueError("Nieprawidłowa wersja magazynu filtrów.")
         if self.membership is None and self.path.exists():

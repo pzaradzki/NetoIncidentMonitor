@@ -19,7 +19,7 @@ class StartupTests(unittest.TestCase):
             try:
                 with patch('neto_incident_monitor.app.read_json', return_value={'filters': []}):
                     app = App(root, history_path=Path(folder) / 'history.json',
-                              enable_tray=False, apply_startup=False, shared_session=True)
+                              enable_tray=False, apply_startup=False)
                 app.session.ready_once = True
                 app.handle_session_event('session_ready', None)
                 root.update()
@@ -60,6 +60,7 @@ class StartupTests(unittest.TestCase):
         for status in ('disabled', 'current', 'repaired', 'unknown'):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as folder:
                 root = tk.Tk()
+                root.withdraw()
                 try:
                     with patch('neto_incident_monitor.app.read_json', return_value={}), \
                             patch('neto_incident_monitor.startup.set_windows_startup') as write:
@@ -99,23 +100,25 @@ class StartupTests(unittest.TestCase):
         for minimized, to_tray, ready_early, apply_startup, expected in cases:
             with self.subTest(minimized=minimized, to_tray=to_tray, ready_early=ready_early, apply_startup=apply_startup):
                 root = tk.Tk()
+                root.withdraw()
                 try:
                     settings = {'start_minimized': minimized, 'minimize_to_tray': to_tray}
                     with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder, \
                          patch('neto_incident_monitor.app.read_json', return_value=settings), \
                          patch('neto_incident_monitor.tray.Tray'):
                         app = App(root, history_path=Path(folder) / 'history.json', apply_startup=apply_startup)
-                        if ready_early:
-                            app.tray_ready = True
-                        root.update()
-                        if ready_early:
-                            self.assertEqual(root.state(), 'withdrawn')
                         app.events.put(('tray_ready', None))
+                        if ready_early:
+                            app.drain()
+                        self.assertEqual(root.state(), 'withdrawn')
+                        app.session.ready_once = True
+                        app.handle_session_event('session_ready', None)
+                        if not ready_early and minimized and apply_startup:
+                            self.assertEqual(root.state(), 'iconic')
                         app.drain()
                         self.assertEqual(root.state(), expected)
                         if expected == 'withdrawn':
-                            app.events.put(('phase', 'Uruchamianie przeglądarki'))
-                            app.events.put(('phase', 'Oczekiwanie na logowanie'))
+                            app.events.put(('session_waiting', None))
                             app.drain()
                             root.update()
                             self.assertEqual(root.state(), 'withdrawn')

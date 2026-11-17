@@ -74,6 +74,7 @@ def build_dashboard(parent, app, cache_path=None):
     panel.final_result_received = False
     panel.request_error = False
     panel.ui_activity_state = None
+    scope_waiting = False
     def record(event, **facts):
         try:
             if panel.request_diagnostics is None:
@@ -152,8 +153,11 @@ def build_dashboard(parent, app, cache_path=None):
     panel.last_read_text = '—'
     panel.queued_period = None
     panel.selected_period = lambda: (int(panel.year.get()), months.index(panel.month.get()) + 1)
+    current_message = 'Brak odczytu'
 
     def set_message(status):
+        nonlocal current_message
+        current_message = status
         year, month = panel.data_period or panel.selected_period()
         panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year} • '
                           f'Ostatnia aktualizacja: {panel.last_read_text} • {status}')
@@ -164,11 +168,20 @@ def build_dashboard(parent, app, cache_path=None):
             details.append(f'Kafelki SLA pokazują dane za {months[month - 1].lower()} {year}.')
         if panel.cache_error:
             details.append('Nie udało się zapisać danych dashboardu na dysku.')
+        if scope_waiting:
+            details.append('Oczekiwanie na pobranie agentów i lokalizacji.')
         if status.startswith(('Nie udało się zlecić', 'Nie udało się otworzyć', 'Odczyt niedostępny')):
             details.append(status)
         panel.read_bar.show(replace(result, detail=' '.join(details)))
     panel.set_message = set_message
     set_message('Brak odczytu')
+
+    def set_scope_waiting(waiting):
+        nonlocal scope_waiting
+        if waiting != scope_waiting:
+            scope_waiting = waiting
+            set_message(current_message)
+    panel.set_scope_waiting = set_scope_waiting
     def period_changed(event=None):
         if panel.active_request is not None or panel.queued_period is not None:
             request_id, year, month = panel.active_request or (panel.request_id, *panel.queued_period)
@@ -239,13 +252,8 @@ def build_dashboard(parent, app, cache_path=None):
             set_updating(*panel.active_request, 'cancelled')
     panel.cancel_request = cancel_request
 
-    def request(automatic=False, coordinated=False, *, enqueue=True, selected=None):
-        if not automatic and not coordinated:
-            return app.request_refresh('dashboard')
+    def request(*, selected=None):
         if panel.active_request is not None:
-            return False
-        if not automatic and (not app.worker or not app.worker.is_alive()):
-            set_message('Odczyt niedostępny')
             return False
         year, month = selected or panel.selected_period()
         panel.request_id += 1
@@ -263,21 +271,14 @@ def build_dashboard(parent, app, cache_path=None):
                request_state='locked')
         for section in panel.section_pills:
             set_section_state(panel.request_id, section, 'W kolejce')
-        try:
-            if enqueue:
-                app.dashboard_requests.put(panel.active_request)
-        except Exception:
-            set_updating(*panel.active_request, 'queue_error')
-            set_message('Nie udało się zlecić aktualizacji')
-            return False
         record('dashboard_request_state', request_id=panel.request_id, year=year, month=month,
                request_state='queued')
-        set_message('Oczekiwanie na logowanie' if automatic else 'Oczekiwanie na odczyt')
-        return True if enqueue else panel.active_request
+        set_message('Oczekiwanie na odczyt')
+        return panel.active_request
 
     panel.request_refresh = request
 
-    refresh = RoundedButton(period, text="Aktualizuj", icon="refresh", command=request, background=BG)
+    refresh = RoundedButton(period, text="Aktualizuj", icon="refresh", command=lambda: app.request_refresh("dashboard"), background=BG)
     refresh.pack(side="left", anchor="s")
     panel.refresh_button = refresh
     refresh.configure(state='disabled')

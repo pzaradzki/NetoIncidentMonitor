@@ -235,7 +235,8 @@ def apply_window_style(window):
 def install_window_style(root):
     def mapped(event):
         if isinstance(event.widget, (tk.Tk, tk.Toplevel)):
-            event.widget.after_idle(lambda window=event.widget: apply_window_style(window))
+            # A mapped dialog can close before Tk runs the idle callback.
+            root.after_idle(lambda window=event.widget: apply_window_style(window))
     root.bind_class("Toplevel", "<Map>", mapped, add="+")
     root.bind("<Map>", mapped, add="+")
     root.after_idle(lambda: apply_window_style(root))

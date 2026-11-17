@@ -139,8 +139,7 @@ def build_ui(app, settings):
     activity_host.pack_propagate(False)
     app.activity_pill = StatusPill(activity_host, compact=True, fit=True)
     app.activity_pill.pack(side='left', anchor='center')
-    app.activity_kind = 'phase'
-    app.activity_pill.set_status('Monitoring zatrzymany' if app.session else 'Gotowy do uruchomienia')
+    app.activity_pill.set_status('Monitoring zatrzymany')
     app.controls = ttk.Frame(header)
     app.controls.pack(side="right")
     app.start_button = RoundedButton(app.controls, text="Uruchom monitoring", icon="play", command=app.start,
@@ -235,8 +234,6 @@ def build_ui(app, settings):
         app.filter_buttons.append(button)
     app.import_button = import_button = RoundedButton(filter_actions, text="Importuj z ServiceNow", command=app.import_favorites)
     import_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-    if not getattr(app, 'session', None):
-        app.filter_buttons.append(import_button)
     app.settings_window = tk.Toplevel(root)
     app.settings_window.withdraw()
     app.settings_window.title("Ustawienia")
@@ -417,71 +414,70 @@ def build_ui(app, settings):
     app.current_table.bind("<Double-1>", app.open_incident)
     app.table.bind("<Double-1>", app.open_incident)
     app.status = tk.StringVar()
-    if getattr(app, 'session', None):
-        app.session_status = tk.StringVar(value='Łączenie…')
-        app.work_status = tk.StringVar()
-        footer_color = BG
-        footer_font = ('Segoe UI', 9)
-        app.footer_line = tk.Frame(body, bg=ReadStatusBar.BORDER, height=1)
-        app.footer_line.grid(row=1, column=0, columnspan=3, sticky='ew', pady=(6, 0))
-        app.footer_surface = tk.Frame(body, bg=footer_color)
-        app.footer_surface.grid(row=2, column=0, columnspan=3, sticky='nsew')
+    app.session_status = tk.StringVar(value='Łączenie…')
+    app.work_status = tk.StringVar()
+    footer_color = BG
+    footer_font = ('Segoe UI', 9)
+    app.footer_line = tk.Frame(body, bg=ReadStatusBar.BORDER, height=1)
+    app.footer_line.grid(row=1, column=0, columnspan=3, sticky='ew', pady=(6, 0))
+    app.footer_surface = tk.Frame(body, bg=footer_color)
+    app.footer_surface.grid(row=2, column=0, columnspan=3, sticky='nsew')
 
-        session_bar = app.session_bar = tk.Frame(body, bg=footer_color, padx=4, pady=5)
-        session_bar.grid(row=2, column=0, sticky='new')
-        light = tk.Canvas(session_bar, width=9, height=9, bg=footer_color, highlightthickness=0)
-        light.pack(side='left', padx=(0, 5))
-        dot = light.create_oval(1, 1, 8, 8, outline='')
-        displayed_session = tk.StringVar()
-        state_label = tk.Label(session_bar, textvariable=displayed_session, bg=footer_color, fg=MUTED,
-                               font=footer_font, anchor='w', justify='left', width=1)
-        state_label.pack(side='left', fill='x', expand=True)
-        state_label.bind('<Configure>', lambda event: state_label.configure(wraplength=max(60, event.width - 4)))
+    session_bar = app.session_bar = tk.Frame(body, bg=footer_color, padx=4, pady=5)
+    session_bar.grid(row=2, column=0, sticky='new')
+    light = tk.Canvas(session_bar, width=9, height=9, bg=footer_color, highlightthickness=0)
+    light.pack(side='left', padx=(0, 5))
+    dot = light.create_oval(1, 1, 8, 8, outline='')
+    displayed_session = tk.StringVar()
+    state_label = tk.Label(session_bar, textvariable=displayed_session, bg=footer_color, fg=MUTED,
+                           font=footer_font, anchor='w', justify='left', width=1)
+    state_label.pack(side='left', fill='x', expand=True)
+    state_label.bind('<Configure>', lambda event: state_label.configure(wraplength=max(60, event.width - 4)))
 
-        work_bar = app.work_bar = tk.Frame(body, bg=footer_color, pady=5, padx=0)
-        work_bar.grid(row=2, column=2, sticky='new')
-        work_bar.columnconfigure(1, weight=1)
-        activity_icon = tk.Canvas(work_bar, width=17, height=15, bg=footer_color, highlightthickness=0)
-        activity_icon.grid(row=0, column=0, sticky='w', padx=(0, 6))
-        pulse = activity_icon.create_line(1, 8, 4, 8, 7, 2, 10, 13, 13, 8, 16, 8,
-                                          width=1.5, capstyle='round', joinstyle='round')
-        displayed_work = tk.StringVar()
-        work_label = tk.Label(work_bar, textvariable=displayed_work, bg=footer_color, fg=MUTED,
-                              font=footer_font, width=1, anchor='w', justify='left')
-        work_label.grid(row=0, column=1, sticky='ew')
-        app.footer_actions = tk.Frame(work_bar, bg=footer_color)
-        app.footer_actions.grid(row=0, column=2, sticky='e', padx=(8, 6))
-        app.login_window_button = RoundedButton(app.footer_actions, text='Pokaż okno logowania',
-                                                background=footer_color,
-                                                command=lambda: app.events.put(('show_browser', None)), compact=True)
-        notice = tk.Frame(work_bar, bg=footer_color)
-        notice.grid(row=1, column=0, columnspan=3, sticky='ew', padx=(0, 6), pady=(4, 0))
-        notice.grid_remove()
-        notice_label = tk.Label(notice, textvariable=app.status, bg=footer_color, fg=MUTED, width=1,
-                                anchor='w', justify='left', font=footer_font)
-        notice_label.pack(side='left', fill='x', expand=True)
-        RoundedButton(notice, text='Zamknij', compact=True, background=footer_color,
-                      command=lambda: app.status.set('')).pack(side='right', padx=(8, 0))
-        notice_label.bind('<Configure>', lambda event: notice_label.configure(wraplength=max(100, event.width - 4)))
-        work_label.bind('<Configure>', lambda event: work_label.configure(wraplength=max(100, event.width - 4)))
+    work_bar = app.work_bar = tk.Frame(body, bg=footer_color, pady=5, padx=0)
+    work_bar.grid(row=2, column=2, sticky='new')
+    work_bar.columnconfigure(1, weight=1)
+    activity_icon = tk.Canvas(work_bar, width=17, height=15, bg=footer_color, highlightthickness=0)
+    activity_icon.grid(row=0, column=0, sticky='w', padx=(0, 6))
+    pulse = activity_icon.create_line(1, 8, 4, 8, 7, 2, 10, 13, 13, 8, 16, 8,
+                                      width=1.5, capstyle='round', joinstyle='round')
+    displayed_work = tk.StringVar()
+    work_label = tk.Label(work_bar, textvariable=displayed_work, bg=footer_color, fg=MUTED,
+                          font=footer_font, width=1, anchor='w', justify='left')
+    work_label.grid(row=0, column=1, sticky='ew')
+    app.footer_actions = tk.Frame(work_bar, bg=footer_color)
+    app.footer_actions.grid(row=0, column=2, sticky='e', padx=(8, 6))
+    app.login_window_button = RoundedButton(app.footer_actions, text='Pokaż okno logowania',
+                                            background=footer_color,
+                                            command=lambda: app.events.put(('show_browser', None)), compact=True)
+    notice = tk.Frame(work_bar, bg=footer_color)
+    notice.grid(row=1, column=0, columnspan=3, sticky='ew', padx=(0, 6), pady=(4, 0))
+    notice.grid_remove()
+    notice_label = tk.Label(notice, textvariable=app.status, bg=footer_color, fg=MUTED, width=1,
+                            anchor='w', justify='left', font=footer_font)
+    notice_label.pack(side='left', fill='x', expand=True)
+    RoundedButton(notice, text='Zamknij', compact=True, background=footer_color,
+                  command=lambda: app.status.set('')).pack(side='right', padx=(8, 0))
+    notice_label.bind('<Configure>', lambda event: notice_label.configure(wraplength=max(100, event.width - 4)))
+    work_label.bind('<Configure>', lambda event: work_label.configure(wraplength=max(100, event.width - 4)))
 
-        def show_notice(*_):
-            if app.status.get():
-                notice.grid()
-            else:
-                notice.grid_remove()
+    def show_notice(*_):
+        if app.status.get():
+            notice.grid()
+        else:
+            notice.grid_remove()
 
-        def show_footer_status(*_):
-            color = {'ready': '#86ceaa', 'failed': '#ffadb8', 'waiting': '#f5c77b'}.get(app.session_state, MUTED)
-            light.itemconfigure(dot, fill=color)
-            displayed_session.set(f'ServiceNow · {app.session_status.get()}')
-            idle = 'Oczekuje na następny odczyt' if app.cycle_active and app.session_state == 'ready' else 'Brak zleceń'
-            work = app.work_status.get()
-            displayed_work.set(f'Aktywność · {work or idle}')
-            activity_color = {'ready': '#a8cbfa', 'waiting': '#f5c77b'}.get(app.session_state, MUTED) if work else MUTED
-            activity_icon.itemconfigure(pulse, fill=activity_color)
+    def show_footer_status(*_):
+        color = {'ready': '#86ceaa', 'failed': '#ffadb8', 'waiting': '#f5c77b'}.get(app.session_state, MUTED)
+        light.itemconfigure(dot, fill=color)
+        displayed_session.set(f'ServiceNow · {app.session_status.get()}')
+        idle = 'Oczekuje na następny odczyt' if app.cycle_active and app.session_state == 'ready' else 'Brak zleceń'
+        work = app.work_status.get()
+        displayed_work.set(f'Aktywność · {work or idle}')
+        activity_color = {'ready': '#a8cbfa', 'waiting': '#f5c77b'}.get(app.session_state, MUTED) if work else MUTED
+        activity_icon.itemconfigure(pulse, fill=activity_color)
 
-        app.status.trace_add('write', show_notice)
-        for variable in (app.session_status, app.work_status, app.phase):
-            variable.trace_add('write', show_footer_status)
-        show_footer_status()
+    app.status.trace_add('write', show_notice)
+    for variable in (app.session_status, app.work_status, app.phase):
+        variable.trace_add('write', show_footer_status)
+    show_footer_status()

@@ -172,4 +172,5 @@ def refresh_scope(session, page, part, stop):
             except (Cancelled, Error, AuthenticationRequired) as error:
                 measured_record(diagnostics, 'browser_cleanup_error', **error_facts(error))
         measured_record(diagnostics, 'dashboard_scope_result', outcome=outcome,
+                        scope_trigger=part.data.get('trigger', 'manual'),
                         item_count=part.data.get('count', 0), duration_ms=round((monotonic() - started) * 1000))

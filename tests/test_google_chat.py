@@ -142,7 +142,7 @@ class GoogleChatTests(unittest.TestCase):
 
     def test_session_expiry_respects_google_chat_setting(self):
         app = self.make_app()
-        app.interruption = Mock()
+        app.status = Mock()
         app.session_expired('Please log in')
         app.google_chat_sender.submit.assert_called_once_with(URL, 'ServiceNow — sesja wygasła', 'Please log in')
         app.google_chat_enabled.get.return_value = False

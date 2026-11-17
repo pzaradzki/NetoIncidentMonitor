@@ -34,6 +34,23 @@ def main(output):
             if app.tray:
                 app.tray.stop()
         window.destroy()
+        if result['frozen']:
+            from neto_incident_monitor.analytics_config import (PACKAGED_CONFIG, SCOPE_KEYS, has_dashboard_scope,
+                                                               held_queries, load_config, lost_incidents_query,
+                                                               monthly_query, request_queries, stale_l1_query)
+            config = load_config()
+            assert not set(SCOPE_KEYS).intersection(load_config(PACKAGED_CONFIG))
+            result['dashboard_scope_present'] = has_dashboard_scope(config)
+            if not (DATA / 'dashboard-api.json').is_file():
+                assert not result['dashboard_scope_present']
+                config = {**config, 'assignees': ['1' * 32], 'locations': ['2' * 32]}
+            monthly_query(config, 2026, 11, unassigned=True)
+            lost_incidents_query(config)
+            held_queries(config)
+            stale_l1_query(config)
+            request_queries(config)
+            result['dashboard_config'] = 'ok'
+            result['dashboard_local_config_present'] = (DATA / 'dashboard-api.json').is_file()
         from neto_incident_monitor.data_validation import preflight, StartupDataError
         with tempfile.TemporaryDirectory(prefix='sn-validation-') as directory:
             config = Path(directory) / 'config.json'

@@ -1,184 +1,177 @@
-import queue
+import json
 import tempfile
 import threading
+import time
 import unittest
+from itertools import count
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-
-from tests.test_filter_api import filter_definition
+from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.history import History
-from neto_incident_monitor.monitoring import RefreshControl
+from neto_incident_monitor.login_diagnostics import close_diagnostics
+from neto_incident_monitor.monitoring import Schedule
+from neto_incident_monitor.read_errors import Cancelled
+from neto_incident_monitor.shared_session import SharedSession
+from neto_incident_monitor.threatened import KEYS
+
+
+class ThreatenedScheduleTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.clock = 0
+        app = self.app = App.__new__(App)
+        app.stop = threading.Event()
+        app.quitting = False
+        app.session_state = 'ready'
+        app.threatened_next_read = None
+        app.schedule = Schedule()
+        app.filters = []
+        app.filter_revisions = {}
+        app.disabled_filter_urls = frozenset()
+        app.monitor_generation = object()
+        app.history = History(self.folder / 'history.json')
+        app.alert_writer = Mock()
+        app.update_refresh_controls = Mock()
+        period = (2026, 11)
+        app.dashboard_view = Mock(active_request=(41, *period))
+        app.dashboard_view.selected_period.return_value = period
+        ids = count(1)
+        app.threatened_view = Mock(pending=False)
+        app.threatened_view.request_refresh.side_effect = lambda **_kwargs: next(ids)
+        app.events = Mock()
+        app.events.put.side_effect = self.prepare_read
+        session = self.session = app.session = SharedSession(app, self.folder / 'profile')
+        session.ready_once = session.connected = True
+        session.log = Mock()
+        self.page = Mock()
+        self.page.is_closed.return_value = False
+        close_diagnostics()
+        self.enterContext(patch('neto_incident_monitor.login_diagnostics.DATA', self.folder))
+        self.addCleanup(close_diagnostics)
+        self.enterContext(patch('neto_incident_monitor.app.STATE', self.folder / 'seen.json'))
+        self.enterContext(patch('neto_incident_monitor.analytics_config.load_config', return_value={}))
+        self.enterContext(patch('neto_incident_monitor.shared_session.authentication_required', return_value=False))
+        app_time = self.enterContext(patch('neto_incident_monitor.app.time', wraps=time))
+        app_time.monotonic.side_effect = lambda: self.clock
+        for module in ('shared_session', 'read_budget', 'section_runner'):
+            self.enterContext(patch(f'neto_incident_monitor.{module}.monotonic', side_effect=lambda: self.clock))
+        self.session.start_cycle([], {'inc': 3600, 'task': 3600})
+
+    def prepare_read(self, event):
+        if event[0] == 'session_prepare_read':
+            self.app.handle_session_event(*event)
+
+    def serve_until_idle(self):
+        with patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=Cancelled) as wait:
+            with self.assertRaises(Cancelled):
+                self.session.serve(self.page)
+        wait.assert_called_once()
+        return wait.call_args.args[2]
+
+    def diagnostic_entries(self, event):
+        log = (self.folder / 'login-diagnostics.jsonl').read_text(encoding='utf-8')
+        entries = [json.loads(line) for line in log.splitlines()]
+        return [entry for entry in entries if entry['event'] == event]
+
+    def test_periodic_threats_interrupt_only_between_filters_and_determine_sleep(self):
+        app = self.app
+        order = []
+        app.filters = [{'name': str(i), 'url': f'https://adeo.service-now.com/incident_list.do?sysparm_query=priority={i}'}
+                       for i in range(1, 4)]
+        app.update_session_filters()
+
+        def read_filter(_page, _url, _name, index, *_args, **_kwargs):
+            order.append(index)
+            self.clock += 35
+            return 'success'
+
+        def threats(*_args):
+            order.append('threatened')
+            self.clock += 5
+            return dict.fromkeys(KEYS, 0), {}
+
+        app.read_filter = Mock(side_effect=read_filter)
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 25)
+            self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3])
+            self.assertEqual(app.threatened_next_read, 140)
+            self.clock = 142
+            self.assertEqual(self.serve_until_idle(), 60)
+        self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3, 'threatened'])
+        schedule = self.diagnostic_entries('threatened_schedule')
+        self.assertEqual([(entry['delay_reason'], entry['lateness_ms']) for entry in schedule],
+                         [('filter', 10_000), ('idle', 2_000)])
+
+    def test_overdue_during_dashboard_runs_once_and_logs_dashboard_delay(self):
+        app = self.app
+        app.threatened_next_read = 10
+        order = []
+
+        def dashboard(*_args, **_kwargs):
+            order.append('dashboard')
+            self.clock += 130
+            return True
+
+        def threats(*_args):
+            order.append('threatened')
+            self.clock += 5
+            return dict.fromkeys(KEYS, 0), {}
+
+        app.read_dashboard_request = Mock(side_effect=dashboard)
+        self.assertTrue(app.request_refresh('dashboard'))
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 60)
+        self.assertEqual(order, ['dashboard', 'threatened'])
+        self.assertEqual(app.threatened_next_read, 195)
+        schedule, = self.diagnostic_entries('threatened_schedule')
+        self.assertEqual(schedule['delay_reason'], 'dashboard')
+        self.assertEqual(schedule['lateness_ms'], 120_000)
+        self.assertEqual(schedule['request_id'], 1)
+        self.assertTrue(schedule['run_id'] and schedule['read_id'])
+        completed, = self.diagnostic_entries('threatened_details_complete')
+        for field in ('run_id', 'read_id', 'request_id'):
+            self.assertEqual(completed[field], schedule[field])
+
+    def test_threat_timer_counts_from_completion_after_error_and_manual_read(self):
+        app = self.app
+        self.clock = 100
+        attempts = []
+
+        def threats(_page, _stop, diagnostics, _config):
+            attempts.append((self.clock, diagnostics.context['request_id']))
+            self.clock += 20
+            if len(attempts) != 2:
+                raise ValueError('SYNTHETIC_PRIVATE_SCHEDULE_DATA')
+            return dict.fromkeys(KEYS, 0), {}
+
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 60)
+            self.assertEqual(app.threatened_next_read, 180)
+            self.clock = 179
+            self.assertEqual(self.serve_until_idle(), 1)
+            self.assertEqual(len(attempts), 1)
+            self.assertTrue(app.request_refresh('threatened'))
+            self.assertEqual(self.serve_until_idle(), 60)
+            self.assertEqual(app.threatened_next_read, 259)
+            saved = app.history.threatened_snapshot(with_summary=True)
+            self.assertEqual(saved[1]['counters'], dict.fromkeys(KEYS, 0))
+            self.clock = 258
+            self.assertEqual(self.serve_until_idle(), 1)
+            self.assertEqual(len(attempts), 2)
+            self.clock = 259
+            self.assertEqual(self.serve_until_idle(), 60)
+            self.assertEqual(app.threatened_next_read, 339)
+            self.assertEqual(app.history.threatened_snapshot(with_summary=True), saved)
+            self.session.stop_cycle()
+            self.clock = 500
+            self.serve_until_idle()
+        self.assertEqual(attempts, [(100, 1), (179, 2), (259, 3)])
+        log = (self.folder / 'login-diagnostics.jsonl').read_text(encoding='utf-8')
+        self.assertNotIn('SYNTHETIC_PRIVATE_SCHEDULE_DATA', log)
 
 
 class RefreshRequestsTests(unittest.TestCase):
-    def test_periodic_threats_interrupt_only_between_filters_and_determine_sleep(self):
-        for slow_dashboard in (False, True):
-            with self.subTest(slow_dashboard=slow_dashboard), tempfile.TemporaryDirectory() as folder:
-                app = App.__new__(App)
-                app.stop, app.events = threading.Event(), queue.Queue()
-                app.threatened_requests = queue.Queue()
-                app.threatened_requests.put(1)
-                app.schedule = Mock(woken_by_request=False)
-                urls = ['https://adeo.service-now.com/incident_list.do?sysparm_query=priority=' + str(i) for i in range(3)]
-                app.filters = [dict(name=str(i), url=url, list_definition=filter_definition(url)) for i, url in enumerate(urls)]
-                app.disabled_filter_urls = frozenset()
-                app.history = History(Path(folder) / 'history.json')
-                app.restore_login = Mock(return_value=True)
-                clock, order = [0], []
-                def dashboard(page):
-                    order.append('dashboard')
-                    if slow_dashboard:
-                        clock[0] += 130
-                app.read_dashboard_request = Mock(side_effect=dashboard)
-                def threats(*args):
-                    self.assertTrue(app.refresh_coordinator().busy)
-                    order.append('threatened')
-                    clock[0] += 5
-                    return dict.fromkeys(('P1', 'P2', 'P3', 'P4', 'P5', 'Podjęcie'), 0), {}
-                def read(page, stop, diagnostics, definition):
-                    url = definition['source_url']
-                    order.append(urls.index(url))
-                    clock[0] += 35
-                    return {}
-                page = Mock()
-                page.is_closed.return_value = False
-                context = Mock(pages=[page])
-                playwright = MagicMock()
-                playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-                with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
-                        patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                        patch('neto_incident_monitor.browser_window.BrowserWindow'), \
-                        patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
-                        patch('neto_incident_monitor.app.navigate'), \
-                        patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                        patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
-                        patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read), \
-                        patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True) as wait:
-                    app.monitor(dict(urls=urls, filters=app.filters, interval=3600, task_interval=3600))
-                expected = ['dashboard', 'threatened', 0, 1, 'threatened', 2]
-                self.assertEqual(order, expected)
-                self.assertEqual(wait.call_args.args[2], 25)
-                self.assertEqual(app.threatened_next_read - clock[0], 25)
-
-    def test_threat_timer_counts_from_completion_after_error_and_manual_read(self):
-        app = App.__new__(App)
-        app.stop, app.events, app.threatened_requests = threading.Event(), queue.Queue(), queue.Queue()
-        clock = [100]
-        def fail(*args):
-            clock[0] += 20
-            raise ValueError('fixture')
-        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
-                patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: clock[0]), \
-                patch('neto_incident_monitor.threatened_api.read_threats', side_effect=fail) as read:
-            app.threatened_requests.put(1)
-            app.read_threatened_request(Mock())
-            self.assertEqual(app.threatened_next_read, 180)
-            clock[0] = 179
-            app.read_due_threatened(Mock())
-            self.assertEqual(read.call_count, 1)
-            app.threatened_requests.put(2)  # Manual refresh resets the same timer.
-            app.read_threatened_request(Mock())
-            self.assertEqual(app.threatened_next_read, 259)
-            clock[0] = 259
-            app.read_due_threatened(Mock())
-            self.assertEqual(app.threatened_next_read, 339)
-            self.assertEqual(read.call_count, 3)
-            self.assertEqual(app.threatened_last_request, 2)
-            clock[0] = 500
-            app.stop.set()
-            app.read_due_threatened(Mock())
-            self.assertEqual(read.call_count, 3)
-
-    def test_manual_requests_share_lock_but_open_stays_available(self):
-        for scope in ('all', 'dashboard', 'threatened', 'filter'):
-            with self.subTest(scope=scope):
-                app = App.__new__(App)
-                app.worker = Mock()
-                app.worker.is_alive.return_value = True
-                app.stop = threading.Event()
-                app.auth_waiting = app.quitting = False
-                app.filters = [dict(name='A', url='selected', enabled=True)]
-                app.selected_filter_url = Mock(return_value='selected')
-                app.check_button = Mock()
-                app.refresh_filter_button = Mock()
-                app.open_filter_button = Mock()
-                app.dashboard_view = Mock()
-                app.threatened_view = Mock(pending=False)
-                app.schedule = Mock()
-                app.status = Mock()
-                self.assertTrue(app.request_refresh(scope))
-                self.assertFalse(app.request_refresh('all'))
-                self.assertEqual(app.refresh_coordinator().current(),
-                                 (scope, 'selected' if scope == 'filter' else None))
-                app.check_button.configure.assert_called_with(state='disabled')
-                app.refresh_filter_button.configure.assert_called_with(state='disabled')
-                app.dashboard_view.refresh_button.configure.assert_called_with(state='disabled')
-                app.threatened_view.refresh_button.configure.assert_called_with(state='disabled')
-                app.open_filter_button.configure.assert_called_with(state='normal')
-                self.assertEqual(app.dashboard_view.request_refresh.call_count, int(scope in ('all', 'dashboard')))
-                self.assertEqual(app.threatened_view.request_refresh.call_count, int(scope in ('all', 'threatened')))
-                app.schedule.request.assert_called_once()
-                app.refresh_coordinator().finish()
-                app.update_refresh_controls()
-                app.check_button.configure.assert_called_with(state='normal')
-                app.stop.set()
-                app.update_refresh_controls()
-                app.check_button.configure.assert_called_with(state='disabled')
-                app.open_filter_button.configure.assert_called_with(state='normal')
-
-    def test_reservation_rejects_overlap_and_preserves_target(self):
-        control = RefreshControl()
-        self.assertTrue(control.reserve('filter', 'selected'))
-        self.assertFalse(control.reserve('all'))
-        self.assertEqual(control.scheduled(), ('filter', 'selected'))
-        control.finish()
-        self.assertEqual(control.scheduled(), ('scheduled', None))
-        self.assertTrue(control.busy)
-
-    def test_worker_obeys_scope_and_full_order(self):
-        for scope, expected in (
-            ('all', ['dashboard', 'threatened', 'A', 'B']),
-            ('dashboard', ['dashboard']),
-            ('threatened', ['threatened']),
-            ('filter', ['B']),
-        ):
-            with self.subTest(scope=scope), tempfile.TemporaryDirectory() as folder:
-                app = App.__new__(App)
-                app.stop = threading.Event()
-                app.events = queue.Queue()
-                app.schedule = Mock(woken_by_request=True)
-                urls = ['https://adeo.service-now.com/incident_list.do?sysparm_query=priority=1',
-                        'https://adeo.service-now.com/incident_list.do?sysparm_query=priority=2']
-                app.filters = [dict(name=name, url=url, list_definition=filter_definition(url)) for name, url in zip(('A', 'B'), urls)]
-                app.disabled_filter_urls = frozenset()
-                app.history = History(Path(folder) / 'history.json')
-                app.refresh_coordinator().reserve(scope, urls[1] if scope == 'filter' else None)
-                order = []
-                app.restore_login = Mock(return_value=True)
-                app.read_threatened_request = Mock(side_effect=lambda page: order.append('threatened'))
-                app.read_dashboard_request = Mock(side_effect=lambda page: order.append('dashboard'))
-                page = Mock()
-                page.is_closed.return_value = False
-                context = Mock(pages=[page])
-                playwright = MagicMock()
-                playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-                def read(page, stop, diagnostics, definition):
-                    url = definition['source_url']
-                    self.assertTrue(app.refresh_coordinator().busy)
-                    order.append('A' if url == urls[0] else 'B')
-                    return {}
-                with patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                        patch('neto_incident_monitor.browser_window.BrowserWindow'), \
-                        patch('neto_incident_monitor.app.STATE', Path(folder) / 'seen.json'), \
-                        patch('neto_incident_monitor.app.navigate'), \
-                        patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=read), \
-                        patch('neto_incident_monitor.app.wait_for_browser_cycle', return_value=True):
-                    app.monitor(dict(urls=urls, filters=app.filters, interval=60, task_interval=60))
-                self.assertEqual(order, expected)
-                self.assertFalse(app.refresh_coordinator().busy)
-
     def test_selected_filter_opens_without_monitoring(self):
         app = App.__new__(App)
         url = 'https://adeo.service-now.com/incident_list.do?sysparm_query=state=1'

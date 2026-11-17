@@ -1,5 +1,4 @@
 import tempfile
-import queue
 import json
 import tkinter as tk
 import unittest
@@ -21,7 +20,7 @@ class SnapshotTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.addCleanup(self.root.destroy)
         self.path = Path(self.temp.name)/'cache.json'
-        self.app = SimpleNamespace(dashboard_requests=queue.Queue())
+        self.app = SimpleNamespace()
         self.panel = build_dashboard(self.root, self.app, self.path)
 
     def result(self, section, titles, time='2026-10-01T12:00:00+02:00', value=1):
@@ -69,7 +68,7 @@ class SnapshotTests(unittest.TestCase):
     def complete_read(self):
         self.panel.year.set('2026')
         self.panel.month.set('Październik')
-        self.panel.request_refresh(automatic=True)
+        self.panel.request_refresh()
         for section, titles in (('sla', TITLES), ('held', HELD_TITLES), ('requests', REQUEST_TITLES)):
             self.result(section, titles)
         self.panel.apply_result((self.panel.request_id, 2026, 10, {}, None, ''))
@@ -94,7 +93,7 @@ class SnapshotTests(unittest.TestCase):
     def test_partial_or_failed_read_does_not_advance_complete_timestamp(self):
         self.complete_read()
         stamp = self.panel.last_complete_read_at
-        self.panel.request_refresh(automatic=True)
+        self.panel.request_refresh()
         self.result('sla', TITLES, '2026-10-02T12:00:00+02:00')
         self.assertEqual(self.panel.last_complete_read_at, stamp)
         self.result('held', HELD_TITLES)

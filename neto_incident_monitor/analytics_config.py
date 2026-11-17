@@ -4,23 +4,36 @@ import re
 
 from neto_incident_monitor.dashboard import HELD_METRIC_TITLES, REQUEST_TITLES, month_range
 from neto_incident_monitor.dashboard_context import DashboardReadError
-from neto_incident_monitor.runtime_paths import DATA
+from neto_incident_monitor.runtime_paths import DATA, FROZEN, ROOT
 
 CONFIG_PATH = DATA / 'dashboard-api.json'
+PACKAGED_CONFIG = ROOT / 'defaults' / 'dashboard-api.json'
+SCOPE_KEYS = ('assignees', 'locations')
 SYS_ID = re.compile(r'[0-9a-f]{32}', re.ASCII | re.IGNORECASE)
+
+
+def _read_config_file(path):
+    with path.open(encoding='utf-8-sig') as stream:
+        raw = stream.read(24_001)
+    if len(raw) > 24_000:
+        raise ValueError
+    config = json.loads(raw)
+    if not isinstance(config, dict) or type(config.get('version')) is not int or config['version'] != 1:
+        raise ValueError
+    return config
 
 
 def load_config(path=None):
     try:
-        with (CONFIG_PATH if path is None else path).open(encoding='utf-8-sig') as stream:
-            raw = stream.read(24_001)
-        if len(raw) > 24_000:
-            raise ValueError
-        config = json.loads(raw)
-        if (not isinstance(config, dict) or type(config.get('version')) is not int
-                or config['version'] != 1):
-            raise ValueError
-        return config
+        if path is not None or not FROZEN:
+            return _read_config_file(CONFIG_PATH if path is None else path)
+        defaults = _read_config_file(PACKAGED_CONFIG)
+        for key in SCOPE_KEYS:
+            defaults.pop(key, None)  # Old experimental bundles included these lists.
+        try:
+            return {**defaults, **_read_config_file(CONFIG_PATH)}
+        except FileNotFoundError:
+            return defaults
     except (OSError, ValueError) as exc:
         raise DashboardReadError('api_configuration', retryable=False) from exc
 
@@ -42,7 +55,29 @@ def reference_set(config, key):
 
 
 def dashboard_scope(config):
-    return {key: reference_set(config, key).split(',') for key in ('assignees', 'locations')}
+    return {key: reference_set(config, key).split(',') for key in SCOPE_KEYS}
+
+
+def has_dashboard_scope(config):
+    try:
+        dashboard_scope(config)
+    except DashboardReadError:
+        return False
+    return True
+
+
+def remove_dashboard_scope(path):
+    from neto_incident_monitor.app import save_json
+    from neto_incident_monitor.data_reset import reject_redirect
+
+    reject_redirect(path)
+    reject_redirect(path.with_suffix('.tmp'))
+    try:
+        config = _read_config_file(path)
+    except (FileNotFoundError, ValueError):
+        return  # A source reset cannot reconstruct missing or malformed project definitions.
+    if any(key in config for key in SCOPE_KEYS):
+        save_json(path, {key: value for key, value in config.items() if key not in SCOPE_KEYS})
 
 
 def scope_from_p1_query(query):
@@ -68,12 +103,21 @@ def save_dashboard_scope(scope, path=None):
     from neto_incident_monitor.app import save_json
     from neto_incident_monitor.data_reset import reject_redirect
 
+    packaged = path is None and FROZEN
     path = CONFIG_PATH if path is None else path
     scope = dashboard_scope(scope)
     try:
+        reject_redirect(path.parent)
         reject_redirect(path)
         reject_redirect(path.with_suffix('.tmp'))
-        config = load_config(path)
+        try:
+            config = _read_config_file(path)
+        except FileNotFoundError:
+            if not packaged:
+                raise
+            defaults = load_config()
+            config = {'version': defaults['version']}
+            path.parent.mkdir(parents=True, exist_ok=True)
         save_json(path, {**config, **scope})
     except (OSError, ValueError, DashboardReadError):
         raise DashboardReadError('dashboard_scope_save', retryable=False) from None

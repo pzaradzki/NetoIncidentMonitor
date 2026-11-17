@@ -4,8 +4,7 @@ import threading
 import tkinter as tk
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-from tests.test_filter_api import filter_definition
+from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.threatened import KEYS, THREATENED_URL
@@ -87,149 +86,130 @@ class ThreatenedPresentationTests(unittest.TestCase):
             root.update()
             self.assertTrue(all(widget.cget('background') == SURFACE for widget in (tile, *tile.labels)))
 
-    def test_simulated_incident_does_not_cancel_pending_read_and_real_result_replaces_it(self):
+    def ready_app(self):
         root = tk.Tk()
-        try:
-            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.app.read_json', return_value={}), \
-                    patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
-                app = App(root, history_path=Path(folder)/'history.json', apply_startup=False, enable_tray=False)
-            panel = app.threatened_view
-            panel.apply_result(panel.request_id, dict.fromkeys(KEYS, 0), 100)
-            app.worker = Mock()
-            app.worker.is_alive.return_value = True
-            app.schedule = Mock()
-            panel.set_monitoring(True)
-            panel.request_refresh()
-            request = panel.request_id
-            filters = list(app.filters)
-            with patch('neto_incident_monitor.threatened_ui.random.choice', return_value='P4'):
-                self.assertEqual(panel.simulate_read(), 'break')
-            self.assertEqual(panel.values['P4'], 1)
-            self.assertEqual(sum(panel.values.values()), 1)
-            self.assertTrue(panel.simulated)
-            self.assertEqual(panel.status_pill.status_text, 'Dane testowe')
-            self.assertTrue(app.threatened_incidents_button.alert)
-            self.assertTrue(panel.pending)
-            self.assertEqual(panel.request_id, request)
-            self.assertEqual(panel.last_read, 100)
-            self.assertFalse(panel.refresh_button.enabled)
-            self.assertEqual(app.filters, filters)
-            panel.apply_result(request, None, None)
-            self.assertTrue(panel.simulated)
-            self.assertIn('dane testowe', panel.message.get())
-            self.assertTrue(app.threatened_incidents_button.alert)
-            panel.apply_result(request, dict.fromkeys(KEYS, 0), 200)
-            self.assertFalse(panel.simulated)
-            self.assertFalse(app.threatened_incidents_button.alert)
-            self.assertEqual([t.value_label.cget('text') for t in panel.tiles], ['0'] * 6)
-            self.assertEqual(panel.last_read, 200)
-            self.assertIsNone(panel.last_full_read)
-            panel.apply_details(request, {})
-            self.assertEqual(panel.last_full_read, 200)
-            self.assertIn('Odczytano liczniki i listę', panel.message.get())
-            panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
-            panel.apply_details(request, None)
-            self.assertEqual(panel.last_full_read, 200)
-            self.assertIn('Zachowano ostatnią poprawną listę', panel.message.get())
-        finally:
-            root.destroy()
+        root.withdraw()
+        folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.addCleanup(root.destroy)
+        with patch('neto_incident_monitor.app.read_json', return_value={}), \
+                patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
+            app = App(root, history_path=folder / 'history.json', apply_startup=False, enable_tray=False)
+        self.addCleanup(app.teams_sender.stop)
+        self.addCleanup(app.google_chat_sender.stop)
+        self.addCleanup(app.alert_writer.shutdown)
+        self.addCleanup(app.history_writer.shutdown)
+        app.session.ready_once = True
+        app.window_restoring = False
+        app.handle_session_event('session_ready', None)
+        app.session.log = Mock()
+        return app
 
-    def test_startup_request_is_queued_before_worker_exists_and_does_not_wake_filters(self):
-        root = tk.Tk()
-        try:
-            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.app.read_json', return_value={}), \
-                    patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
-                app = App(root, history_path=Path(folder)/'history.json', apply_startup=False, enable_tray=False)
-            app.schedule = Mock()
-            self.assertIsNone(app.worker)
-            app.threatened_view.request_refresh(automatic=True)
-            self.assertEqual(app.threatened_requests.qsize(), 1)
-            self.assertTrue(app.threatened_view.pending)
-            self.assertFalse(app.threatened_view.refresh_button.enabled)
-            app.schedule.request.assert_not_called()
-            self.assertIn('przed filtrami', app.threatened_view.message.get())
-        finally:
-            root.destroy()
+    def start_read(self, app):
+        part, source = app.session.next_part(None)
+        self.assertEqual((part.scope, source), ('threatened', 'manual'))
+        token = object()
+        app.events.put(('session_part_started', (token, part)))
+        prepared = {'part': part, 'stop': app.session.closed, 'done': threading.Event(), 'value': None}
+        app.events.put(('session_prepare_read', prepared))
+        app.drain()
+        self.assertEqual(app.threatened_view.request_id, prepared['value'])
+        return prepared['value'], token, part
+
+    def finish_read(self, app, request, token, part):
+        app.session.work.complete_part(part, manual=True, success=True)
+        app.session.finish_manual_job(None)
+        app.events.put(('session_part_finished', token))
+        app.events.put(('threatened_finished', request))
+        app.drain()
+
+    def test_simulated_incident_does_not_cancel_pending_read_and_real_result_replaces_it(self):
+        app = self.ready_app()
+        panel = app.threatened_view
+        panel.apply_result(panel.request_id, dict.fromkeys(KEYS, 0), 100)
+        self.assertTrue(app.request_refresh('threatened'))
+        request, token, part = self.start_read(app)
+        filters = list(app.filters)
+        with patch('neto_incident_monitor.threatened_ui.random.choice', return_value='P4'):
+            self.assertEqual(panel.simulate_read(), 'break')
+        self.assertEqual(panel.values['P4'], 1)
+        self.assertEqual(sum(panel.values.values()), 1)
+        self.assertTrue(panel.simulated)
+        self.assertEqual(panel.status_pill.status_text, 'Dane testowe')
+        self.assertTrue(app.threatened_incidents_button.alert)
+        self.assertTrue(panel.pending)
+        self.assertEqual(panel.request_id, request)
+        self.assertEqual(panel.last_read, 100)
+        self.assertFalse(panel.refresh_button.enabled)
+        self.assertEqual(app.filters, filters)
+        panel.apply_result(request, None, None)
+        self.assertTrue(panel.simulated)
+        self.assertIn('dane testowe', panel.message.get())
+        empty = dict.fromkeys(KEYS, 0)
+        app.events.put(('threatened_result', (request, empty, 200)))
+        app.events.put(('threatened_details', (request, {}, 20)))
+        self.finish_read(app, request, token, part)
+        self.assertFalse(panel.simulated)
+        self.assertFalse(app.threatened_incidents_button.alert)
+        self.assertEqual([tile.value_label.cget('text') for tile in panel.tiles], ['0'] * 6)
+        self.assertEqual(panel.last_full_read, 200)
+        self.assertTrue(panel.refresh_button.enabled)
+        self.assertTrue(app.request_refresh('threatened'))
+        request, token, part = self.start_read(app)
+        panel.apply_result(request, empty, 300)
+        panel.apply_details(request, None)
+        self.finish_read(app, request, token, part)
+        self.assertEqual(panel.last_full_read, 200)
+        self.assertIn('Zachowano ostatnią', panel.message.get())
 
     def test_request_dedup_stale_events_stop_and_conservative_alarm(self):
-        root = tk.Tk()
-        try:
-            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.app.read_json', return_value={}), \
-                    patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
-                app = App(root, history_path=Path(folder)/'history.json', apply_startup=False, enable_tray=False)
-            panel = app.threatened_view
-            self.assertFalse(app.threatened_incidents_button.alert)
-            self.assertFalse(app.threatened_incidents_button.healthy)
-            self.assertEqual([t.value_label.cget('text') for t in panel.tiles], ['—'] * 6)
-            app.worker = Mock()
-            app.worker.is_alive.return_value = True
-            app.schedule = Mock()
-            panel.set_monitoring(True)
-            panel.request_refresh()
-            panel.request_refresh()
-            self.assertEqual(app.threatened_requests.qsize(), 1)
-            self.assertFalse(panel.refresh_button.enabled)
-            request = panel.request_id
-            button = app.threatened_incidents_button
-            self.assertFalse(button.updating)
-            panel.set_state(request - 1, 'W trakcie aktualizacji')
-            self.assertFalse(button.updating)
-            panel.set_state(request, 'W trakcie aktualizacji')
-            self.assertTrue(button.updating)
-            panel.set_state(request, 'Oczekuje')
-            self.assertFalse(button.updating)
-            panel.set_state(request, 'Ponawianie odczytu')
-            panel.finish_request(request - 1)
-            self.assertTrue(button.updating)
-            panel.finish_request(request)
-            self.assertFalse(button.updating)
-            values = dict.fromkeys(KEYS, 0)
-            values['P2'] = 3
-            app.refresh_coordinator().finish()
-            panel.apply_result(request, values, 100)
-            self.assertFalse(app.threatened_incidents_button.alert)
-            panel.request_refresh()
-            request = panel.request_id
-            app.refresh_coordinator().finish()
-            panel.apply_result(request, values, 100)
-            self.assertTrue(app.threatened_incidents_button.alert)
-            self.assertTrue(panel.refresh_button.enabled)
-            for bad in (None, {}, {'P1': 0}, dict.fromkeys(KEYS, False)):
-                panel.apply_result(request, bad, None)
-                self.assertEqual(panel.values, values)
-                self.assertEqual(panel.last_read, 100)
-                self.assertTrue(app.threatened_incidents_button.alert)
-            panel.apply_result(request - 1, dict.fromkeys(KEYS, 0), 200)
-            self.assertTrue(app.threatened_incidents_button.alert)
-            panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
-            self.assertFalse(app.threatened_incidents_button.alert)
-            self.assertTrue(app.threatened_incidents_button.healthy)
-            panel.set_state(request, 'W trakcie aktualizacji')
-            panel.apply_result(request, None, None)
-            self.assertFalse(button.updating)
-            self.assertFalse(app.threatened_incidents_button.healthy)
-            self.assertFalse(app.threatened_incidents_button.alert)
-            panel.apply_result(request, dict.fromkeys(KEYS, 0), 300)
-            self.assertTrue(app.threatened_incidents_button.healthy)
-            panel.set_state(request, 'W trakcie aktualizacji')
-            panel.set_monitoring(False)
-            self.assertFalse(button.updating)
-            self.assertFalse(app.threatened_incidents_button.healthy)
-            self.assertFalse(panel.refresh_button.enabled)
-            panel.apply_result(request, values, 400)
-            self.assertFalse(app.threatened_incidents_button.alert)
-        finally:
-            root.destroy()
+        app = self.ready_app()
+        panel = app.threatened_view
+        button = app.threatened_incidents_button
+        self.assertFalse(button.alert)
+        self.assertFalse(button.healthy)
+        self.assertEqual([tile.value_label.cget('text') for tile in panel.tiles], ['—'] * 6)
+        app.request_refresh('threatened')
+        app.request_refresh('threatened')
+        self.assertEqual(len(app.session.work.pending), 1)
+        self.assertFalse(panel.refresh_button.enabled)
+        request, token, part = self.start_read(app)
+        self.assertTrue(button.updating)
+        values = dict.fromkeys(KEYS, 0)
+        values['P2'] = 3
+        panel.apply_result(request, values, 100)
+        panel.apply_details(request, {})
+        for bad in (None, {}, {'P1': 0}, dict.fromkeys(KEYS, False)):
+            panel.apply_result(request, bad, None)
+            self.assertEqual(panel.values, values)
+            self.assertEqual(panel.last_full_read, 100)
+            self.assertTrue(button.alert)
+        app.cycle_active = True
+        app.session.start_cycle([], {'inc': 60, 'task': 120})
+        app.stop_monitoring()
+        self.assertFalse(app.cycle_active)
+        self.assertFalse(app.session.closed.is_set())
+        self.assertTrue(button.updating)
+        empty = dict.fromkeys(KEYS, 0)
+        panel.apply_result(request - 1, empty, 200)
+        self.assertTrue(button.alert)
+        panel.apply_result(request, empty, 300)
+        panel.apply_details(request, {})
+        self.finish_read(app, request, token, part)
+        self.assertFalse(button.updating)
+        self.assertFalse(button.alert)
+        self.assertTrue(button.healthy)
+        panel.apply_result(request, values, 400)
+        self.assertEqual(panel.last_full_read, 300)
+        self.assertFalse(button.alert)
 
 
 class ThreatenedWorkerTests(unittest.TestCase):
     def app(self):
         app = App.__new__(App)
-        app.stop, app.events, app.threatened_requests = threading.Event(), queue.Queue(), queue.Queue()
-        app.threatened_requests.put(4)
+        app.stop, app.events = threading.Event(), queue.Queue()
         app.browser_runtime = Mock()
-        app.monitor_settings = {'urls': ['https://adeo.service-now.com/incident_list.do']}
-        app.restore_login = Mock(return_value=True)
+        app.session = Mock()
+        app.session.authenticate.return_value = True
         return app
 
     def test_session_recovery_retries_once_and_emits_complete_result(self):
@@ -237,52 +217,14 @@ class ThreatenedWorkerTests(unittest.TestCase):
         values = dict.fromkeys(KEYS, 0)
         with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
                 patch('neto_incident_monitor.threatened_api.read_threats', side_effect=[AuthenticationRequired(), (values, {})]) as read:
-            app.read_threatened_request(Mock())
+            app.read_threatened_request(Mock(), request=4, stop=app.stop)
         self.assertEqual(read.call_count, 2)
-        app.restore_login.assert_called_once()
+        app.session.authenticate.assert_called_once()
         states = [value for kind, value in app.events.queue if kind == 'threatened_state']
         self.assertEqual(states, [(4, 'W trakcie aktualizacji'), (4, 'Oczekuje'), (4, 'Ponawianie odczytu')])
         results = [v for k,v in app.events.queue if k == 'threatened_result']
         self.assertEqual(results[0][:2], (4, values))
         app.browser_runtime.set_activity.assert_not_called()
-
-    def test_startup_read_runs_after_dashboard_before_filters_only_once(self):
-        from neto_incident_monitor.history import History
-        with tempfile.TemporaryDirectory() as folder:
-            app = self.app()
-            url = app.monitor_settings['urls'][0]
-            app.filters = [{'name': 'Test', 'url': url, 'list_definition': filter_definition(url)}]
-            app.disabled_filter_urls = frozenset()
-            app.schedule = Mock()
-            app.schedule.woken_by_request = False
-            app.history = History(Path(folder)/'history.json')
-            settings = {'urls': [url], 'filters': app.filters, 'interval': 60, 'task_interval': 120}
-            page = Mock(url=url)
-            page.is_closed.return_value = False
-            context = Mock(pages=[page])
-            playwright = MagicMock()
-            playwright.__enter__.return_value.chromium.launch_persistent_context.return_value = context
-            order = []
-            app.restore_login.side_effect = lambda *args: order.append('login') or True
-            app.read_dashboard_request = Mock(side_effect=lambda page: order.append('dashboard'))
-            def threats(*args):
-                order.append('threatened')
-                return dict.fromkeys(KEYS, 0), {}
-            def filters(*args, **kwargs):
-                order.append('filter')
-                return {}
-            with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
-                    patch('playwright.sync_api.sync_playwright', return_value=playwright), \
-                    patch('neto_incident_monitor.browser_window.BrowserWindow'), \
-                    patch('neto_incident_monitor.app.STATE', Path(folder)/'seen.json'), \
-                    patch('neto_incident_monitor.app.navigate'), \
-                    patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats), \
-                    patch('neto_incident_monitor.filter_api.read_filter_records', side_effect=filters), \
-                    patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=[False, True]):
-                app.monitor(settings)
-            self.assertEqual(order[:4], ['login', 'dashboard', 'threatened', 'filter'])
-            self.assertEqual(order.count('threatened'), 1)
-            self.assertEqual(order.count('dashboard'), 2)
 
     def test_errors_do_not_emit_fake_values_and_stop_does_not_emit_error(self):
         for error in (ValueError('fixture'), Cancelled()):
@@ -290,7 +232,7 @@ class ThreatenedWorkerTests(unittest.TestCase):
                 app = self.app()
                 with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
                         patch('neto_incident_monitor.threatened_api.read_threats', side_effect=error):
-                    app.read_threatened_request(Mock())
+                    app.read_threatened_request(Mock(), request=4, stop=app.stop)
                 results = [v for k,v in app.events.queue if k == 'threatened_result']
                 self.assertEqual(results, [] if isinstance(error, Cancelled) else [(4, None, None)])
                 self.assertIn(('threatened_finished', 4), list(app.events.queue))

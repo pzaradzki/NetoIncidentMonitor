@@ -1,11 +1,13 @@
 import json
 import tempfile
+import threading
 import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
+from neto_incident_monitor.shared_session import StopSignal
 
 
 class ActivityStatusTests(unittest.TestCase):
@@ -14,59 +16,70 @@ class ActivityStatusTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
         self.addCleanup(self.root.destroy)
-        settings = {'filters': [{'name': 'Testowy filtr', 'url': 'https://example.com/incident_list.do'}]}
-        with patch('neto_incident_monitor.app.read_json', return_value=settings), \
-                patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
-            self.app = App(self.root, history_path=Path(self.folder.name) / 'history.json',
-                           apply_startup=False, enable_tray=False)
-        self.app.worker = Mock()
-        self.app.worker.is_alive.return_value = True
+        folder = Path(self.folder.name)
+        config = folder / 'config.json'
+        config.write_text(json.dumps({'filters': [
+            {'name': 'Testowy filtr', 'url': 'https://adeo.service-now.com/incident_list.do'}
+        ]}), encoding='utf-8')
+        self.enterContext(patch('neto_incident_monitor.app.CONFIG', config))
+        self.enterContext(patch('neto_incident_monitor.runtime_paths.DATA', folder))
+        self.app = App(self.root, history_path=folder / 'history.json', apply_startup=False, enable_tray=False)
+        self.addCleanup(self.app.teams_sender.stop)
+        self.addCleanup(self.app.google_chat_sender.stop)
+        self.addCleanup(self.app.alert_writer.shutdown)
+        self.addCleanup(self.app.history_writer.shutdown)
+        self.app.window_restoring = False
+        self.app.session.ready_once = True
+        self.app.session.log = Mock()
+        self.app.handle_session_event('session_ready', None)
         self.root.update_idletasks()
 
-    def begin_dashboard(self):
-        self.assertTrue(self.app.dashboard_view.request_refresh(automatic=True, coordinated=True))
-        return self.app.dashboard_view.active_request
+    def begin_dashboard(self, *, automatic=False):
+        app = self.app
+        if automatic:
+            app.dashboard_auto_refresh.set(True)
+            app.start()
+        else:
+            self.assertTrue(app.request_refresh('dashboard'))
+        cycle = app.session.cycle if automatic else None
+        self.part, source = app.session.next_part(cycle)
+        self.assertEqual(source, 'initial' if automatic else 'manual')
+        self.token = object()
+        stop = StopSignal(app.session.closed, cycle.stop) if cycle else app.session.closed
+        preparation = {'part': self.part, 'stop': stop, 'done': threading.Event(), 'value': None}
+        self.emit(('session_part_started', (self.token, self.part)), ('session_prepare_read', preparation))
+        return preparation['value']
 
     def emit(self, *events):
         for event in events:
             self.app.events.put(event)
         self.app.drain()
 
-    def test_real_events_switch_between_login_dashboard_filter_idle_and_stop(self):
-        app = self.app
-        app.set_phase('Uruchamianie przeglądarki')
-        self.assertEqual(app.activity_pill.status_text, 'Uruchamianie przeglądarki')
-        self.emit(('activity', ('Wymagane ręczne logowanie', 'waiting', 'login')))
-        self.assertEqual(app.activity_pill.tone, 'waiting')
-        request = self.begin_dashboard()[0]
-        self.emit(('dashboard_section_status', (request, 'Wnioski L1', 'W trakcie aktualizacji')))
-        self.assertEqual(app.activity_pill.status_text, 'Pobieranie danych: Wnioski L1')
-        self.emit(('dashboard_section_status', (request - 1, 'Dashboard SLA', 'W trakcie aktualizacji')))
-        self.assertEqual(app.activity_pill.status_text, 'Pobieranie danych: Wnioski L1')
-        self.emit(('filter_updating', app.filters[0]['url']))
-        self.assertEqual(app.activity_pill.status_text, 'Aktualizowanie filtra: Testowy filtr')
-        self.emit(('activity', ('Wymagane ręczne logowanie', 'waiting', 'login')), ('filter_updating', None))
-        self.assertEqual(app.activity_pill.status_text, 'Wymagane ręczne logowanie')
-        self.emit(('waiting', (0, False)))
-        self.assertEqual(app.activity_pill.status_text, 'Oczekiwanie na kolejne sprawdzenie')
-        app.stop.set()
-        self.emit(('finished', None))
-        self.assertEqual(app.activity_pill.status_text, 'Monitoring zatrzymany')
+    def finish(self, request):
+        session = self.app.session
+        session.work.complete_part(self.part, manual=True, success=True)
+        session.finish_manual_job(None)
+        self.emit(('dashboard_updating', (*request, 'finished')), ('session_part_finished', self.token))
 
-    def test_error_is_not_overwritten_when_filter_or_dashboard_finishes(self):
+    def test_stop_leaves_session_and_manual_work_available(self):
         app = self.app
-        self.emit(('filter_updating', app.filters[0]['url']), ('phase', 'Błąd odczytu'), ('filter_updating', None))
-        self.assertEqual(app.activity_pill.tone, 'error')
-        request = self.begin_dashboard()[0]
-        self.emit(('dashboard_section_status', (request, 'Wnioski L1', 'Błąd odczytu')),
-                  ('dashboard_updating', (request, 2026, 10, 'finished')))
-        self.assertEqual(app.activity_pill.status_text, 'Błąd odczytu: Wnioski L1')
+        self.begin_dashboard(automatic=True)
+        self.assertEqual(app.activity_pill.status_text, 'Monitoring aktywny')
+        self.emit(('session_waiting', None), ('session_activity', ('Wymagane logowanie', 'waiting', True)))
+        self.assertEqual(app.session_status.get(), 'Wymagane logowanie')
+        self.assertIn('Oczekuje na logowanie', app.work_status.get())
+        app.stop_monitoring()
+        self.emit(('session_part_finished', self.token))
+        self.assertEqual(app.activity_pill.status_text, 'Monitoring zatrzymany')
+        self.assertEqual(app.session_status.get(), 'Wymagane logowanie')
+        self.assertFalse(app.session.closed.is_set())
+        self.assertTrue(app.request_refresh('dashboard'))
 
     def test_long_activity_fits_small_header_and_retains_full_tooltip(self):
         app = self.app
         self.root.geometry('1120x680')
         text = 'Aktualizowanie filtra: ' + 'Długi opis filtra ' * 12
-        app.set_activity(text, 'working', 'filter')
+        app.activity_pill.set_status(text, 'working')
         self.root.update()
         pill = app.activity_pill
         self.assertEqual(pill.status_text, text)
@@ -79,17 +92,15 @@ class ActivityStatusTests(unittest.TestCase):
         app = self.app
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'W trakcie aktualizacji')),
-                  ('dashboard_section_status', (request[0], 'Dashboard SLA', 'Oczekuje')),
-                  ('activity', ('Wymagane ręczne logowanie', 'waiting', 'login')),
-                  ('phase', 'Oczekiwanie'))
-        before = (app.monitoring_phase, app.auth_waiting, str(app.check_button['state']))
-        self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        self.assertEqual(app.activity_pill.status_text, 'Ponawianie odczytu: Dashboard SLA')
-        self.assertEqual(app.activity_pill.tone, 'waiting')
-        self.assertEqual(app.activity_pill.status_tooltip.text, app.activity_pill.status_text)
+                  ('session_waiting', None),
+                  ('dashboard_section_status', (request[0], 'Dashboard SLA', 'Oczekuje')))
+        self.assertIn('Oczekuje na logowanie', app.work_status.get())
+        self.emit(('session_ready', None),
+                  ('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
+        self.assertEqual(app.work_status.get(), 'Ponawianie odczytu: Dashboard SLA')
+        self.assertEqual(app.activity_pill.status_text, 'Monitoring zatrzymany')
         self.assertEqual(app.dashboard_view.section_pills['Dashboard SLA'].status_text, 'Ponawianie odczytu')
         self.assertIn('Ponawianie odczytu: Dashboard SLA', app.dashboard_view.message.get())
-        self.assertEqual(before, (app.monitoring_phase, app.auth_waiting, str(app.check_button['state'])))
         self.assertEqual(app.dashboard_view.active_request, request)
         self.assertIsNone(app.dashboard_view.last_complete_read_at)
 
@@ -107,8 +118,9 @@ class ActivityStatusTests(unittest.TestCase):
             for state, description, tone in mapping:
                 with self.subTest(section=section, state=state):
                     self.emit(('dashboard_section_status', (request[0], section, state)))
-                    self.assertEqual(app.activity_pill.status_text, description + ': ' + section)
-                    self.assertEqual(app.activity_pill.tone, tone)
+                    expected = 'Aktualizuje Dashboard SLA' if tone == 'error' else description + ': ' + section
+                    self.assertEqual(app.work_status.get(), expected)
+                    self.assertEqual(panel.section_states[section], state)
                     self.assertIn(description + ': ' + section, panel.message.get())
                     self.assertTrue(panel.message.get().startswith(prefix))
                     self.assertEqual(panel.last_read_text, '—')
@@ -120,15 +132,15 @@ class ActivityStatusTests(unittest.TestCase):
         app = self.app
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        before = (app.activity_pill.status_text, app.dashboard_view.message.get(), dict(app.dashboard_view.section_states))
+        before = (app.work_status.get(), app.dashboard_view.message.get(), dict(app.dashboard_view.section_states))
         self.emit(('dashboard_section_status', (request[0]-1, 'Dashboard SLA', 'Błąd odczytu')))
-        self.assertEqual(before, (app.activity_pill.status_text, app.dashboard_view.message.get(), app.dashboard_view.section_states))
-        self.emit(('dashboard_updating', (*request, 'finished')))
-        self.assertNotIn('Ponawianie', app.activity_pill.status_text)
+        self.assertEqual(before, (app.work_status.get(), app.dashboard_view.message.get(), app.dashboard_view.section_states))
+        self.finish(request)
+        self.assertNotIn('Ponawianie', app.work_status.get())
         self.assertNotIn('Ponawianie', app.dashboard_view.message.get())
-        before = (app.activity_pill.status_text, app.dashboard_view.message.get(), dict(app.dashboard_view.section_states))
+        before = (app.work_status.get(), app.dashboard_view.message.get(), dict(app.dashboard_view.section_states))
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        self.assertEqual(before, (app.activity_pill.status_text, app.dashboard_view.message.get(), app.dashboard_view.section_states))
+        self.assertEqual(before, (app.work_status.get(), app.dashboard_view.message.get(), app.dashboard_view.section_states))
 
     def test_final_error_message_wins_over_late_retry_and_finish(self):
         app = self.app
@@ -136,9 +148,8 @@ class ActivityStatusTests(unittest.TestCase):
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Błąd odczytu')),
                   ('dashboard_result', (*request, None, True)))
         message = app.dashboard_view.message.get()
-        self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')),
-                  ('dashboard_updating', (*request, 'finished')))
-        self.assertEqual(app.activity_pill.status_text, 'Błąd odczytu: Dashboard SLA')
+        self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
+        self.finish(request)
         self.assertEqual(app.dashboard_view.section_states['Dashboard SLA'], 'Błąd odczytu')
         self.assertEqual(app.dashboard_view.message.get(), message)
 
@@ -147,21 +158,20 @@ class ActivityStatusTests(unittest.TestCase):
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Błąd odczytu')),
                   ('dashboard_section_status', (request[0], 'Wnioski L1', 'W trakcie aktualizacji')),
-                  ('dashboard_result', (*request, {}, None, 'Nie udało się odczytać: Dashboard SLA')),
-                  ('dashboard_updating', (*request, 'finished')))
-        self.assertEqual(app.activity_pill.tone, 'error')
-        self.assertIn('Dashboard SLA', app.activity_pill.status_text)
+                  ('dashboard_result', (*request, {}, None, 'Nie udało się odczytać: Dashboard SLA')))
+        self.finish(request)
+        self.assertEqual(app.dashboard_view.section_states['Dashboard SLA'], 'Błąd odczytu')
         self.assertIn('Nie udało się odczytać', app.dashboard_view.message.get())
 
-    def test_stop_clears_retry_and_ignores_late_events(self):
+    def test_stop_clears_automatic_retry_and_ignores_late_events(self):
         app = self.app
-        request = self.begin_dashboard()
+        request = self.begin_dashboard(automatic=True)
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        app.stop.set()
-        self.emit(('finished', None),
+        app.stop_monitoring()
+        self.emit(('session_part_finished', self.token),
                   ('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
         self.assertEqual(app.activity_pill.status_text, 'Monitoring zatrzymany')
-        self.assertIn('Monitoring zatrzymany', app.dashboard_view.message.get())
+        self.assertIn('Aktualizacja przerwana', app.dashboard_view.message.get())
         self.assertNotEqual(app.dashboard_view.section_states['Dashboard SLA'], 'Ponawianie odczytu')
 
     def test_ui_state_diagnostics_are_correlated_deduplicated_and_safe(self):
@@ -184,15 +194,15 @@ class ActivityStatusTests(unittest.TestCase):
         app = self.app
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+        with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
                 patch('neto_incident_monitor.dashboard_api.read_month', return_value=dict.fromkeys(TITLES, 0)), \
                 patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 0)), \
                 patch('neto_incident_monitor.dashboard_api.read_requests', return_value=dict.fromkeys(REQUEST_TITLES, 0)):
-            app.read_dashboard_request(Mock())
-        app.drain()
+            app.read_dashboard_request(Mock(), request=request, stop=app.session.closed)
+        self.finish(request)
         panel = app.dashboard_view
-        self.assertEqual(app.activity_pill.status_text, 'Aktualizacja dashboardu zakończona')
-        self.assertEqual(app.activity_pill.tone, 'success')
+        self.assertEqual(app.work_status.get(), '')
+        self.assertEqual(panel.read_bar.fields[0].get(), 'Odczyt udany')
         self.assertIsNotNone(panel.last_complete_read_at)
         self.assertEqual(panel.message.get(),
                          f'Dane SLA za okres {panel.month.get().lower()} {request[1]} • '
@@ -208,11 +218,12 @@ class ActivityStatusTests(unittest.TestCase):
         request = self.begin_dashboard()
         self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')),
                   ('dashboard_updating', (*request, 'retrying')),
-                  ('phase', 'Ponowne uruchamianie przeglądarki'))
+                  ('session_part_finished', self.token), ('session_problem', None))
         self.assertEqual(app.dashboard_view.active_request, request)
-        self.assertEqual(app.activity_pill.status_text, 'Ponowne uruchamianie przeglądarki')
-        self.emit(('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
-        self.assertEqual(app.activity_pill.status_text, 'Ponawianie odczytu: Dashboard SLA')
+        self.assertEqual(app.session_status.get(), 'Brak połączenia')
+        self.emit(('session_ready', None), ('session_part_started', (self.token, self.part)),
+                  ('dashboard_section_status', (request[0], 'Dashboard SLA', 'Ponawianie odczytu')))
+        self.assertEqual(app.work_status.get(), 'Ponawianie odczytu: Dashboard SLA')
         self.assertIn('Ponawianie odczytu: Dashboard SLA', app.dashboard_view.message.get())
         self.assertEqual(app.dashboard_view.active_request, request)
         self.assertTrue(all(str(combo['state']) == 'disabled' for combo in app.dashboard_view.period_controls))

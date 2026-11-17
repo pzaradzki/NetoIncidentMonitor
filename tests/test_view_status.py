@@ -50,7 +50,7 @@ class ViewStatusTests(unittest.TestCase):
                 patch('neto_incident_monitor.runtime_paths.DATA', self.path), \
                 patch('neto_incident_monitor.app.CONFIG', self.path / 'config.json'):
             app = App(self.root, history_path=self.path / 'history.json', apply_startup=False,
-                      enable_tray=False, shared_session=True)
+                      enable_tray=False)
         self.addCleanup(app.teams_sender.stop)
         self.addCleanup(app.google_chat_sender.stop)
         self.addCleanup(app.alert_writer.shutdown)
@@ -362,7 +362,7 @@ class ViewStatusTests(unittest.TestCase):
         app = self.app
         app.worker = Mock()
         panel = app.dashboard_view
-        request = panel.request_refresh(coordinated=True, enqueue=False)
+        request = panel.request_refresh()
         for section, titles in SECTIONS.items():
             panel.apply_result((*request, {}, None, '', dict(section=section, values=dict.fromkeys(titles, 0),
                 read_at='2026-10-01T12:00:00+02:00', diagnostics=Mock(), duration_ms=400)))
@@ -373,7 +373,7 @@ class ViewStatusTests(unittest.TestCase):
         cache = load_snapshot(self.path / 'dashboard-cache.json')
         self.assertEqual(cache['last_complete_period'], list(request[1:]))
         self.assertEqual(cache['last_complete_duration_ms'], 1200)
-        request = panel.request_refresh(coordinated=True, enqueue=False)
+        request = panel.request_refresh()
         panel.apply_result((*request, {}, None, '', dict(section='sla', values=dict.fromkeys(SECTIONS['sla'], 1),
             read_at='2026-10-01T12:00:01+02:00', diagnostics=Mock(), duration_ms=975)))
         panel.apply_result((*request, {}, None, 'Brak danych Wniosków L1.'))

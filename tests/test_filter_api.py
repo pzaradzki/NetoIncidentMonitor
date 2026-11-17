@@ -222,7 +222,7 @@ class FilterApiTests(unittest.TestCase):
         from neto_incident_monitor.app import App
         from neto_incident_monitor.filter_state import FilterState
         from neto_incident_monitor.history import History
-        from neto_incident_monitor.monitoring import Health
+        from neto_incident_monitor.monitoring import Health, ReadPart
 
         url = 'https://adeo.service-now.com/sc_task_list.do'
         definition = filter_definition(url)
@@ -247,11 +247,15 @@ class FilterApiTests(unittest.TestCase):
             stop = threading.Event()
             membership = FilterState(history_path.with_name('seen.json'))
             health = Health()
+            app.session = Mock()
+            app.session.filter_is_current.return_value = True
+            app.read_shared_filter_definition = Mock(return_value=definition)
+            part = ReadPart('filter', (url, None))
 
             def read(result, total):
                 page.evaluate.return_value = dict(status=200, result=result, next=False, total=str(total))
-                return app.read_filter(page, url, 'Synthetic', 1, {}, membership, health, {},
-                                       set(), {}, None, stop)
+                return app.read_filter(page, url, 'Synthetic', 1, membership, health,
+                                       {}, None, stop, part=part)
 
             first = dict(number='SCTASK1', sys_id='1' * 32, assigned_to='Synthetic first')
             second = dict(number='SCTASK2', sys_id='2' * 32, assigned_to='Synthetic second')

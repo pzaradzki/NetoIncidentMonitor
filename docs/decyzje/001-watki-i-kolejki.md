@@ -6,6 +6,6 @@ Data: 1 listopada 2026. **Status: przyjęta; stosowana.**
 
 **Powód:** unikamy kolizji nawigacji, utraty kontekstu strony i błędów wątków interfejsu. Równoległość wysyłek lub przygotowania tabel nie oznacza równoległego sterowania przeglądarką.
 
-**Realizacja:** `app.py: monitor/drain`, `browser_policy.py: BrowserRuntime`, `table_loading.py`, kolejki nadawców Teams/Chat. Stan aktualizacji współdzieli `monitoring.py: RefreshControl`.
+**Realizacja:** wątek `SharedSession` obsługuje Playwright i `ReadQueue`, a `App.drain` odbiera zdarzenia w Tk. `BrowserRuntime` obsługuje okno przeglądarki. Przygotowanie tabel i wysyłka Teams/Chat mają własne kolejki. [Decyzja o wspólnej sesji](025-wspolna-sesja-servicenow.md)
 
 **Ograniczenie:** długi odczyt blokuje inne operacje przeglądarki. Wielokartowa równoległość wymaga osobnej decyzji i projektu sesji, nawigacji oraz anulowania; nie dodajemy jej jako lokalnej optymalizacji.

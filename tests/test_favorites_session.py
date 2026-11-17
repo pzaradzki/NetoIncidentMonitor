@@ -1,4 +1,3 @@
-import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -6,21 +5,21 @@ from neto_incident_monitor.app import App
 
 
 class FavoritesSessionTests(unittest.TestCase):
-    def test_start_during_import_does_not_start_monitor(self):
+    def test_start_while_waiting_for_login_does_not_start_cycle(self):
         app = App.__new__(App)
         app.quitting = False
-        app.worker = None
-        app.favorites_import = Mock()
-        app.start_button = Mock()
-        with patch('neto_incident_monitor.app.load_filters') as load:
-            app.start()
-        load.assert_not_called()
+        app.cycle_active = False
+        app.session_state = 'waiting'
+        app.session = Mock()
+        app.start()
+        app.session.start_cycle.assert_not_called()
 
     def test_import_without_confirmed_shared_session_does_not_open_dialog(self):
         app = App.__new__(App)
         app.quitting = False
         app.status = Mock()
         app.favorites_import = None
+        app.session = Mock(ready_once=False)
         with patch('neto_incident_monitor.favorites_ui.FavoritesImport') as dialog:
             app.import_favorites()
         dialog.assert_not_called()

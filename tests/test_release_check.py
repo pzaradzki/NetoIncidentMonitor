@@ -53,6 +53,19 @@ class ReleaseCheckTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 checks.release_page_tag()
 
+    def test_experimental_build_compares_against_stable_releases(self):
+        with patch.object(checks, '__version__', '1.12.0-experimental.1'), patch.object(checks, 'urlopen') as fetch:
+            response = fetch.return_value.__enter__.return_value
+            for tag, newer in [('v1.11.2', False), ('v1.12.0', True)]:
+                with self.subTest(tag=tag):
+                    response.read.return_value = json.dumps({'tag_name': tag}).encode()
+                    response.geturl.return_value = checks.RELEASES + tag
+                    self.assertEqual(checks.latest_release(), (newer, checks.RELEASES + tag))
+                    self.assertEqual(checks.release_page_tag(), (newer, checks.RELEASES + tag))
+            response.read.return_value = b'{"tag_name":"v1.12.0-experimental.2"}'
+            with self.assertRaises(ValueError):
+                checks.latest_release()
+
     def test_result_buttons_open_only_on_user_click(self):
         root = tk.Tk()
         try:

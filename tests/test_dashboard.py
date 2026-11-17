@@ -7,22 +7,36 @@ from neto_incident_monitor.dashboard import HELD_TITLES, TITLES, calculate_wjruw
 
 
 class DashboardTests(unittest.TestCase):
+    def test_missing_scope_does_not_send_dashboard_requests(self):
+        from neto_incident_monitor.app import App
+
+        app = App.__new__(App)
+        app.stop = threading.Event()
+        app.events = queue.Queue()
+        page = MagicMock()
+        with (patch('neto_incident_monitor.analytics_config.load_config', return_value={'version': 1}),
+              patch('neto_incident_monitor.dashboard_api.read_month') as read_month):
+            self.assertFalse(app.read_dashboard_request(page, request=(1, 2026, 11), stop=app.stop))
+        read_month.assert_not_called()
+        page.evaluate.assert_not_called()
+        result = next(value for kind, value in app.events.queue if kind == 'dashboard_result')
+        self.assertEqual(result[0:4], (1, 2026, 11, {}))
+        self.assertIn('Brakuje list agentów i lokalizacji', result[-1])
+
     def test_refresh_reads_only_values_and_preserves_sla_on_held_error(self):
         from neto_incident_monitor.app import App
         for fail in (False, True):
             app = App.__new__(App)
             app.stop = threading.Event()
             app.events = queue.Queue()
-            app.dashboard_requests = queue.Queue()
-            app.dashboard_requests.put((1, 2026, 10))
             page = MagicMock()
-            with patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+            with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
                     patch('neto_incident_monitor.dashboard_api.read_month', return_value={t: 0 for t in TITLES}) as sla, patch(
                     'neto_incident_monitor.dashboard_api.read_held',
                     side_effect=ValueError('missing') if fail else None,
                     return_value=dict(zip(HELD_TITLES, (19, 43, 7)))) as held, patch(
                     'neto_incident_monitor.dashboard_api.read_requests', return_value={}):
-                app.read_dashboard_request(page)
+                app.read_dashboard_request(page, request=(1, 2026, 10), stop=app.stop)
             sla.assert_called_once()
             held.assert_called_once()
             page.get_by_role.assert_not_called()

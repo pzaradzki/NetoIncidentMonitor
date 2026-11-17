@@ -1,6 +1,6 @@
 # Neto Incident Monitor
 
-Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. W bieżących źródłach dashboard i Incydenty zagrożone SLA korzystają z REST API w sesji Chromium. Filtry użytkownika nadal odczytują listy przez interfejs ServiceNow.
+Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. W bieżących źródłach dashboard, Incydenty zagrożone SLA, filtry użytkownika i import Ulubionych korzystają z REST w zalogowanej sesji Chromium. Osobny odczyt zakresu agentów i lokalizacji korzysta z interfejsu dashboardu. [Mapa architektury](docs/architektura.md)
 
 ## Funkcje
 
@@ -33,7 +33,7 @@ Ta konfiguracja aplikacji obsługuje listy z instancji `adeo.service-now.com`.
 
 Aby zaktualizować aplikację, zamknij ją i zastąp katalog aplikacji zawartością nowego pakietu.
 
-Ustawienia, historia, logi i profil przeglądarki są przechowywane w:
+W wersji EXE ustawienia, historia, logi i profil przeglądarki są przechowywane w poniższym katalogu. Uruchomienie ze źródeł używa katalogu projektu `data/`.
 
 ```text
 %LOCALAPPDATA%\NetoIncidentMonitor
@@ -55,7 +55,7 @@ W istniejącym środowisku uruchom:
 .venv\Scripts\python.exe -B -m tools.run_regression --output build/regression.json
 ```
 
-Runner używa osobnego procesu i tymczasowych danych dla każdego modułu. Testy natywnego fokusu działają pojedynczo; pozostałe w najwyżej trzech procesach (`--jobs 1` wyłącza równoległość). Błędy callbacków Tk powodują niezaliczenie modułu. Wynik JSON zawiera liczniki, identyfikatory testów i przyczyny pominięć; nie zawiera treści wyjątków. Domyślny limit modułu to 180 s (`--timeout`).
+Runner używa osobnego procesu i tymczasowych danych dla każdego modułu. Moduły z próbami natywnego fokusu, w tym `tests.test_shared_session`, działają pojedynczo także przy wyborze konkretnej metody. Uruchamiaj je w interaktywnej sesji Windows z zainstalowanym Chromium Playwright. Pozostałe moduły działają w najwyżej trzech procesach (`--jobs 1` wyłącza równoległość). Błędy callbacków Tk powodują niezaliczenie modułu. Wynik JSON ogranicza się do liczników, identyfikatorów testów, klas błędów callbacków i przyczyn pominięć. Domyślny limit modułu to 180 s (`--timeout`).
 
 `.venv\Scripts\python.exe -B -m tools.preview_ui` tworzy podgląd z danych syntetycznych w `build/ui-preview.png`, bez użycia danych i sesji monitora. Test regresyjny narzędzia sprawdza przepływ z atrapą przechwytywania obrazu, nie stanowi odbioru wizualnego zrzutu.
 

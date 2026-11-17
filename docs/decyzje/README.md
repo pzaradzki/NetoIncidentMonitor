@@ -22,6 +22,7 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [016](016-normalizacja-adresow-list.md) | Rozpakowanie długich adresów list bez utraty kodowania i parametrów. |
 | [017](017-odpornosc-lokalnego-io.md) | Odporne logowanie, obserwowana kolejka alertów, kompletny podział wiadomości i walidacja przed startem. |
 | [018](018-kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; zachowany niezależny harmonogram zagrożeń. |
+| [040](040-startowy-zakres-dashboardu.md) | Startowe pobranie brakujących list agentów i lokalizacji w kolejce sesji. |
 
 | [019](019-odzyskiwanie-sesji-sekcji.md) | Niezależne ponowienie odczytu i odzyskanie logowania, wspólny budżet 60 s. |
 

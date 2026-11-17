@@ -30,8 +30,7 @@ def release_page_tag():
     if address.scheme != 'https' or address.netloc != 'github.com' or not address.path.startswith(prefix):
         raise ValueError('Nieprawidłowy adres wydania GitHub.')
     tag = unquote(address.path[len(prefix):])
-    version(tag)
-    return version(tag) > version(__version__), RELEASES + tag
+    return version(tag) > version(__version__, allow_experimental=True), RELEASES + tag
 
 
 def failure_message(error):
@@ -51,10 +50,14 @@ def failure_message(error):
     return 'Nie udało się odczytać informacji o wydaniu GitHub. Szczegóły zapisano w logu.'
 
 
-def version(value):
-    if not isinstance(value, str) or not re.fullmatch(r'v?\d+\.\d+\.\d+', value):
+def version(value, *, allow_experimental=False):
+    suffix = r'(?:-experimental\.([1-9][0-9]*))?' if allow_experimental else ''
+    match = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)' + suffix, value) if isinstance(value, str) else None
+    if not match:
         raise ValueError('Nieprawidłowa wersja wydania.')
-    return tuple(int(part) for part in value.removeprefix('v').split('.'))
+    major, minor, patch = map(int, match.groups()[:3])
+    experiment = match[4] if allow_experimental else None
+    return major, minor, patch, experiment is None, int(experiment or 0)
 
 
 def latest_release():
@@ -76,7 +79,7 @@ def latest_release():
     if not isinstance(data, dict) or data.get('draft') or data.get('prerelease'):
         raise ValueError('Nieprawidłowe wydanie GitHub.')
     tag = data.get('tag_name')
-    newer = version(tag) > version(__version__)
+    newer = version(tag) > version(__version__, allow_experimental=True)
     return newer, RELEASES + tag
 
 

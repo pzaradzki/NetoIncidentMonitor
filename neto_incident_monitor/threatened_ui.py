@@ -284,7 +284,6 @@ def build_threatened_view(parent, app):
     panel = tk.Frame(parent, bg=BG)
     panel.request_id = 0
     panel.pending = False
-    panel.monitoring = False
     panel.values = {}
     panel.last_read = None
     panel.last_full_read = None
@@ -326,32 +325,17 @@ def build_threatened_view(parent, app):
     pill.pack(side='left', padx=(12, 0))
     panel.status_pill = pill
     def update_button():
-        if getattr(app, 'session', None):
-            app.update_refresh_controls()
-            return
-        busy = hasattr(app, 'refresh_control') and app.refresh_control.busy
-        panel.refresh_button.configure(state='normal' if panel.monitoring and not panel.pending and not busy else 'disabled')
-    def request(automatic=False, coordinated=False, *, enqueue=True):
-        if not automatic and not coordinated:
-            return app.request_refresh('threatened')
+        app.update_refresh_controls()
+
+    def request():
         if panel.pending or app.stop.is_set():
-            return
-        if not automatic and (not app.worker or not app.worker.is_alive()):
-            return
+            return None
         panel.request_id += 1
         panel.pending = True
         set_state(panel.request_id, 'W kolejce')
-        if enqueue:
-            app.threatened_requests.put(panel.request_id)
-        if automatic:
-            dashboard_pending = getattr(getattr(app, 'dashboard_view', None), 'active_request', None) is not None
-            panel.message.set('Oczekiwanie na zalogowanie. Zagrożenia zostaną sprawdzone '
-                              + ('po dashboardzie i przed filtrami.' if dashboard_pending else 'przed filtrami.'))
-            if panel.simulated:
-                panel.message.set(panel.message.get() + ' Wyświetlane dane testowe.')
         update_button()
-        if not enqueue:
-            return panel.request_id
+        return panel.request_id
+
     panel.request_refresh = request
     from neto_incident_monitor.threatened import THREATENED_URL
     actions = tk.Frame(header, bg=BG)
@@ -359,7 +343,7 @@ def build_threatened_view(parent, app):
     panel.open_snow_button = RoundedButton(actions, text='Otwórz w SNOW',
         command=lambda: webbrowser.open(THREATENED_URL), background=BG)
     panel.open_snow_button.pack(side='right', padx=(8, 0))
-    panel.refresh_button = RoundedButton(actions, text='Aktualizuj', icon='refresh', command=request, background=BG)
+    panel.refresh_button = RoundedButton(actions, text='Aktualizuj', icon='refresh', command=lambda: app.request_refresh('threatened'), background=BG)
     panel.refresh_button.pack(side='right')
     panel.refresh_button.configure(state='disabled')
     panel.read_bar.set_actions(retry=panel.refresh_button)
@@ -397,8 +381,6 @@ def build_threatened_view(parent, app):
         if request_id != panel.request_id or request_id == panel.finished_request_id:
             return
         button = app.threatened_incidents_button
-        if not getattr(app, 'session', None):
-            button.set_updating(state in ('W trakcie aktualizacji', 'Ponawianie odczytu'))
         if state in ('W kolejce', 'Oczekuje', 'W trakcie aktualizacji', 'Ponawianie odczytu'):
             panel.pending = True
             update_button()
@@ -492,18 +474,8 @@ def build_threatened_view(parent, app):
         if request_id == panel.request_id:
             panel.finished_request_id = request_id
             panel.pending = False
-            if not getattr(app, 'session', None):
-                app.threatened_incidents_button.set_updating(False)
             update_button()
     panel.finish_request = finish_request
-    def set_monitoring(active):
-        panel.monitoring = bool(active)
-        if not active:
-            panel.request_id += 1
-            panel.pending = False
-            set_state(panel.request_id, 'Dane nieaktualne')
-        update_button()
-    panel.set_monitoring = set_monitoring
     def wheel(event):
         if content.winfo_reqheight() > canvas.winfo_height():
             canvas.yview_scroll(-int(event.delta / 120), 'units')

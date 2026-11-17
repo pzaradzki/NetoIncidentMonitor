@@ -122,15 +122,19 @@ class SharedSession:
         self.layout_attempts = {}
         self.layout_updates = {}
         self.default_layouts = set()
+        self.startup_scope_checked = False
+        self.startup_scope_id = None
         self.filter_field_schemas = {}
         self.thread = Thread(target=self.run, name='ServiceNow-session', daemon=True)
 
     def emit(self, kind, value=None):
         self.app.events.put((kind, value))
 
-    def submit(self, scope, parts):
-        job_id, merged = self.work.submit(scope, parts)
+    def submit(self, scope, parts, *, startup=False):
+        job_id, merged = self.work.submit(scope, parts, before_pending=startup)
         context = {'import_id': parts[0].target} if scope == 'favorites' else {}
+        if scope == 'dashboard_scope':
+            context['scope_trigger'] = 'automatic' if startup else 'manual'
         LoginDiagnostics(source='monitor', request_id=job_id, **context).record(
             'refresh_queue', queue_scope=scope, queue_state='merged' if merged else 'queued')
         self.app.schedule.request()
@@ -270,6 +274,7 @@ class SharedSession:
             if not hidden and not debug:
                 raise BrowserClosedError('Nie udało się ukryć okna Chromium.')
             self.update_layout_account(page, stop, after_login=True)
+            self.prepare_startup_scope()
             self.connected = self.ready_once = True
             self.emit('session_ready', restore_focus)
             return True
@@ -293,6 +298,25 @@ class SharedSession:
             self.layout_attempts.clear()
             self.default_layouts = set(RECORD_TABLES.values()) if account else set()
         return account
+
+    def prepare_startup_scope(self):
+        from neto_incident_monitor.analytics_config import has_dashboard_scope, load_config
+
+        if self.startup_scope_checked or self.layout_account is None:
+            return
+        self.startup_scope_checked = True
+        try:
+            present = has_dashboard_scope(load_config())
+        except DashboardReadError as error:
+            self.log.record('dashboard_scope_check', scope_trigger='automatic', scope_state='unavailable',
+                            read_reason=error.reason)
+            return
+        self.log.record('dashboard_scope_check', scope_trigger='automatic',
+                        scope_state='present' if present else 'missing')
+        if not present:
+            part = ReadPart('dashboard_scope', self.layout_account, {'trigger': 'automatic'})
+            self.startup_scope_id, _ = self.submit('dashboard_scope', [part], startup=True)
+            self.emit('session_dashboard_scope_queued', self.startup_scope_id)
 
     def saved_default_layouts(self):
         account = self.layout_account
@@ -376,7 +400,8 @@ class SharedSession:
             raise
 
     def prefetch_layout(self, page):
-        table = next(table for table in RECORD_TABLES.values() if table in self.default_layouts)
+        table = next(RECORD_TABLES[prefix] for prefix in DEFAULT_LAYOUT_PREFIXES
+                     if RECORD_TABLES[prefix] in self.default_layouts)
         try:
             with budget_scope(Budget(8)):
                 self.filter_layout(page, self.closed, self.log, table, 'default', refresh=True)
@@ -384,7 +409,7 @@ class SharedSession:
             self.connected = False
             self.default_layouts.clear()
         except DashboardReadError:
-            pass
+            self.default_layouts.discard(table)
         except TargetClosedError:
             raise
         except Error as error:
@@ -450,6 +475,8 @@ class SharedSession:
     def record_job(self, job, state, **fields):
         if job.scope == 'favorites':
             fields['import_id'] = job.requested[0].target
+        if job.scope == 'dashboard_scope':
+            fields['scope_trigger'] = job.requested[0].data.get('trigger', 'manual')
         self.log.record('refresh_queue', request_id=job.id, queue_scope=job.scope, queue_state=state,
                         duration_ms=round((monotonic() - job.submitted_at) * 1000), **fields)
 
@@ -469,7 +496,10 @@ class SharedSession:
             cycle.finish_full_read(job.requested, self.filter_parts)
         self.work.finish()
         self.active_job = None
-        self.after_manual = True
+        if job.id == self.startup_scope_id:
+            self.startup_scope_id = None
+        else:
+            self.after_manual = True
         self.emit('session_job_finished', (job.scope, self.active_job_success, job.skipped_filters))
         if layout_refresh:
             self.emit('session_default_layout_result', (job.id, outcome, completed))
@@ -493,11 +523,15 @@ class SharedSession:
             cycle = self.cycle
             if cycle is not None and cycle.stop.is_set():
                 cycle = None
+            if self.startup_scope_id is not None and self.active_job is None and self.default_layouts:
+                self.prefetch_layout(page)
+                continue
             selected = self.next_part(cycle)
             if selected is None:
                 if self.default_layouts:
                     self.prefetch_layout(page)
                     continue
+                self.app.threatened_delay_reason = 'idle'
                 deadlines = tuple(cycle.deadlines.values()) if cycle else ()
                 if cycle and self.app.threatened_next_read is not None:
                     deadlines += (self.app.threatened_next_read,)
@@ -516,8 +550,10 @@ class SharedSession:
             prefetch_between_filters = True
             self.last_idle = None
             is_filter = part.scope in ('filter', 'filter_definition', 'filter_layout')
-            self.app.threatened_delay_reason = 'filter' if is_filter else (
-                'dashboard' if part.scope == 'dashboard' else 'idle')
+            # The threatened reader reports which preceding operation held the card.
+            if part.scope != 'threatened':
+                self.app.threatened_delay_reason = 'filter' if is_filter else (
+                    'dashboard' if part.scope == 'dashboard' else 'idle')
             stop = StopSignal(self.closed, cycle.stop) if source != 'manual' else self.closed
             if part.scope == 'favorites':
                 stop = StopSignal(self.closed, part.data['stop'])
@@ -594,12 +630,13 @@ class SharedSession:
                     return ReadPart('threatened'), 'threatened'
                 return job.parts[0], 'manual'
             self.finish_manual_job(cycle)
-        if cycle and cycle.initial:
+        startup_scope = self.startup_scope_id is not None
+        if not startup_scope and cycle and cycle.initial:
             return cycle.initial[0], 'initial'
-        if threats_due:
+        if not startup_scope and threats_due:
             if self.work.next_scope() not in ('all', 'threatened'):
                 return ReadPart('threatened'), 'threatened'
-        if cycle and self.after_manual:
+        if not startup_scope and cycle and self.after_manual:
             self.after_manual = False
             part = cycle.next_filter(self.filter_parts)
             if part:

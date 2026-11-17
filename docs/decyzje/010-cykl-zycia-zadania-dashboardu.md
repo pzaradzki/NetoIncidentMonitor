@@ -2,6 +2,8 @@
 
 2 listopada 2026. **Status: przyjęta; wdrożona w źródłach; 130 testów zakresowych zaliczonych.** Rozszerza [001](001-watki-i-kolejki.md), [003](003-poprawnosc-i-aktualnosc.md) i [006](006-odczyt-sekcji-dashboardu.md), nie zastępuje ich.
 
+Poniższa realizacja opisuje stan z 2 listopada. Aktualny przebieg żądania i ponownego połączenia opisuje [kontrakt wspólnej kolejki](../kontrakty/kolejka-i-trwalosc.md#kolejka-i-anulowanie).
+
 **Decyzja:** główny wątek przechowuje aktywne `(request_id, year, month)` od przyjęcia żądania do jego końcowego zdarzenia. Wybór miesiąca i roku jest wtedy wyłączony; guard zmiennych przywraca okres także po programowej zmianie. Worker nadal używa istniejącej kolejki i zamrożonego okresu, bez odczytów Tk.
 
 **Powód:** wcześniej zmiana wyboru zwiększała ID widoku, choć odczyt trwał dalej. Poprawne wyniki i postęp były odrzucane, a nowy odczyt nie powstawał. Samo wyłączenie przycisku Aktualizuj nie chroniło kontrolek okresu.
