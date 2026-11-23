@@ -67,7 +67,7 @@ def has_dashboard_scope(config):
 
 
 def remove_dashboard_scope(path):
-    from neto_incident_monitor.app import save_json
+    from neto_incident_monitor.config_io import save_json
     from neto_incident_monitor.data_reset import reject_redirect
 
     reject_redirect(path)
@@ -100,7 +100,7 @@ def scope_from_p1_query(query):
 
 
 def save_dashboard_scope(scope, path=None):
-    from neto_incident_monitor.app import save_json
+    from neto_incident_monitor.config_io import save_json
     from neto_incident_monitor.data_reset import reject_redirect
 
     packaged = path is None and FROZEN

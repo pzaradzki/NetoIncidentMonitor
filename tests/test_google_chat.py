@@ -155,14 +155,14 @@ class GoogleChatTests(unittest.TestCase):
         app.saved_google_chat = False, ''
         app.saving_google_chat = False
         app.status = Mock()
-        with patch('neto_incident_monitor.app.read_json', return_value={'other': 123}), \
-             patch('neto_incident_monitor.app.save_json') as save:
+        with patch('neto_incident_monitor.config_io.read_json', return_value={'other': 123}), \
+             patch('neto_incident_monitor.config_io.save_json') as save:
             self.assertTrue(persist(app))
             self.assertEqual(save.call_args.args[1], {'other': 123, 'google_chat_enabled': True, 'google_chat_webhook': URL})
         app.google_chat_webhook = 'new'
         app.google_chat_enabled.get.return_value = False
-        with patch('neto_incident_monitor.app.read_json', return_value={}), \
-             patch('neto_incident_monitor.app.save_json', side_effect=OSError()):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), \
+             patch('neto_incident_monitor.config_io.save_json', side_effect=OSError()):
             self.assertFalse(persist(app))
         self.assertEqual(app.google_chat_webhook, URL)
         app.google_chat_enabled.set.assert_called_once_with(True)

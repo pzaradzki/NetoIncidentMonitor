@@ -3,7 +3,8 @@ import unittest
 from urllib.parse import quote, urlencode, urlsplit, parse_qsl
 from unittest.mock import patch
 
-from neto_incident_monitor.app import validate_urls, load_filters
+from neto_incident_monitor.app import validate_urls
+from neto_incident_monitor.config_io import load_filters
 from neto_incident_monitor.service_now_urls import normalize_list_url, InvalidListURL
 from neto_incident_monitor.login_diagnostics import _logger
 from tests.test_query_date_alias import QUERY
@@ -93,7 +94,7 @@ class WrappedFilterDialogTests(unittest.TestCase):
         self.addCleanup(root.destroy)
         with tempfile.TemporaryDirectory() as directory, \
                 patch('neto_incident_monitor.app.DATA', Path(directory)), \
-                patch('neto_incident_monitor.app.CONFIG', Path(directory) / 'config.json'), \
+                patch('neto_incident_monitor.config_io.CONFIG', Path(directory) / 'config.json'), \
                 patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
             path = Path(directory) / 'config.json'
             path.write_text('{"filters": []}', encoding='utf-8')

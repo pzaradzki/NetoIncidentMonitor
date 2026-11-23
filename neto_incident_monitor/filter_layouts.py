@@ -105,7 +105,7 @@ class LayoutStore:
         self.entries = None
 
     def load(self):
-        from neto_incident_monitor.app import read_json
+        from neto_incident_monitor.config_io import read_json
         from neto_incident_monitor.data_reset import reject_redirect
 
         if self.entries is None:
@@ -150,7 +150,7 @@ class LayoutStore:
         return columns
 
     def save(self, account, table, view, columns):
-        from neto_incident_monitor.app import save_json
+        from neto_incident_monitor.config_io import save_json
         from neto_incident_monitor.data_reset import reject_redirect
 
         value = {'language': account.language, 'columns': columns,

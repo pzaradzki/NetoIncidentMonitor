@@ -7,7 +7,8 @@ import time
 import unittest
 from pathlib import Path
 
-from neto_incident_monitor.app import navigate, normalize_url, validate_urls
+from neto_incident_monitor.browser_login import navigate
+from neto_incident_monitor.app import normalize_url, validate_urls
 from neto_incident_monitor.monitoring import Health, Schedule
 from neto_incident_monitor.single_instance import SingleInstance
 
@@ -25,7 +26,7 @@ class ReliabilityTests(unittest.TestCase):
         query = parse_qs(urlparse(normalize_url(wrapped)).query)
         self.assertIn("STORE 003 GDAŃSK", query["sysparm_query"][0])
         self.assertEqual(query["sysparm_view"], ["default"])
-        from neto_incident_monitor.app import load_filters
+        from neto_incident_monitor.config_io import load_filters
         self.assertEqual(load_filters({"filters": [{"name": "Test", "url": wrapped}]}),
                          [{"name": "Test", "url": direct}])
         from unittest.mock import Mock

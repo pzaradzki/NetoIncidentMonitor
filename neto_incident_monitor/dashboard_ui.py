@@ -11,6 +11,21 @@ from neto_incident_monitor.read_status import ReadStatus
 from neto_incident_monitor.read_status_ui import ReadStatusBar
 
 
+def handle_read_event(app, kind, value):
+    if kind == 'dashboard_section_status':
+        activity = app.dashboard_view.set_section_activity(*value)
+        if activity is not None and app.session_part and app.session_part[1].scope == 'dashboard':
+            app.session_work_detail = activity[0] if activity[1] in ('working', 'waiting') else ''
+    elif kind == 'dashboard_updating':
+        if app.dashboard_view.set_updating(*value) and app.dashboard_view.active_request is None:
+            app.dashboard_request_stop = None
+    elif kind == 'dashboard_result':
+        app.dashboard_view.apply_result(value)
+    else:
+        return False
+    return True
+
+
 def bind_dashboard_wheel(widget, callback):
     # Combobox popdowns are native Tcl windows, not Python widget instances.
     # Keep native controls' wheel behavior and visit only Python-owned widgets.

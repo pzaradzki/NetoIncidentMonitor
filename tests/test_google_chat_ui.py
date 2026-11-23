@@ -48,8 +48,8 @@ class GoogleChatUITests(unittest.TestCase):
                 failures.append(error)
                 dialog.destroy()
         self.root.after(100, operate)
-        with patch('neto_incident_monitor.app.read_json', return_value={}), \
-             patch('neto_incident_monitor.app.save_json') as save:
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), \
+             patch('neto_incident_monitor.config_io.save_json') as save:
             show_config(self.app)
             self.assertFalse(failures, failures)
             self.assertEqual(save.call_args.args[1], {'google_chat_enabled': False, 'google_chat_webhook': URL})

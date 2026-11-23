@@ -156,7 +156,6 @@ class SectionLoginRecoveryTests(unittest.TestCase):
 
         app = App.__new__(App)
         app.schedule = Schedule()
-        app.threatened_next_read = None
         app.quitting = False
         session = app.session = SharedSession(app, Path('unused'))
         session.log = Mock()
@@ -180,7 +179,7 @@ class SectionLoginRecoveryTests(unittest.TestCase):
         def wait_for_idle(_page, _schedule, _seconds, stop):
             self.assertTrue(stop.is_set(), 'Dashboard job did not finish before the session went idle.')
 
-        idle = patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=wait_for_idle)
+        idle = patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=wait_for_idle)
         idle.start()
         self.addCleanup(idle.stop)
         app.dashboard_view.request_refresh.side_effect = prepare_refresh
@@ -190,7 +189,7 @@ class SectionLoginRecoveryTests(unittest.TestCase):
         return app, events, job_id
 
     def test_browser_close_during_login_keeps_shared_dashboard_for_reconnect(self):
-        from neto_incident_monitor.app import BrowserClosedError
+        from neto_incident_monitor.read_errors import BrowserClosedError
         from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
 
         request = (41, 2026, 11)

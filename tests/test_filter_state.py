@@ -24,13 +24,13 @@ class ScheduledFilterStateTests(unittest.TestCase):
         app = self.app = App.__new__(App)
         app.events = queue.Queue()
         app.schedule = Schedule()
-        app.threatened_next_read = 600
         app.browser_runtime = None
         app.filter_revisions = {url: object() for url in urls}
         app.monitor_generation = object()
         app.disabled_filter_urls = frozenset()
         app.history = History(folder / 'history.json')
         session = self.session = app.session = SharedSession(app, folder / 'profile')
+        app.session.threatened_next_read = 600
         session.connected = True
         session.log = Mock()
         self.page = Mock()
@@ -59,7 +59,7 @@ class ScheduledFilterStateTests(unittest.TestCase):
             self.clock += seconds
 
         self.session.start_cycle([], {'inc': 60, 'task': 120})
-        with patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=wait), self.assertRaises(Cancelled):
+        with patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=wait), self.assertRaises(Cancelled):
             self.session.serve(self.page)
         return waits
 

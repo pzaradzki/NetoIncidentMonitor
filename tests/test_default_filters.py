@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from neto_incident_monitor.app import initialize_default_filters, load_filters
+from neto_incident_monitor.config_io import initialize_default_filters, load_filters
 
 
 class DefaultFiltersTests(unittest.TestCase):

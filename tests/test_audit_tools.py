@@ -11,6 +11,22 @@ from PIL import Image
 
 
 class AuditToolsTests(unittest.TestCase):
+    def test_config_and_session_imports_do_not_load_app_or_tk(self):
+        code = """
+import importlib
+import sys
+
+for name in ('config_io', 'analytics_config', 'filter_layouts', 'favorites',
+             'favorites_worker', 'browser_login', 'shared_session', 'dashboard_read', 'threatened_read'):
+    importlib.import_module('neto_incident_monitor.' + name)
+
+assert 'neto_incident_monitor.app' not in sys.modules
+assert 'tkinter' not in sys.modules
+"""
+        result = subprocess.run([sys.executable, '-B', '-c', code],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_preview_completes_with_synthetic_data_and_isolated_output(self):
         from tools import preview_ui
         with tempfile.TemporaryDirectory() as directory:

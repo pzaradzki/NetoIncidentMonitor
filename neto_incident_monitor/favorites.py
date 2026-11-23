@@ -37,7 +37,7 @@ def classify(items, existing):
 
 
 def commit_selection(app, items, selected):
-    from neto_incident_monitor.app import CONFIG, read_json, load_filters
+    from neto_incident_monitor.config_io import CONFIG, read_json, load_filters
     settings = read_json(CONFIG, {})
     if ('filters' in settings or 'urls' in settings) and load_filters(settings, tolerate_invalid=True) != app.filters:
         raise ValueError('Konfiguracja filtrów zmieniła się. Otwórz import ponownie.')

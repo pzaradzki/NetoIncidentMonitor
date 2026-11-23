@@ -24,6 +24,32 @@ def metadata_for(app, page, entry, direct=None):
 
 
 class ReadQueueTests(unittest.TestCase):
+    def test_stop_after_tk_prepares_analytics_read_releases_the_exact_request(self):
+        from neto_incident_monitor.read_errors import Cancelled
+
+        stop = threading.Event()
+        app = Mock()
+        session = SharedSession(app, Path('unused'))
+        part = ReadPart('dashboard', (2026, 11))
+        request = (41, 2026, 11)
+        events = []
+
+        def put(event):
+            events.append(event)
+            kind, value = event
+            if kind == 'session_prepare_read':
+                self.assertIs(value['stop'], stop)
+                self.assertIs(value['part'], part)
+                value['value'] = request
+                value['done'].set()
+                stop.set()
+
+        app.events.put.side_effect = put
+        with self.assertRaises(Cancelled):
+            session.prepare_analytics_read(part, stop)
+        self.assertEqual([kind for kind, _ in events], ['session_prepare_read', 'session_cancel_prepared'])
+        self.assertEqual(events[-1][1], ('dashboard', request))
+
     def test_missing_dashboard_scope_runs_after_layouts_and_before_reads(self):
         from neto_incident_monitor.dashboard_context import DashboardReadError
         from neto_incident_monitor.filter_layouts import LayoutAccount
@@ -31,7 +57,7 @@ class ReadQueueTests(unittest.TestCase):
 
         for success in (True, False):
             with self.subTest(scope_saved=success):
-                app = Mock(threatened_next_read=None)
+                app = Mock()
                 session = SharedSession(app, Path('unused'))
                 session.log = Mock()
                 session.connected = True
@@ -91,7 +117,7 @@ class ReadQueueTests(unittest.TestCase):
         from playwright._impl._errors import TargetClosedError
         from neto_incident_monitor.filter_layouts import LayoutAccount
 
-        app = Mock(threatened_next_read=None)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
         session.log = Mock()
         session.connected = True
@@ -119,7 +145,7 @@ class ReadQueueTests(unittest.TestCase):
         from queue import Queue
         from playwright._impl._errors import TargetClosedError
 
-        app = Mock(threatened_next_read=None)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
         session.log = Mock()
         session.connected = True
@@ -179,8 +205,9 @@ class ReadQueueTests(unittest.TestCase):
             self.assertEqual(list(cycle.filters), [first, second, added])
 
     def test_interval_change_during_batch_keeps_reads_and_uses_new_delay_at_finish(self):
-        app = Mock(threatened_next_read=10_000)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
+        session.threatened_next_read = 10_000
         session.log = Mock()
         session.connected = True
         page = Mock()
@@ -194,7 +221,7 @@ class ReadQueueTests(unittest.TestCase):
 
         with patch('neto_incident_monitor.shared_session.monotonic', return_value=100) as clock, \
                 patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
-                patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=lambda *_: session.closed.set()):
+                patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=lambda *_: session.closed.set()):
             def read(_page, part, stop, source):
                 self.assertEqual(source, 'filter')
                 self.assertFalse(stop.is_set())
@@ -213,8 +240,9 @@ class ReadQueueTests(unittest.TestCase):
                                               batch_active=True)
 
     def test_interval_change_while_waiting_uses_last_batch_and_latest_saved_value(self):
-        app = Mock(threatened_next_read=10_000)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
+        session.threatened_next_read = 10_000
         session.log = Mock()
         inc = ReadPart('filter', ('A', None), {'kind': 'inc', 'scheduled': True})
         task = ReadPart('filter', ('B', None), {'kind': 'task', 'scheduled': True})
@@ -240,7 +268,7 @@ class ReadQueueTests(unittest.TestCase):
             self.assertIsNone(session.next_part(cycle))
 
     def test_deleting_active_filter_cancels_its_login_wait_and_runs_next_filter(self):
-        app = Mock(threatened_next_read=None)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
         session.log = Mock()
         page = Mock()
@@ -323,8 +351,9 @@ class ReadQueueTests(unittest.TestCase):
         self.assertEqual(tuple(queue.take().parts), (dashboard,))
 
     def test_scheduled_threats_and_filter_get_time_between_manual_requests(self):
-        app = Mock(threatened_next_read=9)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
+        session.threatened_next_read = 9
         session.log = Mock()
         session.filter_parts = (ReadPart('filter', ('A', None), {'kind': 'inc'}),)
         session.start_cycle([], {'inc': 30, 'task': 90})
@@ -332,15 +361,16 @@ class ReadQueueTests(unittest.TestCase):
         session.work.submit('dashboard', [dashboard])
         with patch('neto_incident_monitor.shared_session.monotonic', return_value=10):
             self.assertEqual(session.next_part(session.cycle), (ReadPart('threatened'), 'threatened'))
-            app.threatened_next_read = 70
+            session.threatened_next_read = 70
             self.assertEqual(session.next_part(session.cycle), (dashboard, 'manual'))
             session.work.complete_part(dashboard, manual=True, success=True)
             session.work.submit('dashboard', [dashboard])
             self.assertEqual(session.next_part(session.cycle), (session.filter_parts[0], 'filter'))
 
     def test_stop_during_periodic_read_leaves_matching_manual_work(self):
-        app = Mock(threatened_next_read=time.monotonic() + 60)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
+        session.threatened_next_read = time.monotonic() + 60
         session.log = Mock()
         session.connected = True
         page = Mock()
@@ -379,7 +409,7 @@ class ReadQueueTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
 
     def test_after_process_failure_next_open_requires_explicit_reconnect(self):
-        from neto_incident_monitor.app import BrowserClosedError
+        from neto_incident_monitor.read_errors import BrowserClosedError
         app = Mock()
         session = SharedSession(app, Path('unused'))
         attempt_finished = threading.Event()
@@ -405,8 +435,9 @@ class ReadQueueTests(unittest.TestCase):
                 session.thread.join(3)
 
     def test_full_read_satisfies_due_filter_batch_without_an_immediate_repeat(self):
-        app = Mock(threatened_next_read=70)
+        app = Mock()
         session = SharedSession(app, Path('unused'))
+        session.threatened_next_read = 70
         session.log = Mock()
         part = ReadPart('filter', ('A', None), {'kind': 'inc'})
         session.filter_parts = (part,)
@@ -428,7 +459,7 @@ class PasswordSaveWaitTests(unittest.TestCase):
         page = Mock()
         page.is_closed.return_value = False
         with patch('neto_incident_monitor.shared_session.authentication_required', return_value=True), \
-                patch('neto_incident_monitor.app.wait_for_login', return_value=True):
+                patch('neto_incident_monitor.browser_login.wait_for_login', return_value=True):
             self.assertTrue(session.authenticate(page, session.closed))
         self.assertTrue(session.connected)
         session.app.events.put.assert_called_with(('session_ready', False))
@@ -532,7 +563,7 @@ class SharedApplicationTests(unittest.TestCase):
                         time.sleep(.01)
                     self.assertTrue(predicate())
 
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.DATA', folder), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
                         patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
@@ -571,7 +602,7 @@ class SharedApplicationTests(unittest.TestCase):
                 root.destroy()
 
     def test_closing_settings_saves_intervals_immediately_and_keeps_failed_edits_visible(self):
-        from neto_incident_monitor.app import read_json, save_json
+        from neto_incident_monitor.config_io import read_json, save_json
         from neto_incident_monitor.login_diagnostics import _logger
         from neto_incident_monitor.widgets import RoundedButton
 
@@ -582,7 +613,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.DATA', folder), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     save_json(config, {'interval': 60, 'task_interval': 120,
@@ -624,7 +655,7 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertFalse(cycle.apply_interval_changes())
 
                     app.interval.set('45')
-                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
+                    with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
                             self.assertLogs(_logger, level='INFO') as captured:
                         close_button.invoke()
                     self.assertEqual(config.read_bytes(), before)
@@ -650,7 +681,7 @@ class SharedApplicationTests(unittest.TestCase):
                 root.destroy()
 
     def test_windows_notifications_can_be_changed_and_saved_during_monitoring(self):
-        from neto_incident_monitor.app import read_json, save_json
+        from neto_incident_monitor.config_io import read_json, save_json
         from neto_incident_monitor.login_diagnostics import _logger
         from neto_incident_monitor.threatened import THREATENED_URL
 
@@ -661,7 +692,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.DATA', folder), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     save_json(config, {'notify': False, 'filters': [{'name': 'Test', 'url': url}]})
@@ -688,7 +719,7 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertNotIn('windows', app.filter_table.notification_channels)
 
                     before = config.read_bytes()
-                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
+                    with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
                             self.assertLogs(_logger, level='INFO') as captured:
                         app.notify_check.toggle()
                     self.assertEqual(config.read_bytes(), before)
@@ -707,7 +738,7 @@ class SharedApplicationTests(unittest.TestCase):
                 root.destroy()
 
     def test_filter_buttons_work_during_monitoring_and_only_saved_changes_invalidate_work(self):
-        from neto_incident_monitor.app import save_json
+        from neto_incident_monitor.config_io import save_json
         from neto_incident_monitor.filter_state import FilterState
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
         from neto_incident_monitor.widgets import RoundedButton
@@ -723,7 +754,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.DATA', folder), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     save_json(config, {'filters': [{'name': 'A', 'url': first}, {'name': 'B', 'url': second}]})
@@ -755,7 +786,7 @@ class SharedApplicationTests(unittest.TestCase):
                     save_dialog(True, 'Nowa nazwa', first)
                     self.assertEqual(app.session.manual_filter_parts[app.selected_filter_url()], part)
                     self.assertIn(part, app.session.work.pending_refreshes()[1])
-                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('synthetic')), \
+                    with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('synthetic')), \
                             patch('neto_incident_monitor.app.messagebox.showerror') as error:
                         app.filter_buttons[2].invoke()
                     error.assert_called_once()
@@ -853,8 +884,8 @@ class SharedApplicationTests(unittest.TestCase):
             try:
                 with self.assertLogs(_logger, level='INFO') as captured, \
                         patch('neto_incident_monitor.app.DATA', folder), \
-                        patch('neto_incident_monitor.app.read_json', return_value={'filters': [], 'auto_login': True}), \
-                        patch('neto_incident_monitor.app.save_json') as save, \
+                        patch('neto_incident_monitor.config_io.read_json', return_value={'filters': [], 'auto_login': True}), \
+                        patch('neto_incident_monitor.config_io.save_json') as save, \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
                         patch('neto_incident_monitor.shared_session.open_context', side_effect=launch), \
                         patch('neto_incident_monitor.automatic_login.AutomaticLogin.step', new=enter_fixture_password):
@@ -965,7 +996,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.read_json', return_value=settings), \
+                with patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False,
                               apply_startup=False)
@@ -1026,7 +1057,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.read_json', return_value=settings), \
+                with patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False,
                               apply_startup=False)
@@ -1072,10 +1103,10 @@ class SharedApplicationTests(unittest.TestCase):
             root.withdraw()
             path = Path(directory)
             try:
-                from neto_incident_monitor.app import read_json, save_json
+                from neto_incident_monitor.config_io import read_json, save_json
                 config = path / 'config.json'
                 save_json(config, settings)
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.STATE', path / 'seen.json'), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     app = App(root, history_path=path / 'history.json', enable_tray=False,
@@ -1173,7 +1204,7 @@ class SharedApplicationTests(unittest.TestCase):
                     discover.assert_not_called()
                     reloaded.session.work.complete_part(part, manual=True, success=True)
                     reloaded.drain()
-                    with patch('neto_incident_monitor.app.save_json', side_effect=OSError('synthetic')) as save, \
+                    with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('synthetic')) as save, \
                             patch('neto_incident_monitor.app.messagebox.showerror') as error_dialog:
                         reloaded.events.put(('filter_limit', (url, 6817, object(), reloaded.monitor_generation)))
                         reloaded.drain()
@@ -1227,7 +1258,7 @@ class SharedApplicationTests(unittest.TestCase):
                 root.withdraw()
                 try:
                     settings = {'start_monitoring': automatic, 'filters': [{'name': 'Test', 'url': url, 'enabled': enabled}]}
-                    with patch('neto_incident_monitor.app.read_json', return_value=settings), \
+                    with patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
                             patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                         app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False)
                     app.start_session_cycle = Mock()
@@ -1244,7 +1275,7 @@ class SharedApplicationTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.read_json',
+                with patch('neto_incident_monitor.config_io.read_json',
                            return_value={'start_minimized': True, 'filters': []}), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
                     app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False)
@@ -1322,7 +1353,7 @@ root.mainloop()
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.read_json', return_value={'filters': [],
+                with patch('neto_incident_monitor.config_io.read_json', return_value={'filters': [],
                         'window_layout': {'geometry': '930x700+60+60'}}), \
                         patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
                         self.assertLogs(_logger, level='INFO') as logs:
@@ -1392,18 +1423,18 @@ root.mainloop()
             def invoke(tab, *_args, **_kwargs):
                 calls.append((kind, tab, threading.get_ident()))
                 if kind == 'threatened':
-                    app.threatened_next_read = time.monotonic() + 60
+                    app.session.threatened_next_read = time.monotonic() + 60
                 return 'success' if kind == 'filter' else True
             return invoke
 
-        with patch('neto_incident_monitor.app.read_json', return_value=settings), \
+        with patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
                 patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
                 patch('neto_incident_monitor.shared_session.open_context', return_value=context) as launch, \
                 patch('neto_incident_monitor.shared_session.create_runtime', return_value=runtime), \
                 patch('neto_incident_monitor.shared_session.sync_playwright'), \
                 patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
-                patch('neto_incident_monitor.app.open_login_target', return_value=True), \
-                patch('neto_incident_monitor.app.wait_for_login', return_value=True):
+                patch('neto_incident_monitor.browser_login.open_login_target', return_value=True), \
+                patch('neto_incident_monitor.browser_login.wait_for_login', return_value=True):
             app = App(root, history_path=Path(directory.name) / 'history.json', enable_tray=False,
                       apply_startup=False)
             app.read_dashboard_request = reader('dashboard')
@@ -1499,7 +1530,7 @@ root.mainloop()
                 content_type='text/html', body='<script>window.g_user={userID:"fixture"}</script>'))
             return context
 
-        with patch('neto_incident_monitor.app.read_json', return_value={'filters': []}), \
+        with patch('neto_incident_monitor.config_io.read_json', return_value={'filters': []}), \
                 patch('neto_incident_monitor.app.DATA', folder), \
                 patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None), \
                 patch('neto_incident_monitor.shared_session.open_context', side_effect=fixture_browser):

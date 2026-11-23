@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from neto_incident_monitor.app import App, BrowserClosedError
+from neto_incident_monitor.app import App
+from neto_incident_monitor.read_errors import BrowserClosedError
 from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
 from neto_incident_monitor.dashboard_cache import load_snapshot
 from neto_incident_monitor.login_diagnostics import _logger, safe_facts
@@ -24,7 +25,8 @@ class DashboardPeriodTests(unittest.TestCase):
         config.write_text(json.dumps({'filters': [
             {'name': 'Synthetic', 'url': 'https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue'}
         ]}), encoding='utf-8')
-        for name, path in (('CONFIG', config), ('STATE', folder / 'seen.json'), ('DATA', folder)):
+        self.enterContext(patch('neto_incident_monitor.config_io.CONFIG', config))
+        for name, path in (('STATE', folder / 'seen.json'), ('DATA', folder)):
             self.enterContext(patch(f'neto_incident_monitor.app.{name}', path))
         self.enterContext(patch('neto_incident_monitor.runtime_paths.DATA', folder))
         self.root = tk.Tk()
@@ -127,7 +129,7 @@ class DashboardPeriodTests(unittest.TestCase):
         page.is_closed.return_value = False
         with patch('neto_incident_monitor.analytics_config.load_config', return_value={'assignees': ['a' * 32], 'locations': ['b' * 32]}), \
                 patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
-                patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=Cancelled) as wait, \
+                patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=Cancelled) as wait, \
                 patch.object(self.app.events, 'put', side_effect=prepare_or_queue), \
                 patch('neto_incident_monitor.dashboard_api.read_month', side_effect=read_month or sla), \
                 patch('neto_incident_monitor.dashboard_api.read_held', return_value=dict.fromkeys(HELD_TITLES, 20)), \
@@ -307,7 +309,7 @@ class DashboardPeriodTests(unittest.TestCase):
                 self.assert_controls('readonly')
                 self.assertEqual(self.panel.last_complete_period, None if automatic else (2026, 10))
                 if automatic:
-                    self.assertIsNone(self.app.threatened_next_read)
+                    self.assertIsNone(self.session.threatened_next_read)
                     self.assertIsNone(self.app.history.membership)
 
     def test_stop_after_browser_close_releases_interrupted_automatic_dashboard(self):

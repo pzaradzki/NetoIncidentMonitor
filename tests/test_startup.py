@@ -17,7 +17,7 @@ class StartupTests(unittest.TestCase):
             root = tk.Tk()
             root.withdraw()
             try:
-                with patch('neto_incident_monitor.app.read_json', return_value={'filters': []}):
+                with patch('neto_incident_monitor.config_io.read_json', return_value={'filters': []}):
                     app = App(root, history_path=Path(folder) / 'history.json',
                               enable_tray=False, apply_startup=False)
                 app.session.ready_once = True
@@ -62,7 +62,7 @@ class StartupTests(unittest.TestCase):
                 root = tk.Tk()
                 root.withdraw()
                 try:
-                    with patch('neto_incident_monitor.app.read_json', return_value={}), \
+                    with patch('neto_incident_monitor.config_io.read_json', return_value={}), \
                             patch('neto_incident_monitor.startup.set_windows_startup') as write:
                         app = App(root, history_path=Path(folder) / 'history.json',
                                   enable_tray=False, apply_startup=False, windows_startup=status)
@@ -104,7 +104,7 @@ class StartupTests(unittest.TestCase):
                 try:
                     settings = {'start_minimized': minimized, 'minimize_to_tray': to_tray}
                     with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder, \
-                         patch('neto_incident_monitor.app.read_json', return_value=settings), \
+                         patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
                          patch('neto_incident_monitor.tray.Tray'):
                         app = App(root, history_path=Path(folder) / 'history.json', apply_startup=apply_startup)
                         app.events.put(('tray_ready', None))

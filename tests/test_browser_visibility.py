@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from neto_incident_monitor.app import wait_for_login
+from neto_incident_monitor.browser_login import wait_for_login
 from tests.test_login_observation import page_with, frame_with
 
 
@@ -14,11 +14,11 @@ class BrowserVisibilityTests(unittest.TestCase):
         window = Mock()
         window.is_visible.side_effect = [False, True]
         window.show.side_effect = [False, True]
-        with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
-                patch('neto_incident_monitor.app.time.monotonic', return_value=30), \
-                patch('neto_incident_monitor.app.set_chromium_window_state'), \
+        with patch('neto_incident_monitor.browser_login.authentication_page', return_value=True), \
+                patch('neto_incident_monitor.browser_login.time.monotonic', return_value=30), \
+                patch('neto_incident_monitor.browser_actions.set_chromium_window_state'), \
                 patch('neto_incident_monitor.login_diagnostics.LoginDiagnostics') as diagnostics:
-            with patch('neto_incident_monitor.app.time.monotonic', side_effect=iter(range(0,200,3))):
+            with patch('neto_incident_monitor.browser_login.time.monotonic', side_effect=iter(range(0,200,3))):
                 self.assertFalse(wait_for_login(page, 'https://adeo.service-now.com/incident_list.do',
                                                 stop, browser_window=window))
         self.assertEqual(window.show.call_count, 2)
@@ -34,9 +34,9 @@ class BrowserVisibilityTests(unittest.TestCase):
         window = Mock()
         window.is_visible.return_value = True
         activity = Mock()
-        with patch('neto_incident_monitor.app.authentication_page', return_value=True), \
-                patch('neto_incident_monitor.app.time.monotonic', return_value=30), \
-                patch('neto_incident_monitor.app.set_chromium_window_state'), \
+        with patch('neto_incident_monitor.browser_login.authentication_page', return_value=True), \
+                patch('neto_incident_monitor.browser_login.time.monotonic', return_value=30), \
+                patch('neto_incident_monitor.browser_actions.set_chromium_window_state'), \
                 patch('neto_incident_monitor.automatic_login.AutomaticLogin') as automatic:
             automatic.return_value.step.side_effect = RuntimeError('document changed')
             automatic.return_value.blocked = True
@@ -52,9 +52,9 @@ class BrowserVisibilityTests(unittest.TestCase):
         page.is_closed.return_value = False
         stop = Mock()
         stop.is_set.side_effect = [False, True]
-        with patch("neto_incident_monitor.app.authentication_page", return_value=True), \
-                patch("neto_incident_monitor.app.time.monotonic", return_value=0), \
-                patch("neto_incident_monitor.app.set_chromium_window_state", return_value=True) as state:
+        with patch("neto_incident_monitor.browser_login.authentication_page", return_value=True), \
+                patch("neto_incident_monitor.browser_login.time.monotonic", return_value=0), \
+                patch("neto_incident_monitor.browser_actions.set_chromium_window_state", return_value=True) as state:
             self.assertFalse(wait_for_login(page, "https://adeo.service-now.com/incident_list.do", stop, False, True))
             state.assert_called_once_with(page, "normal")
             page.bring_to_front.assert_called_once()
@@ -65,8 +65,8 @@ class BrowserVisibilityTests(unittest.TestCase):
         page.frames = [frame_with(session_signal=True)]
         stop = Mock()
         stop.is_set.return_value = False
-        with patch("neto_incident_monitor.app.authentication_page", return_value=False), \
-                patch("neto_incident_monitor.app.minimize_chromium") as minimize:
+        with patch("neto_incident_monitor.browser_login.authentication_page", return_value=False), \
+                patch("neto_incident_monitor.browser_actions.minimize_chromium") as minimize:
             self.assertTrue(wait_for_login(page, "https://adeo.service-now.com/incident_list.do", stop, True, True))
             minimize.assert_called_once_with(page)
             page.bring_to_front.assert_not_called()

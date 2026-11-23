@@ -21,7 +21,7 @@ class ActivityStatusTests(unittest.TestCase):
         config.write_text(json.dumps({'filters': [
             {'name': 'Testowy filtr', 'url': 'https://adeo.service-now.com/incident_list.do'}
         ]}), encoding='utf-8')
-        self.enterContext(patch('neto_incident_monitor.app.CONFIG', config))
+        self.enterContext(patch('neto_incident_monitor.config_io.CONFIG', config))
         self.enterContext(patch('neto_incident_monitor.runtime_paths.DATA', folder))
         self.app = App(self.root, history_path=folder / 'history.json', apply_startup=False, enable_tray=False)
         self.addCleanup(self.app.teams_sender.stop)

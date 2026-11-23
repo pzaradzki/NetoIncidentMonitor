@@ -9,7 +9,9 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 from playwright.sync_api import sync_playwright, Locator, TimeoutError, Error
-from neto_incident_monitor.app import App, open_login_target, wait_for_login, LoginTargetUnavailable
+from neto_incident_monitor.app import App
+from neto_incident_monitor.browser_login import open_login_target, wait_for_login
+from neto_incident_monitor.read_errors import LoginTargetUnavailable
 from neto_incident_monitor.authentication import authentication_required, login_surface, install_input_guard
 from neto_incident_monitor.automatic_login import AutomaticLogin
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, safe_facts, error_facts, _logger
@@ -43,13 +45,13 @@ class AuthenticationHardeningTests(unittest.TestCase):
 
     def test_initial_timeout_preserves_sso_form(self):
         page = Mock(url='https://idpb2e.adeo.com/login')
-        with patch('neto_incident_monitor.app.navigate', side_effect=TimeoutError('PRIVATE_TOKEN')) as navigate:
+        with patch('neto_incident_monitor.browser_login.navigate', side_effect=TimeoutError('PRIVATE_TOKEN')) as navigate:
             self.assertTrue(open_login_target(page, TARGET, threading.Event()))
         navigate.assert_called_once()
 
     def test_initial_network_failure_has_bounded_retries(self):
         page = Mock(url='chrome-error://chromewebdata/')
-        with patch('neto_incident_monitor.app.navigate', side_effect=Error('PRIVATE_TOKEN')) as navigate:
+        with patch('neto_incident_monitor.browser_login.navigate', side_effect=Error('PRIVATE_TOKEN')) as navigate:
             with self.assertRaises(LoginTargetUnavailable):
                 open_login_target(page, TARGET, threading.Event())
         self.assertEqual(navigate.call_count, 3)
@@ -58,7 +60,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
         stop = threading.Event()
         page = Mock(url='about:blank')
         page.wait_for_timeout.side_effect = lambda _: stop.set()
-        with patch('neto_incident_monitor.app.navigate', side_effect=Error('offline')) as navigate:
+        with patch('neto_incident_monitor.browser_login.navigate', side_effect=Error('offline')) as navigate:
             self.assertFalse(open_login_target(page, TARGET, stop))
         navigate.assert_called_once()
 
@@ -88,7 +90,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
         page.wait_for_timeout.side_effect = pulse
         window = Mock(); window.show.return_value = False; window.is_visible.return_value = False
         alert = Mock()
-        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda: ticks[0]*3):
+        with patch('neto_incident_monitor.browser_login.time.monotonic', side_effect=lambda: ticks[0]*3):
             self.assertFalse(wait_for_login(page, TARGET, stop, browser_window=window, on_visibility_failure=alert))
         self.assertEqual(window.show.call_count, 3)
         alert.assert_called_once()
@@ -103,7 +105,7 @@ class AuthenticationHardeningTests(unittest.TestCase):
             ticks[0] += 1
             if ticks[0] >= 5: stop.set()
         page.wait_for_timeout.side_effect = pulse
-        with patch('neto_incident_monitor.app.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.discover_query') as discover:
+        with patch('neto_incident_monitor.browser_login.time.monotonic', side_effect=lambda:ticks[0]*200), patch('neto_incident_monitor.browser_login.navigate') as navigate, patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.discover_query') as discover:
             self.assertFalse(wait_for_login(page,TARGET,stop))
         discover.assert_not_called()
         self.assertLessEqual(navigate.call_count, 4)

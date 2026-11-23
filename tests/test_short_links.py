@@ -1,6 +1,6 @@
 import unittest
 
-from neto_incident_monitor.app import load_filters
+from neto_incident_monitor.config_io import load_filters
 from neto_incident_monitor.service_now_urls import normalize_list_url, effective_list_url
 
 BASE = 'https://adeo.service-now.com'

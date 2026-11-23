@@ -58,7 +58,7 @@ class DynamicUITests(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()
         self.folder = tempfile.TemporaryDirectory()
-        with patch('neto_incident_monitor.app.read_json', return_value={
+        with patch('neto_incident_monitor.config_io.read_json', return_value={
                 'filters': [{'name': 'A', 'url': URL}, {'name': 'B', 'url': OTHER}]}):
             self.app = App(self.root, history_path=Path(self.folder.name)/'history.json', enable_tray=False)
         self.root.update()
@@ -68,7 +68,7 @@ class DynamicUITests(unittest.TestCase):
         self.folder.cleanup()
 
     def accept(self, url=URL, schema=SCHEMA):
-        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json'):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), patch('neto_incident_monitor.config_io.save_json'):
             self.app.accept_column_schema(url, schema)
 
     def test_first_read_switching_reset_and_arbitrary_values(self):
@@ -124,7 +124,7 @@ class DynamicUITests(unittest.TestCase):
         dialog = next(w for w in self.root.winfo_children() if isinstance(w, tk.Toplevel) and w.title() == "Widoczne kolumny")
         buttons = {w.text: w for w in descendants(dialog) if isinstance(w, RoundedButton)}
         buttons['Przywróć domyślne'].invoke()
-        with patch('neto_incident_monitor.app.read_json', return_value={'notify': True}), patch('neto_incident_monitor.app.save_json') as save:
+        with patch('neto_incident_monitor.config_io.read_json', return_value={'notify': True}), patch('neto_incident_monitor.config_io.save_json') as save:
             buttons['Zapisz'].invoke()
         stored = save.call_args.args[1]
         self.assertTrue(stored['notify'])
@@ -136,7 +136,7 @@ class DynamicUITests(unittest.TestCase):
     def test_schema_persistence_failure_keeps_previous_layout(self):
         self.accept()
         before = copy.deepcopy(self.app.column_profiles)
-        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json', side_effect=OSError()):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), patch('neto_incident_monitor.config_io.save_json', side_effect=OSError()):
             self.app.accept_column_schema(URL, SCHEMA[:2])
         self.assertEqual(self.app.column_profiles, before)
 
@@ -146,7 +146,7 @@ class DynamicUITests(unittest.TestCase):
         app = self.app
         app.column_profile()['visible'].append('time')
         app.filter_selected()
-        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json'):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), patch('neto_incident_monitor.config_io.save_json'):
             app.reorder_column(app.table, 'time', 'age_minutes')
             app.current_table.column('sn:u_custom', width=277)
             app.sync_column_widths(app.current_table)
@@ -170,7 +170,7 @@ class DynamicUITests(unittest.TestCase):
         self.root.update()
         x = sum(table.column(key, 'width') for key in ('age_minutes', 'number', 'sn:u_custom'))
         self.assertEqual(table.identify_region(x, 10), 'separator')
-        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json') as save, patch('neto_incident_monitor.app.webbrowser.open') as opened:
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), patch('neto_incident_monitor.config_io.save_json') as save, patch('neto_incident_monitor.app.webbrowser.open') as opened:
             result = app.open_incident(SimpleNamespace(widget=table, x=x, y=10))
         self.assertEqual(result, 'break')
         opened.assert_not_called()

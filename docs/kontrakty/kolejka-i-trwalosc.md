@@ -1,6 +1,6 @@
 # Kolejka odczytów i trwałość danych
 
-Bieżące zachowanie `App` i `SharedSession`. App przygotowuje jawny identyfikator żądania i sygnał anulowania dla każdego odczytu dashboardu i zagrożeń. Punkty wejścia do kodu i właścicieli wątków opisuje [architektura](../architektura.md).
+Bieżące zachowanie `App` i `SharedSession`. Wątek sesji przesyła do Tk rodzaj zlecenia i sygnał anulowania. Tk przygotowuje ID żądania oraz okres dla dashboardu. Sesja czeka na przygotowanie i po przerwaniu przekazuje zwolnienie żądania. Czytniki emitują wyniki przez kolejkę, a zdarzenia obsługują moduły widoków w Tk. [Architektura](../architektura.md) · [Granice App i sesji](../decyzje/042-granice-app-i-sesji.md)
 
 ## Kolejka i anulowanie
 

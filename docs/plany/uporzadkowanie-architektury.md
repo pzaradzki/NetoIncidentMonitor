@@ -12,9 +12,7 @@ Naprawiono restart po pierwszym zapisie zagrożeń SLA, przeniesiono testy na `S
 
 ## Etap 2. Zależności od App
 
-Przenieść istniejący odczyt i zapis konfiguracji do modułu, z którego korzystają zarówno `App`, jak i moduły analityki oraz układów filtrów. W osobnych zmianach wydzielać logikę logowania i obsługę wybranych zleceń z `execute_session_part()` oraz obsługę ich zdarzeń z `drain()`. [Konfiguracja analityki](../../neto_incident_monitor/analytics_config.py) · [Sesja](../../neto_incident_monitor/shared_session.py) · [Kod App](../../neto_incident_monitor/app.py)
-
-Etap jest ukończony, gdy moduły konfiguracji, układów i logowania korzystają z właściwych modułów bez importowania `App` po te operacje, a testy wybranych zleceń potwierdzają dotychczasowe zachowanie kolejki, anulowanie, zapis i diagnostykę. Zakres zleceń do wydzielenia określi szczegółowy plan etapu.
+**Zakończony w źródłach.** Wydzielono konfigurację, logowanie, odczyty Dashboardu SLA i zagrożeń oraz obsługę ich zdarzeń w widokach. Pełna regresja Windows zaliczyła 546 testów, a 2 pominięto. Odbiór na ADEO potwierdził ręczne logowanie, ukrycie Chromium i ponowne połączenie. [Zakończony plan z checklistą](zakonczone/zaleznosci-od-app.md) · [Decyzja 042](../decyzje/042-granice-app-i-sesji.md)
 
 ## Etap 3. Płynność Tk
 
@@ -30,7 +28,7 @@ Etap jest ukończony, gdy z czystego checkoutu i udokumentowanych wejść można
 
 ## Kolejność i plany szczegółowe
 
-Następny etap to porządkowanie zależności od `App`. Pomiary Tk i przygotowanie wejść do budowy można prowadzić niezależnie. Gdy pomiar uzasadni zapis cache w tle, szczegółowy plan powinien uwzględnić aktualne granice modułów i istniejących wykonawców zadań.
+Następny etap to pomiar płynności Tk. Przygotowanie wejść do budowy można prowadzić niezależnie. Gdy pomiar uzasadni zapis cache w tle, szczegółowy plan powinien uwzględnić aktualne granice modułów i istniejących wykonawców zadań.
 
 Przed wdrożeniem każdego etapu dodać w indeksie odnośnik do jego szczegółowego planu. Plan etapu określa zakres zmiany, decyzje do podjęcia, scenariusze błędu, testy regresji, diagnostykę i kryteria odbioru. Dla zmian w logowaniu lub zachowaniu Chromium uwzględnić odbiór właściwych scenariuszy na ADEO. Wyniki i otwarte kwestie zapisać po wykonaniu etapu. [Zasady utrzymania planów](README.md#utrzymanie) · [Regresja Windows](../../tools/run_regression.py)
 

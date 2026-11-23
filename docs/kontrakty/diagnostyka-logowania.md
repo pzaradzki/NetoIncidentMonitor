@@ -4,6 +4,7 @@ Stan: **2 listopada 2026, 1.8.0**. Bieżący kontrakt; zastępuje [wcześniejszy
 
 ## Logowanie
 
+- `SharedSession` wywołuje na swoim wątku `browser_login` i pomocnicze operacje z `browser_actions`. Tk odbiera zdarzenia o gotowości sesji, ręcznym logowaniu i potwierdzeniu zapisu hasła. [Podział modułów](../decyzje/042-granice-app-i-sesji.md)
 - Jeden snapshot rozróżnia `authentication`, `logout`, `unknown`, `target` i `session`. Potwierdzenie sesji wymaga dodatniego dowodu we właściwym kontekście bez konfliktu formularza, ramek lub własnego popupu; nie pobiera pierwszej listy. [008](../decyzje/008-obserwacja-logowania.md).
 - Automatyczne akcje i wsparcie renderowania dopuszczają tylko rozpoznane HTTPS `idpb2e.adeo.com:443`, bez userinfo. Nieznany formularz jest przekazywany użytkownikowi, nie automatyzowany przez zgadywanie selektorów.
 - Jedno konto może być wybrane automatycznie; wiele kont wybiera użytkownik. Sam wybór nie oznacza ręcznej własności późniejszego formularza i nie zastępuje potwierdzenia CSS autofill. Pisanie/wklejenie, ręczne wysłanie, MFA i odrzucenie danych mają pierwszeństwo.
@@ -11,7 +12,7 @@ Stan: **2 listopada 2026, 1.8.0**. Bieżący kontrakt; zastępuje [wcześniejszy
 - Przed akcją ponownie sprawdzane są ustawienia, origin, formularz i ingerencja. Trial i właściwe kliknięcie są ograniczone do 500 ms. Co najwyżej 3 próby; ponowienie wyłącznie po potwierdzonym braku dostarczenia. Dostarczony lub niepewny POST nie jest ponawiany przy zmianie dokumentu/opcji.
 - Auto+hide pozostaje ukryte. Auto off, potrzebna ręczna obsługa, błąd mechanizmu lub jawne „Pokaż” udostępniają okno. Po potwierdzonym pokazaniu nie ma pętli odbierania fokusu. Wsparcie [009](../decyzje/009-renderowanie-ukrytego-logowania.md) kończy się przed ręcznym pokazaniem; nie zapisuje ani nie dekoduje payloadu klatek auth.
 - Logout, sieć i brak postępu mają ograniczone odzyskiwanie zwykłego celu GET, z odstępami 5/15/60/300 s. Nie odtwarzamy URL SSO ani nie nadpisujemy ręcznej/niepewnej próby. Monitoring oczekuje do odzyskania albo Stop. Zamknięty popup nie jest sam w sobie sukcesem lub poleceniem zatrzymania.
-- Zamknięcie Chromium korzysta z dotychczasowego budżetu restartów; nie kasujemy profilu. Permanentna awaria startu/profilu nie jest bezterminowo naprawiana. Zegary są zabezpieczeniami; zawieszenie procesu renderera może opóźnić kooperacyjny Stop.
+- Po zamknięciu Chromium sesja zgłasza problem i czeka na świadome ponowne połączenie. Profil zostaje zachowany. Zawieszenie procesu renderera może opóźnić kooperacyjny Stop. [Decyzja 025](../decyzje/025-wspolna-sesja-servicenow.md)
 
 ## Diagnostyka
 

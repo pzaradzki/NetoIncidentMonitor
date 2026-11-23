@@ -36,7 +36,7 @@ class DashboardScopeTests(unittest.TestCase):
             original = {'version': 1, 'assignees': ['1' * 32], 'locations': ['2' * 32], 'monthly_group': '3' * 32}
             path.write_text(json.dumps(original), encoding='utf-8')
             scope = scope_from_p1_query(QUERY)
-            with patch('neto_incident_monitor.app.save_json', side_effect=OSError('SYNTHETIC_SECRET')):
+            with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('SYNTHETIC_SECRET')):
                 with self.assertRaises(DashboardReadError) as error:
                     save_dashboard_scope(scope, path)
             self.assertEqual(error.exception.reason, 'dashboard_scope_save')

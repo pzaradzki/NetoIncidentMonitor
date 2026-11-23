@@ -3,7 +3,7 @@ import sys,tempfile,threading,time,unittest
 from urllib.parse import urlsplit
 from unittest.mock import patch
 from playwright.sync_api import sync_playwright
-from neto_incident_monitor.app import wait_for_login
+from neto_incident_monitor.browser_login import wait_for_login
 from neto_incident_monitor.authentication import install_input_guard
 from neto_incident_monitor.automatic_login import AutomaticLogin
 from neto_incident_monitor.browser_policy import BrowserOptions,BrowserRuntime

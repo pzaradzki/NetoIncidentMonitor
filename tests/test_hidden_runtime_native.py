@@ -1,7 +1,7 @@
 """Real Windows/Chromium runtime with local synthetic authentication only."""
 import sys,tempfile,threading,unittest
 from playwright.sync_api import sync_playwright
-from neto_incident_monitor.app import wait_for_login
+from neto_incident_monitor.browser_login import wait_for_login
 from neto_incident_monitor.browser_policy import BrowserRuntime,BrowserOptions
 from neto_incident_monitor.browser_window import BrowserWindow
 from neto_incident_monitor.browser_actions import ACTION_TICK,ready_control

@@ -1,0 +1,54 @@
+# Etap 2. Zależności od App
+
+Przenieść konfigurację i obsługę przeglądarki do modułów, z których mogą korzystać zarówno `App`, jak i wątek sesji. Następnie wydzielić obsługę dwóch zleceń analitycznych, najpierw Dashboardu SLA, potem zagrożeń SLA. Oba korzystają z przygotowania żądania przez Tk, a ich wyniki mają osobne reguły zapisu. Każdą zmianę można zweryfikować niezależnie. [Plan ogólny](../uporzadkowanie-architektury.md#etap-2-zależności-od-app) · [Właściciele wątków](../../decyzje/001-watki-i-kolejki.md)
+
+## 1. Rozpoznanie i punkt odniesienia
+
+- [x] Zidentyfikowano zależności konfiguracji od `app.py`. Analityka, układy filtrów, kolumny i ustawienia Google Chat importują zapis lub odczyt JSON. Ulubione importują także `load_filters()`, a `SharedSession` wyznacza położenie układów na podstawie `CONFIG` z `app.py`. [Zapis zakresu](../../../neto_incident_monitor/analytics_config.py) · [Układy](../../../neto_incident_monitor/filter_layouts.py) · [Ulubione](../../../neto_incident_monitor/favorites.py) · [Sesja](../../../neto_incident_monitor/shared_session.py)
+- [x] Zidentyfikowano zależności przeglądarki od `app.py`. `SharedSession` pobiera stamtąd pętlę logowania, nawigację celu logowania, czekanie na kolejny cykl, sterowanie oknem Chromium i typ błędu zamknięcia przeglądarki. Czytnik Ulubionych importuje ten sam wyjątek. [Sesja](../../../neto_incident_monitor/shared_session.py) · [Czytnik Ulubionych](../../../neto_incident_monitor/favorites_worker.py)
+- [x] Prześledzono przygotowanie Dashboardu SLA i zagrożeń. Worker emituje `session_prepare_read`, Tk przygotowuje żądanie, a `drain()` odbiera postęp, wynik i zakończenie. Dashboard komunikuje wynik zgodnie z ID i okresem, zagrożenia mają osobny ID oraz zapis listy i liczników w SQLite. [Dyspozytor i zdarzenia](../../../neto_incident_monitor/app.py) · [Kontrakt](../../kontrakty/kolejka-i-trwalosc.md#operacje-i-warunki-zatwierdzenia)
+- [x] Przed zmianami na commicie `d344459` zaliczono 150 testów konfiguracji, logowania i zleceń w 12 modułach Windows. Wszystkie próby wykonano. [Zakończony etap 1](retencja-kolejki-powiadomien.md) · [Runner](../../../tools/run_regression.py)
+
+## 2. Konfiguracja i ścieżki
+
+- [x] Ustalono punkty wejścia dla `CONFIG`, odczytu, zapisu i `load_filters()`. Źródła i EXE używają katalogu z `runtime_paths`. Runner podstawia katalog przed importem modułów aplikacji, a podgląd podstawia ścieżki już załadowanym modułom. [Ścieżki uruchomienia](../../../neto_incident_monitor/runtime_paths.py) · [Podgląd UI](../../../tools/preview_ui.py) · [Runner](../../../tools/run_regression.py)
+- [x] Ścieżkę konfiguracji obsługuje `config_io.CONFIG`. `SharedSession` używa tej samej ścieżki co `App` i pliku układów obok niej. [Konfiguracja](../../../neto_incident_monitor/config_io.py) · [Testy sesji](../../../tests/test_shared_session.py)
+- [x] Przeniesiono odczyt i zapis z zachowaniem DPAPI, odczytu prostych plików JSON i obsługi starszych kluczy. Testy potwierdziły odczytową kontrolę startową i zachowanie danych przy błędzie. [DPAPI](../../../neto_incident_monitor/secret_config.py) · [Testy kontroli startowej](../../../tests/test_audit_startup.py)
+- [x] `App`, analityka i magazyn układów używają `config_io`. Testy zakresu, resetu i układów zaliczono, w tym obsługę nieudanego zapisu. [Testy zakresu](../../../tests/test_dashboard_scope.py) · [Testy układów](../../../tests/test_shared_session.py)
+- [x] Przełączono ustawienia kolumn i Google Chat oraz import Ulubionych. Migracja starszej listy filtrów korzysta z tej samej walidacji adresów. [Testy kolumn](../../../tests/test_dynamic_columns.py) · [Testy importu](../../../tests/test_favorites_import.py)
+- [x] Podgląd i testy podstawiają konfigurację w jej module. Test potwierdził wykonanie podglądu na izolowanych danych. [Podgląd](../../../tools/preview_ui.py) · [Test narzędzia](../../../tests/test_audit_tools.py)
+- [x] Po wydzieleniu konfiguracji regresja zakresowa objęła 113 testów. Zaliczono 112. Środowisko pominęło próbę dowiązania symbolicznego. [Testy konfiguracji](../../../tests/test_secret_config.py) · [Testy zakresu](../../../tests/test_dashboard_scope.py) · [Testy kontroli startowej](../../../tests/test_audit_startup.py) · [Testy resetu](../../../tests/test_data_reset.py)
+
+## 3. Logowanie, Chromium i cykl sesji
+
+- [x] Sesja i import Ulubionych używają tej samej klasy zamknięcia przeglądarki z `read_errors`. Testy zamknięcia i ponownego połączenia przeszły. [Wyjątki](../../../neto_incident_monitor/read_errors.py) · [Testy sesji](../../../tests/test_shared_session.py)
+- [x] `browser_actions` obsługuje stan okna Chromium przez CDP i czekanie na kolejny odczyt. Próby natywne oraz testy wybudzania, oczekiwania i przerywania zaliczono. [Akcje przeglądarki](../../../neto_incident_monitor/browser_actions.py) · [Testy logowania](../../../tests/test_login.py) · [Testy okna](../../../tests/test_browser_window.py)
+- [x] `SharedSession` wywołuje nawigację celu i pętlę logowania w `browser_login`. Potwierdzenie zapisu hasła nadal przechodzi przez istniejące zdarzenia do Tk. [Logowanie](../../../neto_incident_monitor/browser_login.py) · [Kontrakt logowania](../../kontrakty/diagnostyka-logowania.md)
+- [x] Produkcyjne wywołania i atrapy testowe wskazują moduły właścicieli funkcji. Próby popupu, anulowania, czyszczenia stanu i bezpiecznej diagnostyki przeszły. [Testy przejść](../../../tests/test_login_transitions.py) · [Testy diagnostyki](../../../tests/test_authentication_hardening.py)
+- [x] Regresja logowania i Chromium zaliczyła 140 testów, w tym natywne próby widoczności, fokusu oraz zapisu hasła. [Widoczność](../../../tests/test_hidden_runtime_native.py) · [Zapis hasła i logowanie](../../../tests/test_login_runtime_native.py)
+- [x] Dwie próby na rzeczywistym ADEO, obie z odrębnym tymczasowym profilem. Pierwsza potwierdziła start, ukrycie Chromium, wykrycie zamknięcia karty, jawne ponowne połączenie i ponowne ukrycie przeglądarki. Druga potwierdziła oczekiwanie na ręczne logowanie, ręczną interakcję użytkownika, gotowość sesji i ukrycie Chromium.
+
+## 4. Dashboard SLA
+
+- [x] Wątek sesji przekazuje do Tk rodzaj zlecenia, wybrany okres i sygnał przerwania. Tk zwraca ID i okres żądania lub brak żądania. Jeżeli Stop nastąpi po przygotowaniu, wątek emituje zdarzenie zwalniające przygotowane żądanie. Odczyt przekazuje przez kolejkę postęp, wyniki sekcji i zakończenie. [Przygotowanie](../../../neto_incident_monitor/shared_session.py) · [Kontrakt kolejki](../../kontrakty/kolejka-i-trwalosc.md#kolejka-i-anulowanie)
+- [x] Odczyt wydzielono do `dashboard_read`. `App` przekazuje żądanie, sygnał anulowania, kolejkę zdarzeń i funkcję odzyskania sesji. Próby potwierdziły dotychczasowy odczyt sekcji, transport i diagnostykę. [Odczyt dashboardu](../../../neto_incident_monitor/dashboard_read.py) · [Próby diagnostyki](../../../tests/test_dashboard_controls.py)
+- [x] `dashboard_ui` obsługuje postęp, wynik i zakończenie. Testy sprawdziły odrzucenie zdarzeń z obcym okresem lub ID oraz zwolnienie blokady okresu. [Obsługa widoku](../../../neto_incident_monitor/dashboard_ui.py) · [Testy okresu](../../../tests/test_dashboard_period.py)
+- [x] Po wydzieleniu dashboardu zaliczono 64 testy zakresowe. Sprawdzono blokadę okresu, błąd sekcji, odzyskanie sesji, Stop i kolejność pełnego odświeżenia. Pierwszy przebieg wykrył w fixture ustawianie ścieżki w dawnym module. Po przełączeniu fixture cały zakres przeszedł. [Testy okresu](../../../tests/test_dashboard_period.py) · [Testy kolejności](../../../tests/test_update_order.py) · [Testy ponowień](../../../tests/test_section_login_recovery.py)
+
+## 5. Zagrożenia SLA
+
+- [x] `SharedSession` odpowiada za termin następnego odczytu i przyczynę oczekiwania. Czytnik otrzymuje te dane razem z żądaniem. Próby objęły ręczny odczyt po Stop oraz zaległy odczyt między filtrami. [Sesja](../../../neto_incident_monitor/shared_session.py) · [Testy harmonogramu](../../../tests/test_refresh_requests.py)
+- [x] Odczyt wydzielono do `threatened_read`. Przekazane funkcje korzystają z istniejącego zapisu migawki i alertów oraz dotychczasowego wykonawcy powiadomień. Próby objęły poprawny zapis, niepełny odczyt i przerwanie. [Czytnik](../../../neto_incident_monitor/threatened_read.py) · [Zapis SQLite](../../../neto_incident_monitor/history.py) · [Testy czytnika](../../../tests/test_threatened.py)
+- [x] `threatened_ui` odbiera postęp, wynik, szczegóły i koniec żądania z kolejki Tk. Testy potwierdziły zastąpienie symulacji poprawnym odczytem, odrzucenie spóźnionych zdarzeń i anulowanie. [Obsługa widoku](../../../neto_incident_monitor/threatened_ui.py) · [Testy widoku](../../../tests/test_threatened.py)
+- [x] Próby potwierdziły kolejność, termin 60 s od zakończenia próby, Stop, zachowanie stanu po niepełnym odczycie oraz restart z zapisaną migawką i alertem. [Testy widoku](../../../tests/test_threatened.py) · [Testy harmonogramu](../../../tests/test_refresh_requests.py) · [Testy trwałości](../../../tests/test_threatened_details.py)
+
+## 6. Odbiór całego etapu
+
+- [x] Przegląd importów 80 plików modułów potwierdził samodzielność modułów konfiguracji, układów, importu i logowania. Test w osobnym procesie sprawdził też, że import nowych czytników i sesji przebiega bez ładowania `App` i Tk. [Test importów](../../../tests/test_audit_tools.py)
+- [x] Porównano diagnostykę za pomocą testów logowania, okresu dashboardu i harmonogramu zagrożeń. Testy sprawdziły korelację zdarzeń z ID zlecenia, zachowanie stanu po błędzie i ochronę syntetycznych sekretów w logach. [Logowanie](../../../tests/test_authentication_hardening.py) · [Dashboard](../../../tests/test_dashboard_period.py) · [Zagrożenia](../../../tests/test_refresh_requests.py)
+- [x] Pełna regresja Windows objęła 548 testów w 72 modułach. Zaliczone 546, bez niepowodzeń i błędów callbacków Tk. Po osobnym ponowieniu dwa testy pozostały pominięte z powodu braku fokusu dla okna testowego Chromium i braku możliwości utworzenia dowiązania symbolicznego. Inna natywna próba przywracania fokusu Tk, która raz nie przeszła w przebiegu zakresowym, przeszła w izolacji i w pełnej regresji. Wyniki ADEO zapisano w kroku odbioru logowania. [Runner regresji](../../../tools/run_regression.py)
+- [x] Zaktualizowano architekturę, kontrakty i plan ogólny. Checklistę przeniesiono do zakończonych, a indeks prac wskazuje wynik. [Architektura](../../architektura.md) · [Kontrakt kolejki](../../kontrakty/kolejka-i-trwalosc.md) · [Decyzja 042](../../decyzje/042-granice-app-i-sesji.md)
+
+## Aktualizowanie checkboxów
+
+Po zweryfikowaniu kroku zmienić `[ ]` na `[x]` i przy pozycji odnotować wynik lub link do testu, decyzji, raportu bądź commitu. Częściowo wykonany krok pozostaje otwarty z opisem tego, co zostało do sprawdzenia. Regresja ponownie otwiera odpowiednią pozycję. Zaznaczone rozpoznanie potwierdza stan wyjściowy.

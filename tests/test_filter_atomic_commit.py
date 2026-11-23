@@ -203,7 +203,7 @@ class NotificationRevisionTests(unittest.TestCase):
             path.write_text(json.dumps({'notify': True, 'notification_revision': 'legacy', 'filters': [first]}),
                             encoding='utf-8')
             app = App.__new__(App)
-            with patch('neto_incident_monitor.app.CONFIG', path):
+            with patch('neto_incident_monitor.config_io.CONFIG', path):
                 original = app.alert_routes('A')
                 threats = app.alert_routes(THREATENED_URL)
                 save_config(path, {'notify': True, 'filters': [first, second], 'notification_library': {}})
@@ -251,7 +251,7 @@ class NotificationRevisionTests(unittest.TestCase):
                         'google_chat_enabled': True, 'google_chat_webhook': 'https://example.test/chat'}
             path.write_text(json.dumps(settings), encoding='utf-8')
             app = App.__new__(App)
-            with patch('neto_incident_monitor.app.CONFIG', path), \
+            with patch('neto_incident_monitor.config_io.CONFIG', path), \
                     patch('neto_incident_monitor.secret_config.protect', side_effect=lambda value: {'fixture': value}), \
                     patch('neto_incident_monitor.secret_config.unprotect', side_effect=lambda value: value['fixture']):
                 urls = ('A', THREATENED_URL)

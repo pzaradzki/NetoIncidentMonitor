@@ -44,7 +44,7 @@ class TableLoadingTests(unittest.TestCase):
     def setUp(self):
         self.root = tk.Tk()
         self.folder = tempfile.TemporaryDirectory()
-        with patch('neto_incident_monitor.app.read_json', return_value={'filters': [
+        with patch('neto_incident_monitor.config_io.read_json', return_value={'filters': [
                 {'name': 'A', 'url': URL}, {'name': 'B', 'url': OTHER}]}):
             self.app = App(self.root, history_path=Path(self.folder.name)/'history.json', enable_tray=False)
         schema = [{'key': 'number', 'label': 'Numer'}, {'key': 'short_description', 'label': 'Opis'}]

@@ -4,7 +4,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowa
 
 ## Pozostałe tematy
 
-- [Plan uporządkowania architektury](uporzadkowanie-architektury.md) obejmuje zależności od `App`, płynność Tk i odtwarzalną budowę EXE.
+- [Plan uporządkowania architektury](uporzadkowanie-architektury.md) obejmuje płynność Tk i odtwarzalną budowę EXE.
 - Ustalić lokalizację logów uruchomień ze źródeł. [Wyniki audytu technicznego](zakonczone/naprawy-audytu.md)
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu. [Opis obserwacji](../wersje/v1.8.1.md)
 - Potencjalny kanał e-mail. Potwierdzono pojedynczą wysyłkę i dostarczenie. Otwarte są zasady relay i działanie na innych komputerach. [Rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md)
@@ -13,6 +13,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowa
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Zależności od App](zakonczone/zaleznosci-od-app.md) | Wydzielono konfigurację, logowanie i dwa odczyty SLA. Windows zaliczył 546 testów, a 2 pominięto. Ręczne logowanie, ukrycie Chromium i ponowne połączenie sprawdzono na ADEO. |
 | [Retencja kolejki powiadomień](zakonczone/retencja-kolejki-powiadomien.md) | Wdrożono w źródłach politykę 30 i 90 dni. Sprawdzono bazy w wersjach 0 i 1 z kodem paczki 1.12.0-experimental.4. Pełna regresja Windows zaliczyła 544 testy, a 2 pominięto. |
 | [Pobranie brakujących list agentów i lokalizacji po logowaniu](zakonczone/startowy-odczyt-zakresu-dashboardu.md) | Użytkownik potwierdził na ADEO pobranie zakresu na świeżym profilu i użycie zapisu po restarcie w wersji 1.12.0-experimental.4. |
 | [Wycofanie starszej pętli monitoringu](zakonczone/wycofanie-starszej-petli.md) | Wdrożono w źródłach. Dashboard, zagrożenia SLA i filtry korzystają ze wspólnej sesji. W pełnej regresji Windows zaliczono 533 testy, a 2 pominięto. |

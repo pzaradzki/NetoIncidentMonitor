@@ -20,6 +20,23 @@ CATEGORIES = (
 )
 
 
+def handle_read_event(app, kind, value):
+    if kind == 'threatened_state':
+        app.threatened_view.set_state(*value)
+        if (app.session_part and app.session_part[1].scope == 'threatened'
+                and app.threatened_view.pending and value[0] == app.threatened_view.request_id):
+            app.session_work_detail = 'Ponawia odczyt zagrożeń SLA' if value[1] == 'Ponawianie odczytu' else ''
+    elif kind == 'threatened_result':
+        app.threatened_view.apply_result(*value)
+    elif kind == 'threatened_details':
+        app.threatened_view.apply_details(*value)
+    elif kind == 'threatened_finished':
+        app.threatened_view.finish_request(value)
+    else:
+        return False
+    return True
+
+
 class RiskTile(AnimatedMetricTile):
     def __init__(self, parent, title, description, accent):
         super().__init__(parent, accent)

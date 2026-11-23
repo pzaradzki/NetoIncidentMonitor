@@ -158,7 +158,7 @@ class BrowserWindowTests(unittest.TestCase):
     def test_activity_keeps_login_visible_and_hides_reading(self):
         from unittest.mock import Mock
         from neto_incident_monitor.browser_policy import BrowserOptions, BrowserRuntime
-        from neto_incident_monitor.app import set_chromium_window_state
+        from neto_incident_monitor.browser_actions import set_chromium_window_state
         with tempfile.TemporaryDirectory() as profile, sync_playwright() as playwright:
             context = playwright.chromium.launch_persistent_context(profile, headless=False)
             try:

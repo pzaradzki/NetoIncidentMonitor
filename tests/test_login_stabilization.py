@@ -149,7 +149,7 @@ class InputOwnershipScopeTests(unittest.TestCase):
 
  def test_password_save_prompt_is_skipped_with_auto_login_disabled(self):
   from threading import Event
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   from neto_incident_monitor.authentication import set_login_activity
   self.page.route('https://idpb2e.adeo.com/password', lambda r:
                   r.fulfill(body='<input type="password">', content_type='text/html'))
@@ -207,36 +207,36 @@ class LoginCoordinatorTests(unittest.TestCase):
  def test_confirmed_session_never_reads_filter_records(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   page=page_with(frame_with(session_signal=True));page.is_closed.return_value=False
   with patch('neto_incident_monitor.app.discover_query',side_effect=AssertionError('No list during login')):
    self.assertTrue(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',threading.Event()))
  def test_unknown_waits_and_recovers_until_stop_not_false_success(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   page=page_with(frame_with());page.is_closed.return_value=False;stop=threading.Event();ticks=[0]
   def pulse(_):
    ticks[0]+=1
    if ticks[0]>=4:stop.set()
   page.wait_for_timeout.side_effect=pulse
-  with patch('neto_incident_monitor.app.time.monotonic',side_effect=lambda:ticks[0]*200),patch('neto_incident_monitor.app.navigate') as navigate,patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True):
+  with patch('neto_incident_monitor.browser_login.time.monotonic',side_effect=lambda:ticks[0]*200),patch('neto_incident_monitor.browser_login.navigate') as navigate,patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True):
    self.assertFalse(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',stop))
   self.assertGreaterEqual(navigate.call_count,1);self.assertLessEqual(navigate.call_count,3)
  def test_logout_recovers_with_safe_target_get(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   target='https://adeo.service-now.com/incident_list.do';page=page_with(frame_with(session_signal=True),url='https://adeo.service-now.com/external_logout_complete.do')
   page.is_closed.return_value=False
   def navigate(*_):page.url=target
-  with patch('neto_incident_monitor.app.navigate',side_effect=navigate) as call,patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True):
+  with patch('neto_incident_monitor.browser_login.navigate',side_effect=navigate) as call,patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True):
    self.assertTrue(wait_for_login(page,target,threading.Event()))
   call.assert_called_once();self.assertEqual(call.call_args.args[1],target)
  def test_manual_wait_focus_once_and_stop_is_honored(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   page=page_with(frame_with(url='https://idpb2e.adeo.com/login',password_count=1),url='https://idpb2e.adeo.com/login')
   page.is_closed.return_value=False;stop=threading.Event();ticks=[0];window=Mock();window.show.return_value=True
   def pulse(_):
@@ -263,17 +263,17 @@ class RecoverySafetyTests(unittest.TestCase):
  def test_uncertain_submission_prevents_logout_reopening(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   page=page_with(frame_with(),url='https://adeo.service-now.com/external_logout_complete.do')
   page.is_closed.return_value=False;stop=threading.Event();page.wait_for_timeout.side_effect=lambda _:stop.set()
   auto=Mock(blocked=False,needs_user=False,submitted=True,pending_delivery_token=None)
-  with patch('neto_incident_monitor.automatic_login.AutomaticLogin',return_value=auto),patch('neto_incident_monitor.app.navigate') as navigate,patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True):
+  with patch('neto_incident_monitor.automatic_login.AutomaticLogin',return_value=auto),patch('neto_incident_monitor.browser_login.navigate') as navigate,patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True):
    self.assertFalse(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',stop,auto_login=True))
   navigate.assert_not_called()
  def test_certificate_failure_is_handed_off_without_retry_or_bypass(self):
   import threading
   from tests.test_login_observation import page_with,frame_with
-  from neto_incident_monitor.app import wait_for_login
+  from neto_incident_monitor.browser_login import wait_for_login
   from neto_incident_monitor.browser_policy import BrowserRuntime,BrowserOptions
   page=page_with(frame_with(url='chrome-error://chromewebdata/'),url='chrome-error://chromewebdata/')
   page.is_closed.return_value=False;stop=threading.Event();page.wait_for_timeout.side_effect=lambda _:stop.set()
@@ -281,7 +281,7 @@ class RecoverySafetyTests(unittest.TestCase):
   runtime=BrowserRuntime(page,BrowserOptions({'auto_login':True,'hide_browser':True}),lambda:window,Mock(),Mock(),Mock())
   runtime.navigation_error='network_tls'
   try:
-   with patch('neto_incident_monitor.app.navigate') as navigate:
+   with patch('neto_incident_monitor.browser_login.navigate') as navigate:
     self.assertFalse(wait_for_login(page,'https://adeo.service-now.com/incident_list.do',stop,runtime=runtime))
    navigate.assert_not_called();window.show.assert_called_with(activate=True)
   finally:runtime.close()

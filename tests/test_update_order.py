@@ -65,7 +65,7 @@ class UpdateOrderTests(unittest.TestCase):
             root.withdraw()
             app = None
             try:
-                with patch('neto_incident_monitor.app.CONFIG', config), \
+                with patch('neto_incident_monitor.config_io.CONFIG', config), \
                         patch('neto_incident_monitor.app.STATE', folder / 'seen.json'), \
                         patch('neto_incident_monitor.app.DATA', folder), \
                         patch('neto_incident_monitor.runtime_paths.DATA', folder), \

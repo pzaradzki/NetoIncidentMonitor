@@ -8,7 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from unittest.mock import patch
 from PIL import ImageGrab
-from neto_incident_monitor import app as app_module, runtime_paths, login_diagnostics
+from neto_incident_monitor import app as app_module, config_io, runtime_paths, login_diagnostics
 from neto_incident_monitor.columns import FIELDS
 
 OUTPUT = Path(__file__).resolve().parents[1] / 'build' / 'ui-preview.png'
@@ -17,7 +17,8 @@ OUTPUT = Path(__file__).resolve().parents[1] / 'build' / 'ui-preview.png'
 def main():
     with tempfile.TemporaryDirectory(prefix='neto-ui-preview-') as temporary, ExitStack() as stack:
         folder = Path(temporary)
-        stack.enter_context(patch.multiple(app_module, DATA=folder, CONFIG=folder/'config.json', STATE=folder/'seen.json'))
+        stack.enter_context(patch.multiple(app_module, DATA=folder, STATE=folder/'seen.json'))
+        stack.enter_context(patch.object(config_io, 'CONFIG', folder/'config.json'))
         stack.enter_context(patch.object(runtime_paths, 'DATA', folder))
         stack.enter_context(patch.object(login_diagnostics, 'DATA', folder))
         stack.enter_context(patch.object(login_diagnostics._logger, 'handlers', []))
@@ -27,7 +28,7 @@ def main():
         root = tk.Tk()
         app = None
         try:
-            with patch.object(app_module, 'read_json', return_value=settings):
+            with patch.object(config_io, 'read_json', return_value=settings):
                 app = app_module.App(root, history_path=folder/'history.json', enable_tray=False,
                                      apply_startup=False)
             app.window_restoring = False

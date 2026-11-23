@@ -4,7 +4,9 @@ import unittest
 from unittest.mock import Mock, patch
 
 from playwright.sync_api import sync_playwright, Locator, TimeoutError
-from neto_incident_monitor.app import App, BrowserClosedError, LoginPopupClosed, wait_for_login
+from neto_incident_monitor.app import App
+from neto_incident_monitor.read_errors import BrowserClosedError, LoginPopupClosed
+from neto_incident_monitor.browser_login import wait_for_login
 from neto_incident_monitor.authentication import install_input_guard, authenticated_session, manual_handoff
 from neto_incident_monitor.automatic_login import AutomaticLogin
 from neto_incident_monitor.browser_policy import BrowserOptions, BrowserRuntime
@@ -173,7 +175,7 @@ class LoginTransitionTests(unittest.TestCase):
             popup.is_closed.return_value=True
             if ticks[0]>=3:stop.set()
         page.wait_for_timeout.side_effect=pulse
-        with patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.time.monotonic',return_value=0):
+        with patch('neto_incident_monitor.browser_login.navigate') as navigate, patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.browser_login.time.monotonic',return_value=0):
             self.assertFalse(wait_for_login(page,TARGET,stop))
         navigate.assert_called_once()
         self.assertTrue(stop.is_set())
@@ -192,7 +194,7 @@ class LoginTransitionTests(unittest.TestCase):
             popup.is_closed.return_value=True
             if ticks[0]>=3:stop.set()
         page.wait_for_timeout.side_effect=pulse
-        with patch('neto_incident_monitor.app.navigate') as navigate, patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.app.time.monotonic',return_value=0):
+        with patch('neto_incident_monitor.browser_login.navigate') as navigate, patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True), patch('neto_incident_monitor.browser_login.time.monotonic',return_value=0):
             self.assertFalse(wait_for_login(page,TARGET,stop))
         navigate.assert_called_once()
         self.assertTrue(stop.is_set())
@@ -207,7 +209,7 @@ class LoginTransitionTests(unittest.TestCase):
             popup.url=TARGET;pf.url=TARGET;pf.evaluate.return_value=signals(session_signal=True)
         page.wait_for_timeout.side_effect=pulse
         def navigate(*_):page.frames[0].evaluate.return_value=signals(session_signal=True)
-        with patch('neto_incident_monitor.app.navigate',side_effect=navigate) as call,patch('neto_incident_monitor.app.set_chromium_window_state',return_value=True):
+        with patch('neto_incident_monitor.browser_login.navigate',side_effect=navigate) as call,patch('neto_incident_monitor.browser_actions.set_chromium_window_state',return_value=True):
             self.assertTrue(wait_for_login(page,TARGET,threading.Event()))
         call.assert_called_once()
 
@@ -226,7 +228,7 @@ class LoginTransitionTests(unittest.TestCase):
                 stop.set()
         page.wait_for_timeout.side_effect = pulse
         with patch('neto_incident_monitor.automatic_login.AutomaticLogin') as automatic, \
-                patch('neto_incident_monitor.app.time.monotonic', return_value=0):
+                patch('neto_incident_monitor.browser_login.time.monotonic', return_value=0):
             automatic.return_value.blocked = False
             automatic.return_value.needs_user = False
             self.assertFalse(wait_for_login(page, TARGET, stop, runtime=runtime))

@@ -1,12 +1,14 @@
 """Short, cancellable waits executed by the Playwright owner thread."""
+import logging
 from contextvars import ContextVar
 from time import monotonic
 from playwright.sync_api import TimeoutError
-from neto_incident_monitor.read_errors import Cancelled
+from neto_incident_monitor.read_errors import BrowserClosedError, Cancelled
 
 from neto_incident_monitor.read_budget import CURRENT, remaining_ms
 
 ACTION_TICK = ContextVar('browser_action_tick', default=None)
+LOG = logging.getLogger("servicenow")
 
 
 def checkpoint(stop):
@@ -108,3 +110,45 @@ def read_control(control, stop, read, timeout=15000, check=None, assertion=False
                 raise
         control.page.wait_for_timeout(100)
     raise TimeoutError('Control observation deadline exceeded')
+
+
+def wait_for_browser_cycle(page, schedule, seconds, stop):
+    """Keep Playwright events flowing while waiting for the next read."""
+    deadline = monotonic() + seconds
+    while not stop.is_set():
+        checkpoint(stop)
+        if page.is_closed():
+            raise BrowserClosedError("Karta monitoringu została zamknięta.")
+        if schedule.wait(0, stop):
+            return True
+        if schedule.woken_by_request:
+            return False
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return False
+        page.wait_for_timeout(min(250, remaining * 1000))
+    return True
+
+
+def minimize_chromium(page):
+    set_chromium_window_state(page, "minimized")
+
+
+def set_chromium_window_state(page, state):
+    """Change only the Chromium window containing this tab."""
+    session = None
+    try:
+        session = page.context.new_cdp_session(page)
+        window = session.send("Browser.getWindowForTarget")
+        session.send("Browser.setWindowBounds", {
+            "windowId": window["windowId"], "bounds": {"windowState": state}})
+        bounds = session.send("Browser.getWindowBounds", {"windowId": window["windowId"]})
+        return bounds.get("bounds", {}).get("windowState") == state
+    except Exception:
+        LOG.warning("Nie udało się zmienić stanu okna przeglądarki na %s.", state)
+    finally:
+        if session:
+            try:
+                session.detach()
+            except Exception:
+                pass

@@ -22,7 +22,7 @@ READ_ERROR = 'Nie udało się pobrać Ulubionych z ServiceNow.'
 
 
 def read_on_session(page, request, session, stop):
-    from neto_incident_monitor.app import BrowserClosedError
+    from neto_incident_monitor.read_errors import BrowserClosedError
 
     token = request['id']
     log = LoginDiagnostics(source='favorites', import_id=token, request_id=session.active_job.id)

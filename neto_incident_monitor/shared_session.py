@@ -8,6 +8,7 @@ from uuid import uuid4
 from playwright._impl._errors import TargetClosedError
 from playwright.sync_api import Error, sync_playwright
 
+from neto_incident_monitor import browser_actions, browser_login
 from neto_incident_monitor.authentication import authentication_required
 from neto_incident_monitor.browser_actions import ACTION_TICK, checkpoint
 from neto_incident_monitor.browser_session import close_session, create_runtime, open_context
@@ -17,7 +18,7 @@ from neto_incident_monitor.filter_layouts import DEFAULT_LAYOUT_PREFIXES, Layout
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, TRACE, error_facts
 from neto_incident_monitor.monitoring import Health, ReadPart, ReadQueue
 from neto_incident_monitor.read_budget import Budget, BudgetExpired, budget_scope
-from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, BrowserClosedError, Cancelled
 from neto_incident_monitor.service_now_urls import RECORD_TABLES
 
 
@@ -96,7 +97,7 @@ class MonitorCycle:
 
 class SharedSession:
     def __init__(self, app, profile):
-        from neto_incident_monitor.app import CONFIG
+        from neto_incident_monitor.config_io import CONFIG
 
         self.app, self.profile = app, profile
         self.closed = Event()
@@ -113,6 +114,8 @@ class SharedSession:
         self.active_job_success = True
         self.after_manual = False
         self.last_idle = None
+        self.threatened_next_read = None
+        self.threatened_delay_reason = 'idle'
         self.runtime = None
         self.health = Health()
         self.legacy_membership = None
@@ -129,6 +132,21 @@ class SharedSession:
 
     def emit(self, kind, value=None):
         self.app.events.put((kind, value))
+
+    def prepare_analytics_read(self, part, stop):
+        done = Event()
+        request = {'part': part, 'stop': stop, 'done': done, 'value': None}
+        self.emit('session_prepare_read', request)
+        try:
+            while not done.wait(.05):
+                checkpoint(stop)
+        finally:
+            done.set()
+        if stop.is_set():
+            if request['value'] is not None:
+                self.emit('session_cancel_prepared', (part.scope, request['value']))
+            raise Cancelled()
+        return request['value']
 
     def submit(self, scope, parts, *, startup=False):
         job_id, merged = self.work.submit(scope, parts, before_pending=startup)
@@ -193,8 +211,6 @@ class SharedSession:
         self.app.schedule.request()
 
     def confirm_password_save(self, page, diagnostics):
-        from neto_incident_monitor.app import BrowserClosedError
-
         request = {'done': Event(), 'choice': None, 'save_failed': False}
         started = monotonic()
         self.runtime.manual_required = True
@@ -227,8 +243,6 @@ class SharedSession:
                                duration_ms=round((monotonic() - started) * 1000))
 
     def authenticate(self, page, stop, *, visible=False):
-        from neto_incident_monitor.app import BrowserClosedError, open_login_target, wait_for_login
-
         self.connected = False
         self.runtime.visible_login = visible
         self.runtime.restore_main_focus = False
@@ -250,14 +264,14 @@ class SharedSession:
             if visible:
                 self.log.record('session_visibility', visibility_reason='reconnect' if self.ready_once else 'initial_login',
                                 window_visible=self.runtime.window.is_visible())
-                if not open_login_target(page, HOME, stop, on_error=self.navigation_error):
+                if not browser_login.open_login_target(page, HOME, stop, on_error=self.navigation_error):
                     return False
             elif not authentication_required(page, HOME):
                 # A reader may have lost its frame during navigation. Confirm a
                 # fresh session on the known landing page before repeating it.
-                if not open_login_target(page, HOME, stop, on_error=self.navigation_error):
+                if not browser_login.open_login_target(page, HOME, stop, on_error=self.navigation_error):
                     return False
-            if not wait_for_login(page, HOME, stop, runtime=self.runtime,
+            if not browser_login.wait_for_login(page, HOME, stop, runtime=self.runtime,
                                   on_activity=activity, fail_unavailable=visible,
                                   on_password_save=self.confirm_password_save):
                 return False
@@ -448,8 +462,6 @@ class SharedSession:
             self.record_job(job, 'cancelled', outcome='cancelled')
 
     def open_and_serve(self, playwright):
-        from neto_incident_monitor.app import BrowserClosedError, set_chromium_window_state
-
         context = open_context(playwright, self.profile, self.log, visible=True, offer_password_save=True)
         tick_token = None
         try:
@@ -458,7 +470,7 @@ class SharedSession:
             for surplus in pages[1:]:
                 surplus.close()
             self.app.browser_runtime = self.runtime = create_runtime(
-                page, self.app.browser_options, self.log, self.app.events, set_chromium_window_state,
+                page, self.app.browser_options, self.log, self.app.events, browser_actions.set_chromium_window_state,
                 lambda window: setattr(self.app, 'browser_window', window))
             self.runtime.session_visibility = True
             tick_token = ACTION_TICK.set(self.runtime.tick)
@@ -514,8 +526,6 @@ class SharedSession:
         part.data['events'].put((part.target, 'result', (outcome, message)))
 
     def serve(self, page):
-        from neto_incident_monitor.app import BrowserClosedError, wait_for_browser_cycle
-
         prefetch_between_filters = True
         while not self.closed.is_set():
             if page.is_closed():
@@ -531,16 +541,16 @@ class SharedSession:
                 if self.default_layouts:
                     self.prefetch_layout(page)
                     continue
-                self.app.threatened_delay_reason = 'idle'
+                self.threatened_delay_reason = 'idle'
                 deadlines = tuple(cycle.deadlines.values()) if cycle else ()
-                if cycle and self.app.threatened_next_read is not None:
-                    deadlines += (self.app.threatened_next_read,)
+                if cycle and self.threatened_next_read is not None:
+                    deadlines += (self.threatened_next_read,)
                 next_read = min(deadlines, default=monotonic() + 1)
                 idle = (cycle is not None, next_read if cycle else None, dict(cycle.deadlines) if cycle else {})
                 if idle != self.last_idle:
                     self.emit('session_idle', idle)
                     self.last_idle = idle
-                wait_for_browser_cycle(page, self.app.schedule, max(0, next_read - monotonic()), self.closed)
+                browser_actions.wait_for_browser_cycle(page, self.app.schedule, max(0, next_read - monotonic()), self.closed)
                 continue
             part, source = selected
             if source == 'filter' and prefetch_between_filters and self.default_layouts:
@@ -552,7 +562,7 @@ class SharedSession:
             is_filter = part.scope in ('filter', 'filter_definition', 'filter_layout')
             # The threatened reader reports which preceding operation held the card.
             if part.scope != 'threatened':
-                self.app.threatened_delay_reason = 'filter' if is_filter else (
+                self.threatened_delay_reason = 'filter' if is_filter else (
                     'dashboard' if part.scope == 'dashboard' else 'idle')
             stop = StopSignal(self.closed, cycle.stop) if source != 'manual' else self.closed
             if part.scope == 'favorites':
@@ -617,11 +627,16 @@ class SharedSession:
                     self.active_job_success &= bool(success)
             self.emit('refresh_state')
 
+    def finish_threatened_read(self, request):
+        # Count from completion, including failed reads; never accumulate overdue runs.
+        self.threatened_next_read = monotonic() + 60
+        self.emit('threatened_finished', request)
+
     def next_part(self, cycle):
         if cycle is not None:
             self.apply_interval_changes(cycle)
         job = self.active_job
-        deadline = self.app.threatened_next_read
+        deadline = self.threatened_next_read
         threats_due = cycle is not None and (deadline is None or deadline <= monotonic())
         if job is not None:
             if job.parts:

@@ -46,9 +46,9 @@ class ViewStatusTests(unittest.TestCase):
         self.app = self.build_app()
 
     def build_app(self):
-        with patch('neto_incident_monitor.app.read_json', return_value=self.settings), \
+        with patch('neto_incident_monitor.config_io.read_json', return_value=self.settings), \
                 patch('neto_incident_monitor.runtime_paths.DATA', self.path), \
-                patch('neto_incident_monitor.app.CONFIG', self.path / 'config.json'):
+                patch('neto_incident_monitor.config_io.CONFIG', self.path / 'config.json'):
             app = App(self.root, history_path=self.path / 'history.json', apply_startup=False,
                       enable_tray=False)
         self.addCleanup(app.teams_sender.stop)

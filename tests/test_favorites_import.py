@@ -43,7 +43,7 @@ class FavoritesModelTests(unittest.TestCase):
     def test_commit_keeps_existing_and_disables_new_entries(self):
         app = Mock(filters=[dict(name='Istniejący',url='https://adeo.service-now.com/sc_task_list.do')])
         old = list(app.filters)
-        with patch('neto_incident_monitor.app.read_json', return_value={}):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}):
             self.assertEqual(commit_selection(app,[item(),item()],{0,1}),1)
         self.assertEqual(app.filters[0], old[0])
         for key in ('enabled','notify_windows','notify_teams','notify_google_chat'):
@@ -58,7 +58,7 @@ class FavoritesModelTests(unittest.TestCase):
         existing = {'name': 'Dodany podczas podglądu', 'url': preview[0]['url'], 'enabled': True}
         app.filters = [existing]
 
-        with patch('neto_incident_monitor.app.read_json', return_value={}):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}):
             self.assertEqual(commit_selection(app, items, {0, 1}), 1)
 
         self.assertEqual(app.filters[0], existing)
@@ -70,7 +70,7 @@ class FavoritesModelTests(unittest.TestCase):
         app = Mock(filters=[])
         original = app.filters
         app.persist_filters.side_effect = OSError('SYNTHETIC_SECRET')
-        with patch('neto_incident_monitor.app.read_json', return_value={}):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}):
             with self.assertRaises(OSError):
                 commit_selection(app,[item()],{0})
             self.assertIs(app.filters, original)
@@ -79,7 +79,7 @@ class FavoritesModelTests(unittest.TestCase):
 
     def test_external_config_change_is_not_overwritten(self):
         app=Mock(filters=[])
-        with patch('neto_incident_monitor.app.read_json', return_value={'filters':[dict(name='Inny',url='https://adeo.service-now.com/incident_list.do')]}):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={'filters':[dict(name='Inny',url='https://adeo.service-now.com/incident_list.do')]}):
             with self.assertRaises(ValueError):
                 commit_selection(app,[item()],{0})
         app.persist_filters.assert_not_called()
@@ -95,7 +95,7 @@ class FavoritesModelTests(unittest.TestCase):
             path.write_text('{"filters": [], "urls": []}',encoding='utf-8')
             before=path.read_bytes()
             app=App.__new__(App);app.filters=[]
-            with patch('neto_incident_monitor.app.CONFIG',path), \
+            with patch('neto_incident_monitor.config_io.CONFIG',path), \
                  patch('pathlib.Path.replace',side_effect=PermissionError('SYNTHETIC_SECRET')):
                 with self.assertRaises(OSError):
                     commit_selection(app,[item()],{0})
@@ -165,7 +165,7 @@ class FavoritesUITests(unittest.TestCase):
             self.root.destroy()
         self.addCleanup(destroy)
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        with patch('neto_incident_monitor.app.read_json',return_value={}):
+        with patch('neto_incident_monitor.config_io.read_json',return_value={}):
             self.app=App(self.root,history_path=Path(self.temp.name)/'history.json',enable_tray=False,apply_startup=False)
         self.app.filters=[]
         self.app.persist_filters=Mock()
@@ -193,7 +193,7 @@ class FavoritesUITests(unittest.TestCase):
         self.app.import_favorites()  # The completed preview still reserves the importer.
         self.assertIs(self.app.favorites_import,view)
         view.toggle('1');view.toggle('0')
-        with patch('neto_incident_monitor.app.read_json',return_value={}):
+        with patch('neto_incident_monitor.config_io.read_json',return_value={}):
             view.accept()
         self.assertEqual([r['url'] for r in self.app.filters],
             ['https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue','https://adeo.service-now.com/sc_task_list.do'])
@@ -283,7 +283,7 @@ class FavoritesUITests(unittest.TestCase):
     def test_save_failure_keeps_preview_and_selection(self):
         view=self.open();view.toggle('0')
         self.app.persist_filters.side_effect=PermissionError('SYNTHETIC_SECRET')
-        with patch('neto_incident_monitor.app.read_json',return_value={}), \
+        with patch('neto_incident_monitor.config_io.read_json',return_value={}), \
              patch('neto_incident_monitor.favorites_ui.messagebox.showerror'):
             view.accept()
         self.assertIs(self.app.favorites_import,view)

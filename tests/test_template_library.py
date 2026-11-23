@@ -31,7 +31,7 @@ class LibraryTests(unittest.TestCase):
         app.notification_library = {'id': {'name': 'Wspólny', 'message': '{lista incydentów}', 'item': '{number}'}}
         app.filters = [{'name': 'A', 'url': 'A', 'notification_templates': {'teams_webhook': {'template_id': 'id'}}},
                        {'name': 'B', 'url': 'B', 'notification_templates': {'google_chat_webhook': {'template_id': 'id'}}}]
-        with patch('neto_incident_monitor.app.read_json', return_value={}), patch('neto_incident_monitor.app.save_json') as save:
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), patch('neto_incident_monitor.config_io.save_json') as save:
             app.persist_filters()
         settings = save.call_args.args[1]
         self.assertEqual(settings['notification_library'], app.notification_library)

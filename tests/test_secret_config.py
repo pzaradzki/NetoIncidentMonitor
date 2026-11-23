@@ -35,24 +35,24 @@ class SecretConfigTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), before)
             self.assertEqual(settings['filters'][0]['teams_webhook'], TEAMS)
 
-    def test_real_dpapi_roundtrip_and_legacy_migration_through_app_io(self):
-        from neto_incident_monitor import app
+    def test_real_dpapi_roundtrip_and_legacy_migration_through_config_io(self):
+        from neto_incident_monitor import config_io
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'config.json'
             original = {'teams_webhook': TEAMS, 'google_chat_webhook': CHAT,
                         'teams_enabled': True, 'google_chat_enabled': True,
                         'filters': [{'name': 'Zażółć', 'url': 'test'}]}
             path.write_text(json.dumps(original), encoding='utf-8')
-            with patch.object(app, 'CONFIG', path):
-                loaded = app.read_json(path, {})
+            with patch.object(config_io, 'CONFIG', path):
+                loaded = config_io.read_json(path, {})
                 self.assertEqual(loaded, original)
                 stored = path.read_text(encoding='utf-8')
                 self.assertNotIn(TEAMS, stored)
                 self.assertNotIn('dummy-chat-secret', stored)
                 self.assertEqual(json.loads(stored)['teams_webhook']['protection'], secrets.FORMAT)
                 loaded['interval'] = 120
-                app.save_json(path, loaded)
-                reread = app.read_json(path, {})
+                config_io.save_json(path, loaded)
+                reread = config_io.read_json(path, {})
                 self.assertEqual(reread['teams_webhook'], TEAMS)
                 self.assertEqual(reread['google_chat_webhook'], CHAT)
                 self.assertEqual(reread['interval'], 120)
@@ -117,8 +117,8 @@ class SecretConfigTests(unittest.TestCase):
         app.saved_teams = False, TEAMS
         app.saving_teams = False
         app.status = Mock()
-        with patch('neto_incident_monitor.app.read_json', return_value={}), \
-             patch('neto_incident_monitor.app.save_json', side_effect=secrets.SecretStorageError('DPAPI failed')):
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), \
+             patch('neto_incident_monitor.config_io.save_json', side_effect=secrets.SecretStorageError('DPAPI failed')):
             self.assertFalse(app.persist_teams())
         self.assertEqual(app.teams_webhook, TEAMS)
         app.teams_enabled.set.assert_called_once_with(False)

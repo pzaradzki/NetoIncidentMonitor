@@ -87,7 +87,7 @@ class DynamicColumns:
         return effective_list_url(url, self.filters).split('?', 1)[0].endswith('/incident_list.do')
 
     def save_column_profiles(self, profiles):
-        from neto_incident_monitor.app import read_json, save_json, CONFIG
+        from neto_incident_monitor.config_io import read_json, save_json, CONFIG
         settings = read_json(CONFIG, {})
         settings['filter_column_profiles'] = profiles
         save_json(CONFIG, settings)

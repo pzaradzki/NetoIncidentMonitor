@@ -91,7 +91,7 @@ class ThreatenedPresentationTests(unittest.TestCase):
         root.withdraw()
         folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.addCleanup(root.destroy)
-        with patch('neto_incident_monitor.app.read_json', return_value={}), \
+        with patch('neto_incident_monitor.config_io.read_json', return_value={}), \
                 patch('neto_incident_monitor.dashboard_cache.load_snapshot', return_value=None):
             app = App(root, history_path=folder / 'history.json', apply_startup=False, enable_tray=False)
         self.addCleanup(app.teams_sender.stop)
@@ -208,8 +208,12 @@ class ThreatenedWorkerTests(unittest.TestCase):
         app = App.__new__(App)
         app.stop, app.events = threading.Event(), queue.Queue()
         app.browser_runtime = Mock()
-        app.session = Mock()
+        app.session = Mock(threatened_delay_reason='idle')
         app.session.authenticate.return_value = True
+        app.session.finish_threatened_read.side_effect = lambda request: app.events.put(('threatened_finished', request))
+        app.history = Mock()
+        app.history.commit_threatened.return_value = ({}, 0)
+        app.submit_alert_delivery = Mock()
         return app
 
     def test_session_recovery_retries_once_and_emits_complete_result(self):
@@ -224,6 +228,8 @@ class ThreatenedWorkerTests(unittest.TestCase):
         self.assertEqual(states, [(4, 'W trakcie aktualizacji'), (4, 'Oczekuje'), (4, 'Ponawianie odczytu')])
         results = [v for k,v in app.events.queue if k == 'threatened_result']
         self.assertEqual(results[0][:2], (4, values))
+        app.history.commit_threatened.assert_called_once()
+        app.submit_alert_delivery.assert_not_called()
         app.browser_runtime.set_activity.assert_not_called()
 
     def test_errors_do_not_emit_fake_values_and_stop_does_not_emit_error(self):
@@ -236,3 +242,4 @@ class ThreatenedWorkerTests(unittest.TestCase):
                 results = [v for k,v in app.events.queue if k == 'threatened_result']
                 self.assertEqual(results, [] if isinstance(error, Cancelled) else [(4, None, None)])
                 self.assertIn(('threatened_finished', 4), list(app.events.queue))
+                app.history.commit_threatened.assert_not_called()

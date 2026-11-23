@@ -3,7 +3,8 @@ from unittest.mock import Mock
 from urllib.parse import quote
 
 from neto_incident_monitor.service_now_urls import normalize_list_url, safe_record_url
-from neto_incident_monitor.app import load_filters, navigate
+from neto_incident_monitor.browser_login import navigate
+from neto_incident_monitor.config_io import load_filters
 from neto_incident_monitor.teams_notifications import payload
 from neto_incident_monitor.google_chat_notifications import payloads
 
@@ -21,7 +22,7 @@ class SecurityTests(unittest.TestCase):
                                 {'name': 'Valid', 'url': BASE + '/incident_list.do'}]}
         root = tk.Tk()
         try:
-            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.app.read_json', return_value=settings):
+            with tempfile.TemporaryDirectory() as folder, patch('neto_incident_monitor.config_io.read_json', return_value=settings):
                 app = App(root, history_path=Path(folder)/'history.json', enable_tray=False, apply_startup=False)
             root.update()
             self.assertFalse(app.filters[0]['enabled'])

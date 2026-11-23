@@ -24,7 +24,6 @@ class ThreatenedScheduleTests(unittest.TestCase):
         app.stop = threading.Event()
         app.quitting = False
         app.session_state = 'ready'
-        app.threatened_next_read = None
         app.schedule = Schedule()
         app.filters = []
         app.filter_revisions = {}
@@ -54,6 +53,8 @@ class ThreatenedScheduleTests(unittest.TestCase):
         self.enterContext(patch('neto_incident_monitor.shared_session.authentication_required', return_value=False))
         app_time = self.enterContext(patch('neto_incident_monitor.app.time', wraps=time))
         app_time.monotonic.side_effect = lambda: self.clock
+        threat_time = self.enterContext(patch('neto_incident_monitor.threatened_read.time', wraps=time))
+        threat_time.monotonic.side_effect = lambda: self.clock
         for module in ('shared_session', 'read_budget', 'section_runner'):
             self.enterContext(patch(f'neto_incident_monitor.{module}.monotonic', side_effect=lambda: self.clock))
         self.session.start_cycle([], {'inc': 3600, 'task': 3600})
@@ -63,7 +64,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
             self.app.handle_session_event(*event)
 
     def serve_until_idle(self):
-        with patch('neto_incident_monitor.app.wait_for_browser_cycle', side_effect=Cancelled) as wait:
+        with patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=Cancelled) as wait:
             with self.assertRaises(Cancelled):
                 self.session.serve(self.page)
         wait.assert_called_once()
@@ -95,7 +96,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 25)
             self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3])
-            self.assertEqual(app.threatened_next_read, 140)
+            self.assertEqual(app.session.threatened_next_read, 140)
             self.clock = 142
             self.assertEqual(self.serve_until_idle(), 60)
         self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3, 'threatened'])
@@ -105,7 +106,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
 
     def test_overdue_during_dashboard_runs_once_and_logs_dashboard_delay(self):
         app = self.app
-        app.threatened_next_read = 10
+        app.session.threatened_next_read = 10
         order = []
 
         def dashboard(*_args, **_kwargs):
@@ -123,7 +124,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 60)
         self.assertEqual(order, ['dashboard', 'threatened'])
-        self.assertEqual(app.threatened_next_read, 195)
+        self.assertEqual(app.session.threatened_next_read, 195)
         schedule, = self.diagnostic_entries('threatened_schedule')
         self.assertEqual(schedule['delay_reason'], 'dashboard')
         self.assertEqual(schedule['lateness_ms'], 120_000)
@@ -147,13 +148,13 @@ class ThreatenedScheduleTests(unittest.TestCase):
 
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.threatened_next_read, 180)
+            self.assertEqual(app.session.threatened_next_read, 180)
             self.clock = 179
             self.assertEqual(self.serve_until_idle(), 1)
             self.assertEqual(len(attempts), 1)
             self.assertTrue(app.request_refresh('threatened'))
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.threatened_next_read, 259)
+            self.assertEqual(app.session.threatened_next_read, 259)
             saved = app.history.threatened_snapshot(with_summary=True)
             self.assertEqual(saved[1]['counters'], dict.fromkeys(KEYS, 0))
             self.clock = 258
@@ -161,7 +162,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
             self.assertEqual(len(attempts), 2)
             self.clock = 259
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.threatened_next_read, 339)
+            self.assertEqual(app.session.threatened_next_read, 339)
             self.assertEqual(app.history.threatened_snapshot(with_summary=True), saved)
             self.session.stop_cycle()
             self.clock = 500

@@ -21,8 +21,8 @@ class FilterViewTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory() as directory, \
-                    patch('neto_incident_monitor.app.read_json', return_value=settings), \
-                    patch('neto_incident_monitor.app.save_json'):
+                    patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
+                    patch('neto_incident_monitor.config_io.save_json'):
                 app = App(root, history_path=Path(directory) / 'history.json', enable_tray=False, apply_startup=False)
                 root.update()
                 table = app.filter_table
@@ -185,7 +185,7 @@ class FilterViewTests(unittest.TestCase):
 
     def test_obsolete_settings_are_removed_on_config_roundtrip(self):
         import json
-        from neto_incident_monitor.app import read_json, save_json
+        from neto_incident_monitor.config_io import read_json, save_json
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
@@ -205,7 +205,7 @@ class FilterViewTests(unittest.TestCase):
                 }},
             }
             path.write_text(json.dumps(config), encoding="utf-8")
-            with patch("neto_incident_monitor.app.CONFIG", path):
+            with patch("neto_incident_monitor.config_io.CONFIG", path):
                 loaded = read_json(path, {})
                 self.assertEqual(json.loads(path.read_text(encoding="utf-8")), config)
                 save_json(path, loaded)
@@ -228,7 +228,7 @@ class FilterViewTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as folder:
                 settings = {"highlight_unread": True, "filters": [{"name": "A", "url": "https://adeo.service-now.com/incident_list.do?fixture=a"},
                                         {"name": "B", "url": "https://adeo.service-now.com/incident_list.do?fixture=b"}]}
-                with patch("neto_incident_monitor.app.read_json", return_value=settings):
+                with patch("neto_incident_monitor.config_io.read_json", return_value=settings):
                     app = App(root, history_path=Path(folder)/"history.json", enable_tray=False)
                 root.update()
                 self.assertFalse(app.clear_history_button.winfo_manager())
@@ -252,7 +252,7 @@ class FilterViewTests(unittest.TestCase):
                 app.visible_columns = list(app.legacy_visible_columns)
                 app.filters[1]["url"] = "https://adeo.service-now.com/sc_task_list.do"
                 app.filter_table.selection_set("1")
-                with patch("neto_incident_monitor.app.save_json"):
+                with patch("neto_incident_monitor.config_io.save_json"):
                     app.accept_column_schema(app.selected_filter_url(), [{"key": k, "label": k} for k in ["number", "requested_for"]])
                 self.assertEqual(tuple(app.current_table['displaycolumns']), ('number', 'requested_for'))
                 self.assertIn("requested_for", app.applicable_columns())
@@ -281,7 +281,7 @@ class FilterViewTests(unittest.TestCase):
                 for table in (app.current_table, app.table):
                     self.assertNotIn("read", table["columns"])
                     self.assertNotIn("unread", table.item(table.get_children()[0], "tags"))
-                with patch("neto_incident_monitor.app.save_json"):
+                with patch("neto_incident_monitor.config_io.save_json"):
                     app.notify.set(False)
                     app.teams_enabled.set(False)
                 app.filters[1]["allow_large_list"] = True

@@ -17,7 +17,7 @@ class ColumnDragTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
-                with patch('neto_incident_monitor.app.read_json', return_value=fixture_settings()):
+                with patch('neto_incident_monitor.config_io.read_json', return_value=fixture_settings()):
                     app = App(root, history_path=Path(folder)/'history.json', enable_tray=False)
                 root.update()
                 table = app.current_table
@@ -34,7 +34,7 @@ class ColumnDragTests(unittest.TestCase):
                 self.assertFalse(table.sort_descending)
                 original = tuple(table['displaycolumns'])
                 target = x_for('priority')
-                with patch('neto_incident_monitor.app.read_json', return_value={**fixture_settings(), 'notify':False}), patch('neto_incident_monitor.app.save_json') as saved:
+                with patch('neto_incident_monitor.config_io.read_json', return_value={**fixture_settings(), 'notify':False}), patch('neto_incident_monitor.config_io.save_json') as saved:
                     table.event_generate('<ButtonPress-1>',x=x,y=10)
                     table.event_generate('<B1-Motion>',x=target,y=10)
                     root.update_idletasks()
@@ -67,7 +67,7 @@ class ColumnDragTests(unittest.TestCase):
                     root.tk.call('after', 'cancel', timer)
                 root.destroy()
                 root = tk.Tk()
-                with patch('neto_incident_monitor.app.read_json',return_value=settings):
+                with patch('neto_incident_monitor.config_io.read_json',return_value=settings):
                     other = App(root,history_path=Path(folder)/'other.json',enable_tray=False)
                 self.assertEqual(tuple(other.current_table['displaycolumns'])[:4],('state','caller','priority','number'))
         finally:
@@ -80,12 +80,12 @@ class ColumnDragTests(unittest.TestCase):
         root = tk.Tk()
         try:
             with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
-                with patch('neto_incident_monitor.app.read_json',return_value=fixture_settings()):
+                with patch('neto_incident_monitor.config_io.read_json',return_value=fixture_settings()):
                     app=App(root,history_path=Path(folder)/'history.json',enable_tray=False)
                 root.update()
                 table=app.current_table
                 original=tuple(table['displaycolumns'])
-                with patch('neto_incident_monitor.app.read_json',return_value=fixture_settings()), patch('neto_incident_monitor.app.save_json',side_effect=OSError('disk full')), patch('neto_incident_monitor.app.messagebox.showerror') as error:
+                with patch('neto_incident_monitor.config_io.read_json',return_value=fixture_settings()), patch('neto_incident_monitor.config_io.save_json',side_effect=OSError('disk full')), patch('neto_incident_monitor.app.messagebox.showerror') as error:
                     app.reorder_column(table,'number','priority')
                 self.assertEqual(tuple(table['displaycolumns']),original)
                 self.assertEqual(app.column_profile()['order'],PROFILE['order'])

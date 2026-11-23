@@ -3,7 +3,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from neto_incident_monitor.app import App, authentication_page, navigate, load_filters
+from neto_incident_monitor.app import App
+from neto_incident_monitor.browser_login import authentication_page, navigate
+from neto_incident_monitor.config_io import load_filters
 from neto_incident_monitor.history import History
 
 URL = "https://adeo.service-now.com/incident_list.do?sysparm_query=active%3Dtrue"
@@ -59,11 +61,11 @@ class MonitorTests(unittest.TestCase):
         root = tk.Tk()
         root.withdraw()
         temporary = tempfile.TemporaryDirectory(dir=Path(__file__).parent)
-        config_path = patch('neto_incident_monitor.app.CONFIG', Path(temporary.name) / 'config.json')
+        config_path = patch('neto_incident_monitor.config_io.CONFIG', Path(temporary.name) / 'config.json')
         config_path.start()
         self.addCleanup(config_path.stop)
         try:
-            with patch("neto_incident_monitor.app.read_json", return_value={"highlight_unread": True, "filters": [
+            with patch("neto_incident_monitor.config_io.read_json", return_value={"highlight_unread": True, "filters": [
                 {"name": "Gdańsk", "url": URL},
                 {"name": "Gdynia", "url": URL + "&second=1"}]}):
                 monitor = App(root, history_path=Path(temporary.name) / "history.json", enable_tray=False)
@@ -154,7 +156,7 @@ class MonitorTests(unittest.TestCase):
                 self.assertIn("Nie udało się zapisać zmiany historii", monitor.status.get())
                 self.assertEqual(len(monitor.history.snapshot()), 1)
             # An incident queued before the clear must not restore the deleted history.
-            with patch("neto_incident_monitor.widgets.confirm_dialog", return_value=True), patch("neto_incident_monitor.app.save_json") as state_write:
+            with patch("neto_incident_monitor.widgets.confirm_dialog", return_value=True), patch("neto_incident_monitor.config_io.save_json") as state_write:
                 monitor.clear_history()
                 state_write.assert_not_called()
             monitor.history_writer.submit(lambda: None).result(timeout=5)
@@ -173,13 +175,13 @@ class MonitorTests(unittest.TestCase):
                 monitor.interruption("Sesja wygasła")
                 notification.assert_called_once()
             self.assertEqual(monitor.status.get(), "Sesja wygasła")
-            with patch("neto_incident_monitor.app.save_json") as save:
+            with patch("neto_incident_monitor.config_io.save_json") as save:
                 monitor.minimize_to_tray.set(True)
                 self.assertTrue(save.call_args.args[1]["minimize_to_tray"])
             with patch.object(root, "state", return_value="iconic"), patch.object(monitor, "hide_window") as hide:
                 monitor.handle_minimize()
                 hide.assert_called_once()
-                with patch("neto_incident_monitor.app.save_json"):
+                with patch("neto_incident_monitor.config_io.save_json"):
                     monitor.minimize_to_tray.set(False)
                 monitor.handle_minimize()
                 hide.assert_called_once()

@@ -10,7 +10,7 @@ from neto_incident_monitor.widgets import RoundedButton
 
 
 def persist(app):
-    from neto_incident_monitor.app import CONFIG, read_json, save_json
+    from neto_incident_monitor.config_io import CONFIG, read_json, save_json
     try:
         settings = read_json(CONFIG, {})
         settings.update(google_chat_enabled=app.google_chat_enabled.get(), google_chat_webhook=app.google_chat_webhook)
