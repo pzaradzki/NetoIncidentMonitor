@@ -256,6 +256,8 @@ def build_ui(app, settings):
     app.threatened_view = build_threatened_view(content_host, app)
     app.threatened_view.grid(row=0, column=0, sticky='nsew')
     def select_view(view):
+        if view != 'incidents':
+            app.cancel_column_fit()
         app.active_view = view
         app.dashboard_button.selected = view == 'dashboard'
         app.dashboard_button.redraw()

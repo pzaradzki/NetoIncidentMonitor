@@ -16,9 +16,7 @@ Naprawiono restart po pierwszym zapisie zagrożeń SLA, przeniesiono testy na `S
 
 ## Etap 3. Płynność Tk
 
-Zmierzyć opóźnienia pętli Tk przy zapisie cache dashboardu i dopasowaniu kolumn dużej tabeli. Na podstawie pomiaru ustalić zakres zmian, w tym zapis cache w tle z zachowaniem kolejności migawek. [Zapis cache](../../neto_incident_monitor/dashboard_cache.py) · [Dopasowanie kolumn](../../neto_incident_monitor/dynamic_columns.py)
-
-Etap jest ukończony, gdy pomiar pozwala podjąć decyzję o obu operacjach. Dla wdrożonej optymalizacji zapisać porównanie przed i po. Jeśli zapis cache trafi do tła, test ma potwierdzić, że starsza migawka nie nadpisze nowszej.
+**Zakończony w źródłach.** Wprowadzono zapis cache dashboardu w tle z zachowaniem kolejności migawek oraz pomiar szerokości dużych tabel w porcjach Tk. Zakończono porównanie przed i po oraz weryfikację zachowania przy zamknięciu, resecie i błędzie zapisu. Pełna regresja Windows zaliczyła 553 testy, a jeden pominięto. [Zakończony plan z checklistą](zakonczone/plynnosc-tk.md) · [Pomiary i odbiór](../weryfikacja/plynnosc-tk.md) · [Decyzja 043](../decyzje/043-plynnosc-tk.md)
 
 ## Etap 4. Odtwarzalna budowa EXE
 
@@ -28,7 +26,7 @@ Etap jest ukończony, gdy z czystego checkoutu i udokumentowanych wejść można
 
 ## Kolejność i plany szczegółowe
 
-Następny etap to pomiar płynności Tk. Przygotowanie wejść do budowy można prowadzić niezależnie. Gdy pomiar uzasadni zapis cache w tle, szczegółowy plan powinien uwzględnić aktualne granice modułów i istniejących wykonawców zadań.
+Następny etap to odtwarzalna budowa EXE.
 
 Przed wdrożeniem każdego etapu dodać w indeksie odnośnik do jego szczegółowego planu. Plan etapu określa zakres zmiany, decyzje do podjęcia, scenariusze błędu, testy regresji, diagnostykę i kryteria odbioru. Dla zmian w logowaniu lub zachowaniu Chromium uwzględnić odbiór właściwych scenariuszy na ADEO. Wyniki i otwarte kwestie zapisać po wykonaniu etapu. [Zasady utrzymania planów](README.md#utrzymanie) · [Regresja Windows](../../tools/run_regression.py)
 

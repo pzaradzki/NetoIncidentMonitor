@@ -1,9 +1,11 @@
 """Per-filter discovered schemas and persistent table presentation."""
 import copy
 import tkinter as tk
+from time import perf_counter
 from tkinter import ttk
 
 from neto_incident_monitor.columns import FIELDS, DEFAULT, LOCAL_FIELDS, age_minutes
+from neto_incident_monitor.login_diagnostics import LoginDiagnostics
 from neto_incident_monitor.theme import BG, MUTED
 from neto_incident_monitor.widgets import RoundedButton, PriorityDots
 from neto_incident_monitor import themed_dialogs as messagebox
@@ -214,30 +216,94 @@ class DynamicColumns:
             return
         self.apply_visible_columns()
 
+    def cancel_column_fit(self, table=None):
+        jobs = getattr(self, '_column_fit_jobs', {})
+        for widget in (table,) if table is not None else tuple(jobs):
+            job = jobs.get(widget)
+            if job is not None:
+                if job['timer'] is not None:
+                    self.root.after_cancel(job['timer'])
+                job['finish']('cancelled')
+
     def fit_column(self, event):
         from tkinter.font import Font
+
         table = event.widget
         column = self.column_at(table, event.x)
         if column is None:
             return 'break'
+        self.cancel_column_fit(table)
         table.column_drag = None
         table.column_resizing = False
         self.hide_column_drop_marker(table)
         table.configure(cursor='')
-        style = ttk.Style(table)
-        body = Font(table, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
-        heading = Font(table, font=style.lookup('Treeview.Heading', 'font') or 'TkHeadingFont')
-        width = heading.measure(table.heading(column, 'text')) + 24
-        for item in table.get_children():
-            # Measure every loaded row, including rows outside the viewport.
-            width = max(width, body.measure(table.set(item, column)) + 16)
-        table.column(column, width=max(int(table.column(column, 'minwidth')), width))
-        self.sync_column_widths(table)
+        url = self.selected_filter_url()
+        display = tuple(table['displaycolumns'])
+        original_width = table.column(column, 'width')
+        started = perf_counter()
+        row_count = scanned = width = 0
+        rows = body = None
+        job = {'timer': None}
+        self._column_fit_jobs[table] = job
+
+        try:
+            diagnostics = LoginDiagnostics(source='configuration')
+        except Exception:
+            diagnostics = None
+
+        def report(result):
+            if diagnostics is not None:
+                try:
+                    diagnostics.record('column_fit', column_fit_result=result, row_count=scanned,
+                                       total_rows=row_count, duration_ms=round((perf_counter() - started) * 1000))
+                except Exception:
+                    pass
+
+        def finish(result):
+            if self._column_fit_jobs.get(table) is job:
+                del self._column_fit_jobs[table]
+                report(result)
+
+        def step():
+            nonlocal rows, body, row_count, scanned, width
+            job['timer'] = None
+            if self._column_fit_jobs.get(table) is not job:
+                return
+            if (self.quitting or not table.winfo_exists() or self.selected_filter_url() != url
+                    or tuple(table['displaycolumns']) != display or table.column(column, 'width') != original_width):
+                finish('cancelled')
+                return
+            if table in getattr(self, '_table_jobs', {}):
+                job['timer'] = self.root.after(10, step)
+                return
+            if rows is None:
+                children = table.get_children()
+                row_count = len(children)
+                rows = iter(children)
+                style = ttk.Style(table)
+                body = Font(table, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
+                heading = Font(table, font=style.lookup('Treeview.Heading', 'font') or 'TkHeadingFont')
+                width = max(table.column(column, 'minwidth'), heading.measure(table.heading(column, 'text')) + 24)
+            # Match the table loader's budget. Small, complete tables finish inline.
+            deadline = perf_counter() + .006 if row_count > 150 else float('inf')
+            while perf_counter() < deadline:
+                item = next(rows, None)
+                if item is None:
+                    table.column(column, width=width)
+                    finish('complete' if self.sync_column_widths(table) else 'save_error')
+                    return
+                width = max(width, body.measure(table.set(item, column)) + 16)
+                scanned += 1
+            job['timer'] = self.root.after(1, step)
+
+        job['finish'] = finish
+        report('started')
+        step()
         return 'break'
 
     def sync_column_widths(self, source):
         if not self.column_profile():
-            return
+            return True
         profiles = copy.deepcopy(self.column_profiles)
         widths = profiles[self.selected_filter_url()].setdefault('widths', {})
         widths.update({key: source.column(key, 'width') for key in source['displaycolumns']})
@@ -245,11 +311,12 @@ class DynamicColumns:
             self.save_column_profiles(profiles)
         except (OSError, ValueError):
             messagebox.showerror('Kolumny', 'Nie udało się zapisać szerokości kolumn.', parent=self.root)
-            return
+            return False
         for table in (self.current_table, self.table):
             for key, width in widths.items():
                 if key in table['columns']:
                     table.column(key, width=width)
+        return True
 
     def configure_columns(self):
         profile = self.column_profile()

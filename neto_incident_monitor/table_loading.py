@@ -29,6 +29,7 @@ class TableLoading:
         return table is (self.current_table if self.tabs.index(self.tabs.select()) == 0 else self.table)
 
     def cancel_table_load(self, table):
+        self.cancel_column_fit(table)
         jobs = getattr(self, '_table_jobs', {})
         job = jobs.pop(table, None)
         if job:
@@ -138,6 +139,7 @@ class TableLoading:
                     rows, error = result.get_nowait()
                     if error:
                         self.table_load_status.set('Nie udało się wczytać tabeli.')
+                        self.cancel_column_fit(table)
                         self._table_jobs.pop(table, None)
                         return
                     state['rows'] = rows

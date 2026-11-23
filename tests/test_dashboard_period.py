@@ -1,6 +1,7 @@
 """Local period/transaction races; no ServiceNow session or user data required."""
 import json
 import tempfile
+import time
 import tkinter as tk
 import unittest
 from pathlib import Path
@@ -50,12 +51,24 @@ class DashboardPeriodTests(unittest.TestCase):
         self.app.window_restoring = False
         self.app.handle_session_event('session_ready', None)
         self.panel = self.app.dashboard_view
+        self.addCleanup(self.close_cache)
         self.panel.year.set('2026')
         self.panel.month.set('Październik')
         self.root.update_idletasks()
 
     def request(self, scope='dashboard'):
         self.assertTrue(self.app.request_refresh(scope))
+
+    def wait_for_cache(self):
+        deadline = time.monotonic() + 5
+        while not self.panel.cache_writer.idle and time.monotonic() < deadline:
+            self.root.update()
+            time.sleep(.002)
+        self.assertTrue(self.panel.cache_writer.idle)
+
+    def close_cache(self):
+        self.panel.cache_writer.close()
+        self.wait_for_cache()
 
     def finish(self, request, state='finished'):
         self.app.events.put(('dashboard_updating', (*request, state)))
@@ -205,6 +218,7 @@ class DashboardPeriodTests(unittest.TestCase):
         self.assertEqual(self.panel.values[HELD_TITLES[0]].get(), '20')
         self.assertEqual(self.panel.values[REQUEST_TITLES[0]].get(), '30')
         self.assertEqual(self.panel.section_states['Dashboard SLA'], 'Zaktualizowany')
+        self.wait_for_cache()
         self.assertEqual(load_snapshot(Path(self.temp.name)/'dashboard-cache.json')['sections']['sla']['month'], 10)
         self.assertIsNone(self.panel.active_request)
         self.assert_controls('readonly')
@@ -233,6 +247,7 @@ class DashboardPeriodTests(unittest.TestCase):
     def test_old_finish_and_wrong_period_do_not_release_new_transaction(self):
         self.request()
         old = self.execute()
+        self.wait_for_cache()
         self.request()
 
         def sla(*_args):

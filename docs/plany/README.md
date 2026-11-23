@@ -4,7 +4,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowa
 
 ## Pozostałe tematy
 
-- [Plan uporządkowania architektury](uporzadkowanie-architektury.md) obejmuje płynność Tk i odtwarzalną budowę EXE.
+- [Plan uporządkowania architektury](uporzadkowanie-architektury.md) prowadzi do odtwarzalnej budowy EXE.
 - Ustalić lokalizację logów uruchomień ze źródeł. [Wyniki audytu technicznego](zakonczone/naprawy-audytu.md)
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu. [Opis obserwacji](../wersje/v1.8.1.md)
 - Potencjalny kanał e-mail. Potwierdzono pojedynczą wysyłkę i dostarczenie. Otwarte są zasady relay i działanie na innych komputerach. [Rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md)
@@ -13,6 +13,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowa
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Płynność Tk](zakonczone/plynnosc-tk.md) | Cache zapisuje się w tle, a duże tabele mierzą szerokości kolumn w porcjach. Maksymalne opóźnienie Tk przy odmowie zapisu spadło z 1232 do 4 ms, a w historii z 10 tys. wierszy z 461 do 9 ms. [Pomiary i odbiór](../weryfikacja/plynnosc-tk.md) |
 | [Zależności od App](zakonczone/zaleznosci-od-app.md) | Wydzielono konfigurację, logowanie i dwa odczyty SLA. Windows zaliczył 546 testów, a 2 pominięto. Ręczne logowanie, ukrycie Chromium i ponowne połączenie sprawdzono na ADEO. |
 | [Retencja kolejki powiadomień](zakonczone/retencja-kolejki-powiadomien.md) | Wdrożono w źródłach politykę 30 i 90 dni. Sprawdzono bazy w wersjach 0 i 1 z kodem paczki 1.12.0-experimental.4. Pełna regresja Windows zaliczyła 544 testy, a 2 pominięto. |
 | [Pobranie brakujących list agentów i lokalizacji po logowaniu](zakonczone/startowy-odczyt-zakresu-dashboardu.md) | Użytkownik potwierdził na ADEO pobranie zakresu na świeżym profilu i użycie zapisu po restarcie w wersji 1.12.0-experimental.4. |

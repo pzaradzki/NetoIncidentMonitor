@@ -1,13 +1,17 @@
 import copy
+import json
 import tempfile
+import time
 import tkinter as tk
 import unittest
+from threading import Event
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.dynamic_columns import LOCAL_KEYS, load_profiles, update_profile
+from neto_incident_monitor.login_diagnostics import _logger
 from neto_incident_monitor.widgets import RoundedButton
 
 URL = 'https://adeo.service-now.com/incident_list.do?test=a'
@@ -185,3 +189,97 @@ class DynamicUITests(unittest.TestCase):
         app.filter_selected()
         self.assertEqual(table.column('sn:u_custom', 'width'), width)
         self.assertEqual(table.column('number', 'width'), 125)
+
+    def load_fit_rows(self):
+        self.accept()
+        app = self.app
+        app.show_incident_view()
+        table = app.current_table
+        text = 'SYNTHETIC_CELL_VALUE ' * 10
+        for index in range(2000):
+            value = text if index == 1999 else 'Krótki opis'
+            incident = {'number': f'INC{index:07d}', '_values': {'sn:u_custom': value}}
+            table.insert('', 'end', values=app.table_values(table, incident))
+        table.column('sn:u_custom', width=80)
+        table.xview_moveto(0)
+        self.root.update()
+        x = sum(table.column(key, 'width') for key in ('age_minutes', 'number', 'sn:u_custom'))
+        self.assertEqual(table.identify_region(x, 10), 'separator')
+        return table, text, SimpleNamespace(widget=table, x=x, y=10)
+
+    def test_large_fit_yields_and_saves_full_width_in_the_filter_profile(self):
+        from tkinter import ttk
+        from tkinter.font import Font
+
+        app = self.app
+        table, text, event = self.load_fit_rows()
+        self.assertEqual(table.bbox(table.get_children()[-1]), '')
+        path = Path(self.folder.name) / 'config.json'
+        callbacks = []
+        with patch('neto_incident_monitor.config_io.CONFIG', path), self.assertLogs(_logger, level='INFO') as captured:
+            app.open_incident(event)
+            self.assertIn(table, app._column_fit_jobs)
+            self.root.after(0, lambda: callbacks.append(table in app._column_fit_jobs))
+            deadline = time.monotonic() + 5
+            while app._column_fit_jobs and time.monotonic() < deadline:
+                self.root.update()
+                time.sleep(.005)
+            from neto_incident_monitor.config_io import read_json
+            loaded = load_profiles(read_json(path, {})['filter_column_profiles'])
+        self.assertFalse(app._column_fit_jobs)
+        self.assertEqual(callbacks, [True])
+        font = Font(table, font=ttk.Style(table).lookup('Treeview', 'font'))
+        width = font.measure(text) + 16
+        self.assertEqual(table.column('sn:u_custom', 'width'), width)
+        self.assertEqual(app.table.column('sn:u_custom', 'width'), width)
+        self.assertEqual(loaded[URL]['widths']['sn:u_custom'], width)
+        records = [json.loads(record.getMessage()) for record in captured.records]
+        fits = [record for record in records if record['event'] == 'column_fit']
+        self.assertEqual([record['column_fit_result'] for record in fits], ['started', 'complete'])
+        self.assertEqual(fits[-1]['row_count'], 2000)
+        self.assertEqual(fits[0]['read_id'], fits[1]['read_id'])
+        self.assertIn('duration_ms', fits[-1])
+        self.assertNotIn('SYNTHETIC_CELL_VALUE', str(records))
+
+    def test_fit_waiting_for_rows_can_be_replaced_and_cancelled(self):
+        app = self.app
+        table, _, event = self.load_fit_rows()
+        with patch.object(app, 'save_column_profiles') as save:
+            app._table_jobs = {table: {'cancel': Event(), 'timer': None}}
+            app.open_incident(event)
+            old = app._column_fit_jobs[table]
+            self.assertIsNotNone(old['timer'])
+            self.assertEqual(table.column('sn:u_custom', 'width'), 80)
+            app.open_incident(event)
+            self.assertIsNot(app._column_fit_jobs[table], old)
+            app.column_drag_start(event)
+            self.assertFalse(app._column_fit_jobs)
+            app.open_incident(event)
+            app.show_dashboard_view()
+            self.assertFalse(app._column_fit_jobs)
+            app.show_incident_view()
+            app._table_jobs[table] = {'cancel': Event(), 'timer': None}
+            app.open_incident(event)
+            app.stop_table_loads()
+            self.root.update()
+        save.assert_not_called()
+        self.assertFalse(app._column_fit_jobs)
+
+    def test_fit_save_failure_keeps_saved_profile_and_other_table(self):
+        self.accept()
+        app = self.app
+        table = app.current_table
+        incident = {'number': 'INC1234567', '_values': {'sn:u_custom': 'Długi opis ' * 15}}
+        table.insert('', 'end', values=app.table_values(table, incident))
+        table.column('sn:u_custom', width=80)
+        self.root.update()
+        before = copy.deepcopy(app.column_profiles)
+        other_width = app.table.column('sn:u_custom', 'width')
+        x = sum(table.column(key, 'width') for key in ('age_minutes', 'number', 'sn:u_custom'))
+        with patch.object(app, 'save_column_profiles', side_effect=OSError), patch(
+                'neto_incident_monitor.dynamic_columns.messagebox.showerror') as error:
+            app.open_incident(SimpleNamespace(widget=table, x=x, y=10))
+        error.assert_called_once()
+        self.assertGreater(table.column('sn:u_custom', 'width'), 80)
+        self.assertEqual(app.table.column('sn:u_custom', 'width'), other_width)
+        self.assertEqual(app.column_profiles, before)

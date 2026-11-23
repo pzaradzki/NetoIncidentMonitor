@@ -112,6 +112,7 @@ class App(DynamicColumns, TableLoading):
         self.history_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="history")
         self.alert_retention = AlertRetention(self.history.store, self.history_writer, self.stop)
         self.row_numbers = {}
+        self._column_fit_jobs = {}
         self.tray = None
         self.tray_ready = False
         self.quitting = False
@@ -301,11 +302,14 @@ class App(DynamicColumns, TableLoading):
 
     def column_drag_start(self, event):
         table = event.widget
-        if table.identify_region(event.x, event.y) == "separator":
+        region = table.identify_region(event.x, event.y)
+        if region == "separator":
+            self.cancel_column_fit(table)
             table.column_resizing = True
             return
-        if table.identify_region(event.x, event.y) != "heading":
+        if region != "heading":
             return
+        self.cancel_column_fit(table)
         column = self.column_at(table, event.x)
         if column is not None:
             table.column_drag = {"column": column, "x": event.x, "moved": False}
@@ -2635,6 +2639,7 @@ class App(DynamicColumns, TableLoading):
         if self.quitting:
             return
         self.reset_data_on_exit = reset_data
+        self.cancel_column_fit()
         self.stop_table_loads()
         if self.window_save_timer is not None:
             self.root.after_cancel(self.window_save_timer)
@@ -2642,6 +2647,7 @@ class App(DynamicColumns, TableLoading):
         if not reset_data:
             self.save_window_layout()
         self.quitting = True
+        self.dashboard_view.cache_writer.close(discard=reset_data)
         self.main_window.release()
         self.stop.set()
         self.schedule.request()
@@ -2675,7 +2681,7 @@ class App(DynamicColumns, TableLoading):
                     executor.submit(lambda: None)
                     for executor in (self.history_writer, self.alert_writer)
                 ]
-            if any(not future.done() for future in self._shutdown_writes):
+            if not self.dashboard_view.cache_writer.idle or any(not future.done() for future in self._shutdown_writes):
                 self.status.set("Zamykanie aplikacji. Oczekiwanie na zapis danych…")
                 self.root.after(100, self.finish_quit)
                 return

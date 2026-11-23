@@ -21,6 +21,8 @@ def handle_read_event(app, kind, value):
             app.dashboard_request_stop = None
     elif kind == 'dashboard_result':
         app.dashboard_view.apply_result(value)
+    elif kind == 'dashboard_cache_result':
+        app.dashboard_view.apply_cache_result(*value)
     else:
         return False
     return True
@@ -38,11 +40,14 @@ def bind_dashboard_wheel(widget, callback):
 
 def build_dashboard(parent, app, cache_path=None):
     from neto_incident_monitor.runtime_paths import DATA
-    from neto_incident_monitor.dashboard_cache import load_snapshot, save_sections, valid_values, NAMES
+    from neto_incident_monitor.dashboard_cache import DashboardCacheWriter, load_snapshot, valid_values, NAMES
     from neto_incident_monitor.dashboard import HELD_TITLES, LOST_TITLE, REQUEST_TITLES, UNASSIGNED_TITLE, measured_record
     from pathlib import Path
     cache_path = Path(cache_path) if cache_path is not None else DATA / 'dashboard-cache.json'
     panel = tk.Frame(parent, bg=BG)
+    panel.cache_writer = DashboardCacheWriter(cache_path, app.events)
+    panel.bind('<Destroy>', lambda event: panel.cache_writer.close(discard=True) if event.widget is panel else None,
+               add='+')
     panel.read_bar = ReadStatusBar(panel, date_label='Pełny odczyt')
     panel.read_bar.pack(side='bottom', fill='x')
     view = tk.Frame(panel, bg=BG)
@@ -173,9 +178,10 @@ def build_dashboard(parent, app, cache_path=None):
     def set_message(status):
         nonlocal current_message
         current_message = status
+        warning = ' – błąd zapisu na dysku' if panel.cache_error else ''
         year, month = panel.data_period or panel.selected_period()
         panel.message.set(f'Dane SLA za okres {months[month - 1].lower()} {year} • '
-                          f'Ostatnia aktualizacja: {panel.last_read_text} • {status}')
+                          f'Ostatnia aktualizacja: {panel.last_read_text} • {status}{warning}')
         selected = panel.selected_period()
         result = panel.read_status_by_period.get(selected, ReadStatus())
         details = [result.detail] if result.detail else []
@@ -190,6 +196,22 @@ def build_dashboard(parent, app, cache_path=None):
         panel.read_bar.show(replace(result, detail=' '.join(details)))
     panel.set_message = set_message
     set_message('Brak odczytu')
+
+    cache_revision = None
+
+    def queue_cache(request_id):
+        nonlocal cache_revision
+        if panel.section_snapshots:
+            cache_revision = panel.cache_writer.submit(
+                request_id, panel.section_snapshots, panel.last_complete_read_at,
+                period=panel.last_complete_period, duration_ms=panel.last_complete_duration_ms)
+
+    def apply_cache_result(revision, result):
+        if revision == cache_revision:
+            panel.cache_error = result == 'failed'
+            set_message(current_message)
+
+    panel.apply_cache_result = apply_cache_result
 
     def set_scope_waiting(waiting):
         nonlocal scope_waiting
@@ -384,6 +406,8 @@ def build_dashboard(parent, app, cache_path=None):
 
     def result(payload, restored_at=None):
         from datetime import datetime
+        if getattr(app, 'quitting', False):
+            return
         request_id, year, month, values, error, *extra = payload
         if request_id != panel.request_id:
             record('dashboard_result_rejected', request_id=request_id,
@@ -432,18 +456,7 @@ def build_dashboard(parent, app, cache_path=None):
                 set_section_state(request_id, NAMES[alias], 'Błąd odczytu')
                 return
             render_snapshots()
-            diagnostics = metadata['diagnostics']
-            try:
-                if panel.section_snapshots:
-                    save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at,
-                                  period=panel.last_complete_period, duration_ms=panel.last_complete_duration_ms)
-                panel.cache_error = False
-                measured_record(diagnostics, 'dashboard_cache', cache_result='saved' if panel.section_snapshots else 'skipped')
-            except OSError as exc:
-                panel.cache_error = True
-                from neto_incident_monitor.login_diagnostics import error_facts
-                measured_record(diagnostics, 'dashboard_cache', cache_result='failed',
-                    os_errno=exc.errno, winerror=getattr(exc, 'winerror', None), **error_facts(exc))
+            queue_cache(request_id)
         if not metadata and panel.request_sections == {'sla', 'held', 'requests'}:
             # Only a completed full transaction advances the public timestamp.
             panel.last_complete_read_at = datetime.now().astimezone().isoformat(timespec='seconds')
@@ -455,25 +468,14 @@ def build_dashboard(parent, app, cache_path=None):
             render_snapshots()
             record('dashboard_complete', request_id=request_id, year=year, month=month,
                    outcome='returned', api_data_ms=panel.last_complete_duration_ms)
-            try:
-                save_sections(cache_path, panel.section_snapshots, panel.last_complete_read_at,
-                              period=period, duration_ms=panel.last_complete_duration_ms)
-                panel.cache_error = False
-                record('dashboard_cache', cache_result='saved')
-            except OSError as exc:
-                panel.cache_error = True
-                from neto_incident_monitor.login_diagnostics import error_facts
-                record('dashboard_cache', cache_result='failed', **error_facts(exc))
+            queue_cache(request_id)
         elif not metadata:
             partial = bool(panel.request_sections)
             panel.read_status_by_period[period] = previous_status.failed(
                 message or 'Nie udało się pobrać kompletu danych dashboardu.', partial=partial,
                 title='Część danych wymaga odświeżenia' if partial else 'Nie udało się odczytać dashboardu')
         panel.restored_snapshot = False
-        message = message or ('Trwa aktualizacja' if metadata else 'Dane aktualne')
-        if panel.cache_error:
-            message += ' – błąd zapisu na dysku'
-        set_message(message)
+        set_message(message or ('Trwa aktualizacja' if metadata else 'Dane aktualne'))
     panel.apply_result = result
     cached = load_snapshot(cache_path)
     if cached or cache_path.exists():

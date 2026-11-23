@@ -111,6 +111,7 @@ class DataResetTests(unittest.TestCase):
         sender.thread.is_alive.side_effect = [True, False, False]
         app = SimpleNamespace(worker=worker, status=Mock(), root=Mock(), finish_quit=Mock(),
                               history_writer=history_writer, alert_writer=alert_writer, tray=None,
+                              dashboard_view=SimpleNamespace(cache_writer=SimpleNamespace(idle=True)),
                               reset_data_on_exit=True, reset_started=time.monotonic(), teams_sender=sender, google_chat_sender=sender)
         for _ in range(3):
             App.finish_quit(app)

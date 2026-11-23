@@ -20,7 +20,10 @@ flowchart TD
     V -->|"agregacje i podgląd Ulubionych"| E["Zdarzenia do Tk"]
     H --> E
     E -->|"App.drain lub kolejka dialogu importu"| T
-    T --> J["Konfiguracja i cache dashboardu"]
+    T --> J["Konfiguracja"]
+    T -->|"zaakceptowane migawki"| W["DashboardCacheWriter"]
+    W --> D["dashboard-cache.json"]
+    W -->|"wynik z rewizją"| E
     H -->|"alerty zapisane razem z danymi"| O["Wykonawca alertów · Windows, Teams i Google Chat"]
 ```
 
@@ -28,7 +31,7 @@ flowchart TD
 | --- | --- |
 | **Główny wątek Tk** | `App` składa UI, przekazuje zlecenia, odbiera zdarzenia w `drain`, sprawdza aktualność wyników i zapisuje ustawienia. Przy odczycie dashboardu lub zagrożeń wątek sesji prosi Tk o przygotowanie żądania. Definicja filtra odkryta w sesji czeka na zatwierdzenie i zapis przez Tk. [App](../neto_incident_monitor/app.py) · [UI](../neto_incident_monitor/ui.py) |
 | **Wątek sesji** | `SharedSession` jest właścicielem kontekstu i karty Playwright. `ReadQueue` szereguje i scala zlecenia ręczne. `MonitorCycle` planuje startowe odczyty oraz partie INC i zgłoszeń katalogowych. `Schedule` budzi wątek przy zmianie pracy lub interwałów. [Sesja](../neto_incident_monitor/shared_session.py) · [Kolejka i harmonogram](../neto_incident_monitor/monitoring.py) |
-| **Wykonawcy lokalni** | Wątek sesji zatwierdza migawki filtrów i zagrożeń w `History`. `history_writer` wykonuje operacje historii zlecane przez UI i porcjami czyści zakończone wpisy alertów. `alert_writer` obsługuje trwałą kolejkę dostarczenia. Ręczne testy kanałów korzystają z nadawców Teams i Google Chat. [Historia](../neto_incident_monitor/history.py) · [Retencja](../neto_incident_monitor/alert_retention.py) · [Aplikacja i wykonawcy](../neto_incident_monitor/app.py) |
+| **Wykonawcy lokalni** | Wątek sesji zatwierdza migawki filtrów i zagrożeń w `History`. `history_writer` wykonuje operacje historii zlecane przez UI i porcjami czyści zakończone wpisy alertów. `alert_writer` obsługuje trwałą kolejkę dostarczenia. `DashboardCacheWriter` szereguje migawki widoku i ponawia atomową podmianę na swoim wątku. Ręczne testy kanałów korzystają z nadawców Teams i Google Chat. [Historia](../neto_incident_monitor/history.py) · [Retencja](../neto_incident_monitor/alert_retention.py) · [Cache dashboardu](../neto_incident_monitor/dashboard_cache.py) |
 
 `launcher.pyw`, podgląd UI i próba offline paczki korzystają z tego samego konstruktora `App`. Konstruktor zawsze tworzy `SharedSession`, a `app.main()` uruchamia jej wątek. [Launcher](../launcher.pyw) · [Implementacja](../neto_incident_monitor/app.py) · [Testy wspólnej sesji](../tests/test_shared_session.py)
 
@@ -52,6 +55,7 @@ flowchart TD
 - Pełna aktualizacja obejmuje dashboard, zagrożenia i włączone filtry. Stop kończy cykl monitoringu. Ręczne zlecenia mogą działać w gotowej sesji bez aktywnego cyklu. [Kontrakt kolejki](kontrakty/kolejka-i-trwalosc.md#kolejka-i-anulowanie)
 - `SharedSession` przekazuje do diagnostyki zagrożeń przyczynę oczekiwania na kartę po odczycie dashboardu lub filtra. Przejście do oczekiwania na następny termin ustawia przyczynę `idle`. [Harmonogram w kontrakcie kolejki](kontrakty/kolejka-i-trwalosc.md#kolejka-i-anulowanie)
 - Główne okno Tk rejestruje odroczoną stylizację mapowanych dialogów. Jeżeli dialog zamknie się przed wykonaniem callbacku, stylizacja kończy się po sprawdzeniu istnienia okna. [Styl okien](../neto_incident_monitor/window_style.py) · [Test podglądu definicji filtra](../tests/test_shared_session.py)
+- Dopasowanie kolumny mierzy szerokość fontem Tk. W dużej tabeli rozkłada pomiary na porcje z budżetem 6 ms. Dopasowanie podczas wczytywania czeka na pełną tabelę, a odświeżenie, zmiana układu lub opuszczenie widoku może je anulować. [Dopasowanie](../neto_incident_monitor/dynamic_columns.py) · [Decyzja 043](decyzje/043-plynnosc-tk.md)
 - Potwierdzone zero, błąd i częściowy wynik mają odrębne znaczenie. Rewizja filtra, generacja cyklu i konta oraz ID żądania chronią właściwy zapis i publikację. [Decyzja 003](decyzje/003-poprawnosc-i-aktualnosc.md) · [Decyzja 027](decyzje/027-zmiany-filtrow-podczas-monitoringu.md)
 - Historia i liczniki zagrożeń SLA są dostępne po restarcie także wtedy, gdy baza nie zawiera jeszcze danych filtrów. Dopiero pierwszy kompletny zapis filtra tworzy tabele historii i obecności filtrów oraz ustawia wersję schematu na `1`. [Kontrakt trwałości](kontrakty/kolejka-i-trwalosc.md#lokalne-dane-i-migracja)
 - EXE trzyma dane użytkownika i logi w `%LOCALAPPDATA%\NetoIncidentMonitor`. Uruchomienie ze źródeł używa `data/`. Wbudowane parametry analityki pochodzą ze specyfikacji PyInstallera, a zakres agentów i lokalizacji z profilu użytkownika. [Ścieżki](../neto_incident_monitor/runtime_paths.py) · [Przygotowanie konfiguracji](servicenow-api-sesja-przegladarki.md#uruchomienie-odczytów-api)

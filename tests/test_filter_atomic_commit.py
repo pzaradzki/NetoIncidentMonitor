@@ -282,6 +282,8 @@ class ShutdownWriteTests(unittest.TestCase):
         app.status = Mock()
         app.history_writer = Mock()
         app.alert_writer = Mock()
+        app.dashboard_view = Mock()
+        app.dashboard_view.cache_writer.idle = False
         history_done = Future()
         alerts_done = Future()
         app.history_writer.submit.return_value = history_done
@@ -293,6 +295,9 @@ class ShutdownWriteTests(unittest.TestCase):
         app.finish_quit()
         app.root.destroy.assert_not_called()
         alerts_done.set_result(None)
+        app.finish_quit()
+        app.root.destroy.assert_not_called()
+        app.dashboard_view.cache_writer.idle = True
         app.finish_quit()
         app.root.destroy.assert_called_once()
         app.history_writer.submit.assert_called_once()

@@ -75,7 +75,7 @@ TEXT_FIELDS = {
     'read_reason': {'rendering_unavailable', 'timeout','document_changed',
                     'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected',
                     'authentication_required'},
-    'cache_result': {'saved','failed','restored','invalid','skipped'},
+    'cache_result': {'started', 'retry', 'saved', 'failed', 'restored', 'invalid', 'skipped'},
     'delay_reason': {'filter','dashboard','login','browser','idle'},
     'outcome': {'started', 'received', 'returned', 'partial', 'error', 'cancelled', 'authentication'},
     'activity': {'login', 'filters'},
@@ -174,6 +174,9 @@ TEXT_FIELDS['data_area'] = {'configuration', 'history'}
 TEXT_FIELDS['validation_result'].update({'invalid', 'unavailable'})
 NUMERIC_FIELDS.add('accepted_parts')
 NUMERIC_FIELDS.update({'item_count', 'group_count', 'duplicate_count', 'rejected_count'})
+NUMERIC_FIELDS.update({'cache_revision', 'cache_retry_ms'})
+EVENTS.add('column_fit')
+TEXT_FIELDS['column_fit_result'] = {'started', 'complete', 'cancelled', 'save_error'}
 TEXT_FIELDS['source'].add('favorites')
 EVENTS.update({'favorites_api_result', 'favorites_error', 'favorites_end', 'favorites_preview', 'favorites_save_error',
     'favorites_saved', 'favorites_dialog_end'})

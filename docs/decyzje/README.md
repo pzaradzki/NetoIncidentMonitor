@@ -30,6 +30,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[043 — Płynność Tk](043-plynnosc-tk.md) opisuje zasady zapisu migawek dashboardu i porcjowania dopasowania kolumn.
+
 [042 — Granice App i wspólnej sesji](042-granice-app-i-sesji.md) zapisuje podział konfiguracji, logowania i zleceń analitycznych między modułami.
 
 [041 — Retencja kolejki powiadomień](041-retencja-kolejki-alertow.md) opisuje okresy 30 i 90 dni, zachowanie starszych wpisów i zgodność lokalnej bazy.

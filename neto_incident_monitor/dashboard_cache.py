@@ -3,9 +3,17 @@ import json
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from neto_incident_monitor.dashboard import HELD_METRIC_TITLES, HELD_TITLES, MONTHLY_TITLES, REQUEST_TITLES, TITLES
+from threading import Lock
+
+from neto_incident_monitor.dashboard import (
+    HELD_METRIC_TITLES, HELD_TITLES, MONTHLY_TITLES, REQUEST_TITLES, TITLES, measured_record,
+)
+from neto_incident_monitor.login_diagnostics import LoginDiagnostics, error_facts
 
 SECTIONS = {'sla': TITLES, 'held': HELD_TITLES, 'requests': REQUEST_TITLES}
 NAMES = {'sla': 'Dashboard SLA', 'held': 'Wstrzymane L1', 'requests': 'Wnioski L1'}
@@ -102,7 +110,7 @@ def load_snapshot(path):
         return None
 
 
-def save_sections(path, sections, last_complete_read_at=None, *, period=None, duration_ms=None):
+def save_sections(path, sections, last_complete_read_at=None, *, period=None, duration_ms=None, on_retry=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
@@ -117,10 +125,13 @@ def save_sections(path, sections, last_complete_read_at=None, *, period=None, du
             try:
                 os.replace(temporary, path)
                 break
-            except PermissionError:
+            except PermissionError as error:
                 if attempt == 3:
                     raise
-                time.sleep(.05 * (attempt + 1))
+                delay = .05 * (attempt + 1)
+                if on_retry is not None:
+                    on_retry(attempt + 1, delay, error)
+                time.sleep(delay)
     finally:
         if temporary and os.path.exists(temporary):
             try:
@@ -139,3 +150,82 @@ def save_snapshot(path, year, month, values, read_at):
                 'last_outcome': 'success', 'complete': True,
                 'year': year if section == 'sla' else None, 'month': month if section == 'sla' else None}
     save_sections(path, sections)
+
+
+@dataclass(frozen=True)
+class CacheWrite:
+    revision: int
+    request_id: int
+    sections: dict
+    last_complete_read_at: str | None
+    period: tuple | None
+    duration_ms: int | None
+
+
+class DashboardCacheWriter:
+    """Serialize writes to one cache, keeping at most the newest pending snapshot."""
+
+    def __init__(self, path, events):
+        self.path = path
+        self.events = events
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='dashboard-cache')
+        self._lock = Lock()
+        self._revision = 0
+        self._pending = None
+        self._running = False
+        self._closed = False
+
+    @property
+    def idle(self):
+        with self._lock:
+            return not self._running
+
+    def submit(self, request_id, sections, last_complete_read_at, *, period, duration_ms):
+        snapshot = deepcopy(sections)
+        with self._lock:
+            if self._closed:
+                return None
+            self._revision += 1
+            self._pending = CacheWrite(self._revision, request_id, snapshot, last_complete_read_at, period, duration_ms)
+            if not self._running:
+                self._running = True
+                self._executor.submit(self._drain)
+            return self._revision
+
+    def close(self, *, discard=False):
+        with self._lock:
+            self._closed = True
+            if discard:
+                self._pending = None
+        self._executor.shutdown(wait=False)
+
+    def _drain(self):
+        while True:
+            with self._lock:
+                job, self._pending = self._pending, None
+                if job is None:
+                    self._running = False
+                    return
+            self._write(job)
+
+    def _write(self, job):
+        started = time.perf_counter()
+        try:
+            diagnostics = LoginDiagnostics(source='dashboard', request_id=job.request_id, cache_revision=job.revision)
+        except Exception:
+            diagnostics = None
+        measured_record(diagnostics, 'dashboard_cache', cache_result='started')
+
+        def retry(attempt, delay, error):
+            measured_record(diagnostics, 'dashboard_cache', cache_result='retry', attempt=attempt,
+                            cache_retry_ms=round(delay * 1000), **error_facts(error))
+
+        result, facts = 'saved', {}
+        try:
+            save_sections(self.path, job.sections, job.last_complete_read_at, period=job.period,
+                          duration_ms=job.duration_ms, on_retry=retry)
+        except Exception as error:
+            result, facts = 'failed', error_facts(error)
+        measured_record(diagnostics, 'dashboard_cache', cache_result=result,
+                        duration_ms=round((time.perf_counter() - started) * 1000), **facts)
+        self.events.put(('dashboard_cache_result', (job.revision, result)))

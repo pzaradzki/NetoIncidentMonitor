@@ -1,0 +1,53 @@
+# Etap 3. Płynność Tk
+
+Zmierzyć opóźnienia interfejsu przy zapisie cache Dashboardu SLA i dopasowaniu szerokości kolumn. Pomiary obu ścieżek rozstrzygną, które poprawki wdrożyć. Każda poprawka ma zachować aktualność widoku, dane po restarcie i dotychczasowy podział wątków. [Plan ogólny](../uporzadkowanie-architektury.md#etap-3-płynność-tk) · [Audyt A08](../../archiwum/AUDIT.md#4-konkretne-ryzyka-eksploatacyjne-i-luki-w-kontroli-jakości) · [Właściciele wątków](../../decyzje/001-watki-i-kolejki.md)
+
+[Raport pomiarów i odbiór Windows](../../weryfikacja/plynnosc-tk.md) · [Decyzja 043](../../decyzje/043-plynnosc-tk.md)
+
+## 1. Stan wyjściowy
+
+- [x] Sprawdzono oba miejsca zapisu cache dashboardu w Tk. Widok może zapisać migawkę po wyniku sekcji i drugi raz po potwierdzeniu pełnego odczytu. `save_sections()` atomowo podmienia plik, a trzy ponowienia po `PermissionError` mogą dodać łącznie 300 ms oczekiwania do pojedynczego zapisu. [Odbiór wyników](../../../neto_incident_monitor/dashboard_ui.py#L407) · [Zapis pliku](../../../neto_incident_monitor/dashboard_cache.py#L113)
+- [x] Sprawdzono dopasowanie kolumny w Tk. `fit_column()` mierzy nagłówek i wszystkie załadowane wiersze, również poza widocznym obszarem. `sync_column_widths()` zapisuje profil filtra i synchronizuje szerokości obu tabel. [Dopasowanie i zapis](../../../neto_incident_monitor/dynamic_columns.py#L228)
+- [x] Rozpoznano mechanizmy do wykorzystania. Wczytywanie dużych tabel już porcjuje operacje Tk z budżetem 6 ms. `App.drain()` odbiera zdarzenia z tła, a zamknięcie i reset uwzględniają zakończenie pracy istniejących wykonawców zapisu. [Porcjowanie tabeli](../../../neto_incident_monitor/table_loading.py) · [Zamykanie aplikacji](../../../neto_incident_monitor/app.py#L2638)
+
+## 2. Pomiar przed zmianami
+
+- [x] Przygotować powtarzalną próbę na Windows z izolowanymi plikami i danymi syntetycznymi. Uruchamiać właściwe widoki Tk i dostarczać wyniki dashboardu przez tę samą kolejkę zdarzeń co aplikacja. Zanotować commit, wersje Python i Tk, skalę ekranu oraz ustawienia próby. Próba Windows z rzeczywistym `App` i tymczasowymi danymi.
+- [x] Zmierzyć opóźnienie pętli Tk lekkim cyklicznym callbackiem `after()` i zegarem monotonicznym. Zapisywać odstęp względem planowanego terminu oraz osobno czas całej operacji. Zebrać pomiar bez obciążenia, medianę, p95 i najdłuższą przerwę dla każdego scenariusza. Sprawdzić koszt samego pomiaru. Koszt callbacku nie przekroczył 0,08 ms. Zapisano medianę, p95 i maksimum.
+- [x] Zmierzyć zapis cache dla pojedynczej sekcji, pełnego odczytu i serii wyników. Powtórzyć ze zwykłym zapisem, kontrolowanym opóźnieniem dysku, przejściowym `PermissionError` oraz błędem końcowym. Odnotować liczbę prób podmiany i opóźnienie Tk, które przypada na każdą serię. W każdej kombinacji wykonano trzy powtórzenia i zapisano liczbę podmian. [Testy migawek i zapisu](../../../tests/test_dashboard_snapshots.py)
+- [x] Zmierzyć rzeczywiste dopasowanie kolumny dla małej tabeli, dużej listy i większej historii, z krótkimi i długimi wartościami syntetycznymi. Rozdzielić koszt pobrania wierszy, pomiaru fontu i zapisu profilu. Sprawdzić oba widoki oraz przypadek dopasowania w trakcie wczytywania. Zmierzono oba widoki, 100–10 000 wierszy oraz dopasowanie od pierwszego wiersza w trakcie ładowania. [Test dopasowania](../../../tests/test_dynamic_columns.py) · [Testy ładowania tabel](../../../tests/test_table_loading.py)
+- [x] Powtórzyć próby w porównywalnych warunkach. Zestawić wyniki i ustalić kryteria odbioru przed optymalizacją. Dla cache i dla kolumn zapisać osobno decyzję o wdrożeniu lub odłożeniu poprawki wraz z wynikiem pomiaru. Warunki odbioru i obie decyzje zapisano w raporcie.
+
+## 3. Zapis cache w tle
+
+Kroki wdrożeniowe dotyczą wariantu wybranego na podstawie pomiaru. [Kontrakt danych dashboardu](../../kontrakty/kolejka-i-trwalosc.md#operacje-i-warunki-zatwierdzenia)
+
+- [x] Ustalić właściciela i kolejność zapisu jednego pliku. Sprawdzić, czy istniejący wykonawca może obsłużyć cache bez zauważalnego opóźnienia zapisów historii lub retencji. Ustalić limit oczekujących zapisów oraz regułę zastępowania oczekującej migawki nowszą, jeśli będzie potrzebna. Cache ma własnego wykonawcę i miejsce na jedną oczekującą migawkę.
+- [x] Przyjmować i walidować wynik w Tk. Dopiero po zaakceptowaniu ID i okresu przygotować niezależną kopię migawek sekcji, czasu pełnego odczytu i powiązanych metadanych. Nadać zapisowi rosnący numer rewizji dla pliku. Test potwierdza niezależność kopii od późniejszej modyfikacji danych widoku.
+- [x] Przenieść wykonanie atomowego zapisu i ponowienia poza Tk, zachowując istniejący format cache. Sprawdzić, że opóźniony starszy zapis lub jego ponowienie nie nadpisze nowszej zaakceptowanej migawki. Powolny starszy zapis kończy się przed nowszym. Zgodność formatu sprawdzają testy odczytu migawek.
+- [x] Odebrać wynik zapisu przez istniejący mechanizm zdarzeń Tk. Obsłużyć błąd zapisu bez utraty poprawnych danych na ekranie. Sprawdzić, że opóźniony wynik starszej rewizji nie pokaże nieaktualnego ostrzeżenia ani nie usunie ostrzeżenia o nowszym zapisie. Test sprawdza spóźniony błąd i spóźniony sukces.
+- [x] Uzgodnić obsługę zapisu w trakcie zwykłego zamknięcia, Stop i resetu danych. Sprawdzić zapis ostatniej zaakceptowanej migawki przed zamknięciem i jednoznaczny wynik w przypadku błędu dysku. Potwierdzić, że oczekujące zapisy nie odtworzą cache po resecie. Próba natywna potwierdziła dokończenie zaakceptowanego zapisu przy zamykaniu. Test resetu obejmuje odrzucenie oczekującej migawki.
+- [x] Zaliczyć testy poprawnej i częściowej aktualizacji, dat sekcji, czasu pełnego odczytu, restartu, nieaktualnego ID lub okresu oraz błędu podmiany pliku. Objąć testem sztucznie opóźniony starszy zapis, zmianę okresu i zamknięcie z oczekującym zadaniem. Testy obejmują zmianę okresu oraz zamknięcie i reset z aktywnym oraz oczekującym zapisem. [Testy migawek](../../../tests/test_dashboard_snapshots.py) · [Testy okresu](../../../tests/test_dashboard_period.py) · [Testy resetu](../../../tests/test_data_reset.py)
+
+## 4. Dopasowanie szerokości kolumn
+
+Kroki wdrożeniowe dotyczą wariantu wybranego na podstawie pomiaru. Pomiar tekstu przez font Tk należy do głównego wątku. [Kod tabel i kolumn](../../../neto_incident_monitor/dynamic_columns.py)
+
+- [x] Jeżeli skan wierszy dominuje w pomiarze, ustalić budżet jednej porcji na podstawie wyników i istniejącego porcjowania tabel. Uwzględnić koszt uzyskania listy wierszy i unikać powtarzania pełnego skanu w każdej porcji. Pomiar fontu dominuje. Porcja ma budżet 6 ms, a lista identyfikatorów jest pobierana raz.
+- [x] Jeżeli dopasowanie będzie rozłożone na porcje, powiązać je z tabelą, filtrem, kolumną i aktualnym zestawem wierszy. Określić reakcję na odświeżenie danych, przełączenie filtra lub zakładki, zmianę układu i ręczne przeciągnięcie separatora. Sprawdzenia aktualności obejmują filtr, tabelę, układ i początkową szerokość. Odświeżenie danych, zmiana zakładki i ręczna zmiana układu anulują pracę.
+- [x] Wdrożyć wybrany wariant. Zachować szerokość wynikającą z nagłówka, minimalnej szerokości i najdłuższej wartości ze wszystkich wierszy należących do dopasowywanego zestawu, także poza ekranem. Najdłuższa wartość poza ekranem wyznacza szerokość po pełnym skanie.
+- [x] Zastosować wynik wyłącznie do nadal aktualnego widoku i zapisać szerokość we właściwym profilu. Zweryfikować synchronizację obu tabel, zachowanie po błędzie zapisu i anulowanie timerów przy zamykaniu okna. Sprawdzono zapis we właściwym profilu, synchronizację, błąd zapisu i zamknięcie podczas pomiaru.
+- [ ] Jeżeli pomiar wykaże, że dominuje zapis ustawień kolumn, określić osobno najmniejszą poprawkę i jej wpływ na transakcyjność profilu. Potwierdzić dotychczasowe zachowanie ustawień przy nieudanym zapisie. [Profil kolumn](../../../neto_incident_monitor/dynamic_columns.py#L304) **Odłożono.** Zapis profilu zwykle trwał 2–4 ms. Zachowanie po błędzie obejmuje test dopasowania. [Decyzja 043](../../decyzje/043-plynnosc-tk.md)
+- [x] Zaliczyć testy dopasowania względem najdłuższej wartości poza ekranem, zapisania szerokości po restarcie i aktualności profilu po zmianie widoku. Jeżeli użyto porcji, sprawdzić także ponowne dopasowanie w trakcie pracy, ręczną zmianę szerokości oraz brak spóźnionych callbacków po zamknięciu. Testy sprawdzają ponowienie, anulowanie, treść poza ekranem, zapis i ponowny odczyt konfiguracji. [Testy kolumn](../../../tests/test_dynamic_columns.py) · [Testy ładowania tabel](../../../tests/test_table_loading.py)
+
+## 5. Diagnostyka i odbiór
+
+- [x] Zarejestrować w uzgodnionym zakresie czas i wynik operacji oraz bezpieczne liczniki. Dla cache zachować korelację z ID żądania i rewizją zapisu. Użyć istniejącej diagnostyki, sprawdzić wynik błędu i potwierdzić brak treści komórek, ścieżek użytkownika i syntetycznych sekretów w logach. Testy odczytują rzeczywiste rekordy loggera. Potwierdzono korelację, liczniki, czas oraz brak treści komórki i danych z błędu zapisu. [Diagnostyka](../../../neto_incident_monitor/login_diagnostics.py)
+- [x] Dla każdej wdrożonej poprawki powtórzyć pomiary w tym samym środowisku i na tych samych danych. Porównać p95, najgorszą przerwę oraz całkowity czas operacji. Zapisać decyzję także wtedy, gdy pomiar uzasadnia odłożenie danej poprawki. Porównano p95, najdłuższą przerwę i całkowity czas. Raport odnotowuje także dłuższy pomiar całej kolumny i rozrzut przy wczytywaniu.
+- [x] Przejść ręcznie przez odświeżenie dashboardu, przewijanie i zmianę zakładki oraz dwuklik separatora na dużej tabeli w izolowanym środowisku. Sprawdzić zamknięcie podczas rozpatrywanych operacji. Zaliczone interakcje w oknie Windows i osobna próba zamknięcia z oboma aktywnymi zadaniami.
+- [x] Uruchomić testy zakresowe i pełną regresję Windows. Odnotować niepowodzenia, przyczyny pominięć i wyniki ponowień. W końcowej regresji 553 testy zaliczone, jedno pominięcie środowiskowe i zero błędów callbacków Tk. Szczegóły w raporcie. [Runner regresji](../../../tools/run_regression.py)
+- [x] Zapisać raport pomiarów i decyzje w dokumentacji. Uaktualnić faktycznie zmienione kontrakty, plan ogólny i indeks. Po odbiorze przenieść plan szczegółowy do zakończonych. Zaktualizowano kontrakt, architekturę, plan ogólny i indeks. Plan szczegółowy przeniesiono do zakończonych.
+
+## Aktualizowanie checkboxów
+
+Po zweryfikowaniu kroku zmienić `[ ]` na `[x]` i dopisać przy nim wynik lub odnośnik do pomiaru, testu albo decyzji. Częściowy wynik pozostaje otwarty z opisem brakującej próby. Jeżeli pomiar uzasadnia odłożenie wariantu, jego kroki zostają niezaznaczone z adnotacją „odłożono” i odnośnikiem do decyzji. Rozpoznanie w punkcie 1 dotyczy commitu bazowego 2144f87.
