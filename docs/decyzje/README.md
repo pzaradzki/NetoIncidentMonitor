@@ -30,6 +30,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[041 — Retencja kolejki powiadomień](041-retencja-kolejki-alertow.md) opisuje okresy 30 i 90 dni, zachowanie starszych wpisów i zgodność lokalnej bazy.
+
 [039 — Statusy widoków, sesji i kolejki](039-statusy-widokow-i-kolejki.md) określa rolę obu belek, zakres metadanych odczytu i pomiar czasu REST.
 
 [038 — Walidacja złożonych warunków filtrów](038-walidacja-warunkow-filtrow.md) opisuje metadane zmiennych katalogowych, porównania pól i ważność potwierdzenia.

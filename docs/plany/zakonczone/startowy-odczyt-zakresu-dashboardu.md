@@ -1,6 +1,6 @@
 # Pobranie brakujących list agentów i lokalizacji po logowaniu
 
-**Status** — wdrożono w źródłach i w lokalnej paczce [1.12.0-experimental.3](../wersje/v1.12.0-experimental.3.md). Pozostał odbiór rzeczywisty w ADEO.
+**Status.** Wdrożono w źródłach i w lokalnej paczce 1.12.0-experimental.3. Użytkownik potwierdził odbiór uruchomienia na świeżym profilu i restartu na ADEO w wersji [1.12.0-experimental.4](../../wersje/v1.12.0-experimental.4.md).
 
 Po zalogowaniu aplikacja sprawdza lokalnie komplet obu list. Jeśli obie są zapisane i poprawne, korzysta z nich bez weryfikowania aktualności w ServiceNow. Jeśli którejkolwiek brakuje, aplikacja pobiera i zapisuje obie przy użyciu istniejącego mechanizmu ręcznego odświeżania. Użytkownik nadal może sam zlecić aktualizację w ustawieniach.
 
@@ -31,10 +31,10 @@ Po zalogowaniu aplikacja sprawdza lokalnie komplet obu list. Jeśli obie są zap
 
 ## 4. Testy i odbiór
 
-- [ ] **Potwierdzić poprawne zachowanie na świeżym i używanym profilu.**
+- [x] **Potwierdzić pobranie zakresu na świeżym profilu i użycie zapisu po restarcie.**
   - Regresja lokalna objęła 166 prób. Zaliczono 165. Jedna próba zabezpieczenia dowiązania została pominięta ze względu na brak możliwości utworzenia dowiązania symbolicznego w tym środowisku.
   - [x] Testy objęły wczytanie i zapis świeżej konfiguracji, starszy plik i błąd formatu lub zapisu. Kolejka używa kompletu bez odświeżenia.
   - [x] Testy lokalne objęły kolejkę z cyklem, brak cyklu, odzyskiwanie logowania, scalenie żądań oraz błąd układu. Istniejące testy okresu i harmonogramu zostały powtórzone.
   - [x] Rozpakowane EXE przeszło próby offline z pustym i zapisanym profilem. Po syntetycznym zapisie drugi start odczytał zakres lokalny. Sprawdzono 1445 plików ZIP-a i potwierdzono brak identyfikatorów ze sprawdzanych list w śledzonych źródłach oraz w konfiguracji paczki.
-  - [ ] Potwierdzić w ADEO na jednej sesji pobranie czterech układów, jednej pary list i pierwszy odczyt dashboardu. W tym samym profilu potwierdzić, że ponowny start nie wykonuje pobrania list. Zweryfikować jedną kartę i brak mignięcia ukrytego Chromium. Zaktualizować architekturę i kontrakt oraz odnotować wynik wykonania planu.
-    - Próba z osobnym profilem zatrzymała się na oczekiwaniu na ręczne logowanie. Po upływie limitu test zamknął okno. Następna próba wymaga zalogowania i pozostawienia okna testowego do zakończenia odczytu. Architektura i kontrakt mają już opis wdrożenia.
+  - [x] 23 listopada 2026 użytkownik potwierdził, że na ADEO świeży profil pobrał listy agentów i lokalizacji, a ponowne uruchomienie użyło zapisanego zakresu.
+  - Potwierdzenie użytkownika obejmuje pobranie i ponowne użycie list. Wyniki poszczególnych odczytów układów, pomiar liczby kart i obserwacja fokusu nie były częścią zgłoszonego wyniku.

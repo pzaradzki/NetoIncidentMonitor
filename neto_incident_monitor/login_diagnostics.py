@@ -123,6 +123,10 @@ NUMERIC_FIELDS.update({
     'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
 EVENTS.add('alert_delivery')
+EVENTS.add('alert_retention')
+NUMERIC_FIELDS.update({'retention_scanned', 'retention_dated', 'retention_minimized',
+                       'retention_deleted', 'retention_limit', 'retention_next_s'})
+TEXT_FIELDS['retention_outcome'] = {'started', 'progress', 'complete', 'no_changes', 'cancelled', 'busy', 'error'}
 EVENTS.add('windows_notification_truncated')
 NUMERIC_FIELDS.update({'title_units', 'message_units', 'title_limit', 'message_limit'})
 EVENTS.add('notification_preference')

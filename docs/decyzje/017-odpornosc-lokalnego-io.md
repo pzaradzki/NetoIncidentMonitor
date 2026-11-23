@@ -2,6 +2,8 @@
 
 4 listopada 2026. **Status: przyjęta; wdrożona w źródłach.** Uzupełnia 004 i 011, bez zmiany schematów i stanów outbox.
 
+Retencję zakończonych wpisów wprowadzono później. [Decyzja 041](041-retencja-kolejki-alertow.md)
+
 **Decyzja:** zwykły log i JSONL współdzielą handler odporny na błędy zapisu, rotacji, flush i zamknięcia. Otwarcie zwykłego logu jest opóźnione; ostrzeżenie omija uszkodzony handler oraz przekierowany stderr. Kolejna próba IO następuje po 30 s.
 
 **Powód:** pełny dysk nie może powodować rekurencji w loggerze. Błąd zadania executora nie może pozostać nieobserwowany ani uruchamiać ponownego, niepewnego POST.

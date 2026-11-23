@@ -26,6 +26,8 @@ Po potwierdzeniu obu list aplikacja zapisuje je atomowo w lokalnym `dashboard-ap
 
 Na instancji ADEO potwierdzono przejście z częściowego wyboru do pełnego, otwarcie pustej listy P1 na tej samej karcie oraz obecność obu list w zapytaniu. Osobne testy lokalne weryfikują mechanizm zapisu i zachowanie kolejki.
 
+Użytkownik potwierdził w wersji 1.12.0-experimental.4 pobranie obu list na świeżym profilu ADEO i użycie zapisanego zakresu po restarcie. [Odbiór](../plany/zakonczone/startowy-odczyt-zakresu-dashboardu.md#4-testy-i-odbiór)
+
 ## Historyczny kontrakt odczytu przez DOM
 
 Stan kontraktu: 1 listopada 2026; lokalny build 1.8.0 z 2 listopada zawiera wdrożenie i przeszedł offline smoke-test. Nie jest to pełny rzeczywisty test odczytu z EXE. Odbiór: [raport](../weryfikacja/odbior-stabilizacji-dashboardu.md).

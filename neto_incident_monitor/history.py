@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 from uuid import uuid4
+from neto_incident_monitor.alert_retention import COMPLETED_STATES, STAMP_PAYLOAD
 
 
 class History:
@@ -146,7 +147,8 @@ class History:
             if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'alert_outbox'").fetchone():
                 return []
             if recover:
-                db.execute("UPDATE alert_outbox SET state = 'uncertain' WHERE state = 'sending'")
+                db.execute(f"UPDATE alert_outbox SET state = 'uncertain', payload = {STAMP_PAYLOAD} "
+                           "WHERE state = 'sending'", (int(time.time()), 'recovered'))
             return [(key, json.loads(payload)) for key, payload in db.execute(
                 "SELECT id, payload FROM alert_outbox WHERE state = 'pending' ORDER BY rowid")]
 
@@ -156,10 +158,13 @@ class History:
         if (expected, state) not in allowed:
             raise ValueError("Niedozwolona zmiana stanu alertu.")
         with closing(sqlite3.connect(self.store)) as db, db:
-            updated = db.execute(
-                "UPDATE alert_outbox SET state = ? WHERE id = ? AND state = ?",
-                (state, key, expected),
-            )
+            if state in COMPLETED_STATES:
+                updated = db.execute(f"UPDATE alert_outbox SET state = ?, payload = {STAMP_PAYLOAD} "
+                                     "WHERE id = ? AND state = ?",
+                                     (state, int(time.time()), 'finished', key, expected))
+            else:
+                updated = db.execute("UPDATE alert_outbox SET state = ? WHERE id = ? AND state = ?",
+                                     (state, key, expected))
             return updated.rowcount == 1
 
     @staticmethod

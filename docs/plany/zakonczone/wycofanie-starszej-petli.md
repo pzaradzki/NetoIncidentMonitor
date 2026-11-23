@@ -10,4 +10,6 @@
 
 Przed usunięciem starszej pętli pełna regresja na pulpicie Windows objęła 547 testów w 71 modułach. Zaliczono 546. Próbę przekierowania przez dowiązanie symboliczne pominięto ze względu na uprawnienia środowiska.
 
-Po usunięciu pętli pełna sekwencyjna regresja Windows objęła 535 testów w 71 modułach. Zaliczono 533, bez niepowodzeń. Środowisko nie pozwoliło utworzyć dowiązania symbolicznego. Windows nie przyznał fokusu oknu testowemu potrzebnemu do weryfikacji przywracania Chromium, także w osobnej próbie. Test zapisu zaszyfrowanej konfiguracji zgłosił błąd w przebiegu równoległym, a przeszedł w izolacji i w pełnym przebiegu sekwencyjnym. Próby uruchomiono na izolowanych danych syntetycznych. Odbiór na instancji ADEO pozostaje osobny.
+Po usunięciu pętli pełna sekwencyjna regresja Windows objęła 535 testów w 71 modułach. Zaliczono 533, bez niepowodzeń. Środowisko nie pozwoliło utworzyć dowiązania symbolicznego. Windows nie przyznał fokusu oknu testowemu potrzebnemu do weryfikacji przywracania Chromium, także w osobnej próbie. Test zapisu zaszyfrowanej konfiguracji zgłosił błąd w przebiegu równoległym, a przeszedł w izolacji i w pełnym przebiegu sekwencyjnym. Próby uruchomiono na izolowanych danych syntetycznych.
+
+23 listopada 2026 użytkownik zgłosił prawie tydzień prób paczki 1.12.0-experimental.4 bez zauważonych problemów. Potwierdził też pobranie zakresu dashboardu na świeżym profilu ADEO i użycie zapisu po restarcie. [Opis paczki](../../wersje/v1.12.0-experimental.4.md) · [Odbiór zakresu](startowy-odczyt-zakresu-dashboardu.md#4-testy-i-odbiór)

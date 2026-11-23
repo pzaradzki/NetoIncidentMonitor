@@ -1,11 +1,11 @@
 # Plany i pozostałe prace
 
-Według [indeksu wersji](../wersje/README.md) ostatnia odnotowana paczka lokalna to [1.12.0-experimental.3](../wersje/v1.12.0-experimental.3.md), a ostatnie odnotowane wydanie publiczne to [1.11.2](../wersje/v1.11.2.md).
+Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowane wydanie publiczne to 1.11.2. [Indeks wersji](../wersje/README.md)
 
 ## Pozostałe tematy
 
-- [Pobranie brakujących list agentów i lokalizacji po logowaniu](startowy-odczyt-zakresu-dashboardu.md) jest wdrożone w źródłach i lokalnej paczce. Pozostaje rzeczywisty odbiór na ADEO.
-- Ustalić retencję outbox i lokalizację logów uruchomień ze źródeł. Pomiary opóźnień Tk odłożono do osobnej pracy. [Wyniki audytu](zakonczone/naprawy-audytu.md)
+- [Plan uporządkowania architektury](uporzadkowanie-architektury.md) obejmuje zależności od `App`, płynność Tk i odtwarzalną budowę EXE.
+- Ustalić lokalizację logów uruchomień ze źródeł. [Wyniki audytu technicznego](zakonczone/naprawy-audytu.md)
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu. [Opis obserwacji](../wersje/v1.8.1.md)
 - Potencjalny kanał e-mail. Potwierdzono pojedynczą wysyłkę i dostarczenie. Otwarte są zasady relay i działanie na innych komputerach. [Rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md)
 
@@ -13,6 +13,8 @@ Według [indeksu wersji](../wersje/README.md) ostatnia odnotowana paczka lokalna
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Retencja kolejki powiadomień](zakonczone/retencja-kolejki-powiadomien.md) | Wdrożono w źródłach politykę 30 i 90 dni. Sprawdzono bazy w wersjach 0 i 1 z kodem paczki 1.12.0-experimental.4. Pełna regresja Windows zaliczyła 544 testy, a 2 pominięto. |
+| [Pobranie brakujących list agentów i lokalizacji po logowaniu](zakonczone/startowy-odczyt-zakresu-dashboardu.md) | Użytkownik potwierdził na ADEO pobranie zakresu na świeżym profilu i użycie zapisu po restarcie w wersji 1.12.0-experimental.4. |
 | [Wycofanie starszej pętli monitoringu](zakonczone/wycofanie-starszej-petli.md) | Wdrożono w źródłach. Dashboard, zagrożenia SLA i filtry korzystają ze wspólnej sesji. W pełnej regresji Windows zaliczono 533 testy, a 2 pominięto. |
 | Okres dashboardu w `SharedSession` | Testy obejmują blokadę od zakolejkowania, ponowienie logowania, ponowne połączenie, spóźnione zdarzenia i Stop. Poprawiono odblokowanie odczytu automatycznego po zamknięciu Chromium. Pełna powtórzona regresja objęła 547 testów, z czego 546 zaliczono i jeden pominięto. [Testy okresu](../../tests/test_dashboard_period.py) |
 | Harmonogram zagrożeń SLA w `SharedSession` | Sprawdzono pojedynczy zaległy odczyt po dashboardzie i między filtrami, termin 60 s od zakończenia sukcesu, błędu lub ręcznej próby oraz Stop. Poprawiono zapis przyczyny opóźnienia i sprawdzono korelację w JSONL. Zaliczone 55 prób zakresowych na danych syntetycznych. [Testy harmonogramu](../../tests/test_refresh_requests.py) |

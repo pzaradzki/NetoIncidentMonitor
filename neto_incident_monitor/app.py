@@ -25,6 +25,7 @@ from neto_incident_monitor.window_style import current_grab_path
 from urllib.parse import urlparse, unquote
 from neto_incident_monitor.service_now_urls import effective_list_url, is_short_url
 from neto_incident_monitor.history import History
+from neto_incident_monitor.alert_retention import AlertRetention
 from neto_incident_monitor.monitoring import Schedule, ReadPart
 from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from playwright._impl._errors import TargetClosedError
@@ -556,6 +557,7 @@ class App(DynamicColumns, TableLoading):
         self.history = History(history_path or DATA / "history.json")
         self.alert_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="alerts")
         self.history_writer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="history")
+        self.alert_retention = AlertRetention(self.history.store, self.history_writer, self.stop)
         self.row_numbers = {}
         self.tray = None
         self.tray_ready = False
@@ -3152,6 +3154,7 @@ class App(DynamicColumns, TableLoading):
                         self.apply_sort(table)
         self.update_refresh_controls()
         if not self.quitting:
+            self.alert_retention.tick()
             self.root.after(200, self.drain)
 
     def open_incident(self, event):
