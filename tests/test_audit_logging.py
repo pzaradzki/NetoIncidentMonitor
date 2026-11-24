@@ -11,11 +11,43 @@ from neto_incident_monitor.safe_logging import DiagnosticFileHandler
 
 
 class AuditLoggingTests(unittest.TestCase):
+    def test_source_log_path_is_stable_and_separate_from_other_checkouts_and_exe(self):
+        from neto_incident_monitor.runtime_paths import packaged_data, source_log_dir
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            local, checkout, another = (root / name for name in ('local', 'repo', 'other'))
+            logs = source_log_dir(local, checkout)
+            self.assertEqual(logs, source_log_dir(local, checkout / '..' / 'repo'))
+            self.assertNotEqual(logs, source_log_dir(local, another))
+            self.assertTrue(logs.is_relative_to(local))
+            self.assertFalse(logs.is_relative_to(packaged_data(local)))
+            self.assertFalse(logs.is_relative_to(checkout))
+
+    def test_launcher_appends_outside_the_runtime_data(self):
+        launcher = runpy.run_path('launcher.pyw', run_name='audit_test')
+        main = launcher['main']
+        root = logging.getLogger()
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            data, logs = folder / 'data', folder / 'logs'
+            with patch.dict(main.__globals__, DATA=data, LOG_DIR=logs), \
+                    patch('neto_incident_monitor.single_instance.SingleInstance'), \
+                    patch('neto_incident_monitor.data_reset.finish_with_retry', return_value=True), \
+                    patch('neto_incident_monitor.app.main', return_value=False), \
+                    patch.object(root, 'handlers', []), patch.object(root, 'level', logging.INFO):
+                main()
+                main()
+            self.assertFalse((data / 'monitor.log').exists())
+            entries = (logs / 'monitor.log').read_text(encoding='utf-8')
+            self.assertEqual(entries.count('Uruchomienie aplikacji:'), 2)
+            self.assertEqual(entries.count('Zakończenie aplikacji:'), 2)
+
     def test_launcher_continues_when_log_directory_is_unavailable(self):
         launcher = runpy.run_path('launcher.pyw', run_name='audit_test')
         from neto_incident_monitor.single_instance import SingleInstance
         root = logging.getLogger()
-        with patch.dict(launcher['main'].__globals__, DATA=Path('synthetic-unavailable')), \
+        with patch.dict(launcher['main'].__globals__, LOG_DIR=Path('synthetic-unavailable')), \
                 patch('neto_incident_monitor.single_instance.SingleInstance') as instance, \
                 patch('neto_incident_monitor.data_reset.finish_with_retry', return_value=True), \
                 patch('neto_incident_monitor.app.main', return_value=False) as app_main, \

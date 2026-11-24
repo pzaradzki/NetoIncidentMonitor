@@ -46,7 +46,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
         self.page = Mock()
         self.page.is_closed.return_value = False
         close_diagnostics()
-        self.enterContext(patch('neto_incident_monitor.login_diagnostics.DATA', self.folder))
+        self.enterContext(patch('neto_incident_monitor.login_diagnostics.LOG_DIR', self.folder))
         self.addCleanup(close_diagnostics)
         self.enterContext(patch('neto_incident_monitor.app.STATE', self.folder / 'seen.json'))
         self.enterContext(patch('neto_incident_monitor.analytics_config.load_config', return_value={}))

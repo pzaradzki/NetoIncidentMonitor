@@ -1,10 +1,9 @@
 # Plany i pozostałe prace
 
-Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowane wydanie publiczne to 1.11.2. [Indeks wersji](../wersje/README.md)
+Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to 1.11.2. [Indeks wersji](../wersje/README.md)
 
 ## Pozostałe tematy
 
-- Ustalić lokalizację logów uruchomień ze źródeł. [Wyniki audytu technicznego](zakonczone/naprawy-audytu.md)
 - Wrócić do luki diagnostycznej, jeśli powtórzy się po pełnym cyklu i normalnym zamknięciu. [Opis obserwacji](../wersje/v1.8.1.md)
 - Potencjalny kanał e-mail. Potwierdzono pojedynczą wysyłkę i dostarczenie. Otwarte są zasady relay i działanie na innych komputerach. [Rozpoznanie SMTP](../analizy/powiadomienia-email-smtp.md)
 
@@ -12,6 +11,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.4, a ostatnie odnotowa
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Lokalizacja logów uruchomień ze źródeł](../decyzje/045-logi-uruchomien-ze-zrodel.md) | Rozstrzygnięto A10. Każda kopia źródeł ma własny lokalny katalog logów, a reset usuwa właściwe pliki. Regresja Windows zaliczyła 563 testy, jeden pominięto. |
 | [Odtwarzalna budowa EXE](zakonczone/odtwarzalna-budowa-exe.md) | Dwa czyste checkouty dały identyczne ZIP-y. Oba EXE przeszły próby offline na dwóch profilach. [Odbiór i ograniczenia regresji](../weryfikacja/odtwarzalna-budowa-exe.md) |
 | [Płynność Tk](zakonczone/plynnosc-tk.md) | Cache zapisuje się w tle, a duże tabele mierzą szerokości kolumn w porcjach. Maksymalne opóźnienie Tk przy odmowie zapisu spadło z 1232 do 4 ms, a w historii z 10 tys. wierszy z 461 do 9 ms. [Pomiary i odbiór](../weryfikacja/plynnosc-tk.md) |
 | [Zależności od App](zakonczone/zaleznosci-od-app.md) | Wydzielono konfigurację, logowanie i dwa odczyty SLA. Windows zaliczył 546 testów, a 2 pominięto. Ręczne logowanie, ukrycie Chromium i ponowne połączenie sprawdzono na ADEO. |

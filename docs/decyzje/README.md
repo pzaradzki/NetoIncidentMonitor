@@ -30,6 +30,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[045 — Logi uruchomień ze źródeł](045-logi-uruchomien-ze-zrodel.md) opisuje lokalizację plików i ich obsługę podczas resetu.
+
 [044 — Odtwarzalna budowa EXE](044-odtwarzalna-budowa-exe.md) opisuje wersjonowane wejścia paczki i weryfikację narzędzi.
 
 [043 — Płynność Tk](043-plynnosc-tk.md) opisuje zasady zapisu migawek dashboardu i porcjowania dopasowania kolumn.

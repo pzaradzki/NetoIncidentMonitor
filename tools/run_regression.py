@@ -16,6 +16,7 @@ def child(module, result_path, data):
     import tkinter as tk
     import neto_incident_monitor.runtime_paths as paths
     paths.DATA = Path(data)
+    paths.LOG_DIR = paths.DATA
     paths.DATA.mkdir(parents=True, exist_ok=True)
     callback_errors = []
     roots = weakref.WeakSet()

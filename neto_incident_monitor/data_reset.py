@@ -5,7 +5,7 @@ import re
 import shutil
 import stat
 
-from neto_incident_monitor.runtime_paths import DATA, FROZEN
+from neto_incident_monitor.runtime_paths import DATA, FROZEN, LOG_DIR
 
 RUNTIME_NAMES = {
     "config.json", "config.tmp", "seen.json", "seen.tmp", "history.json", "history.tmp",
@@ -15,7 +15,8 @@ RUNTIME_NAMES = {
     "history.state.sqlite3", "history.state.sqlite3-journal",
     "history.state.sqlite3-wal", "history.state.sqlite3-shm",
 }
-RUNTIME_EXTRA = re.compile(r"(?:(?:monitor\.log|login-diagnostics\.jsonl)(?:\.[1-9]\d*)?|dashboard-cache\.json\.[a-zA-Z0-9_-]+\.tmp)\Z")
+LOG_ARTIFACT = re.compile(r"(?:monitor\.log|login-diagnostics\.jsonl)(?:\.[1-9]\d*)?\Z")
+RUNTIME_EXTRA = re.compile(r"dashboard-cache\.json\.[a-zA-Z0-9_-]+\.tmp\Z")
 
 
 def reject_redirect(path):
@@ -35,8 +36,13 @@ def check_tree(path):
 
 
 class DataReset:
-    def __init__(self, data=DATA, packaged=FROZEN):
+    def __init__(self, data=None, packaged=FROZEN, *, log_dir=None):
+        if data is None:
+            data = DATA
+            if log_dir is None:
+                log_dir = LOG_DIR
         self.data = Path(data).absolute()
+        self.log_dir = Path(log_dir).absolute() if not packaged and log_dir is not None else self.data
         self.packaged = packaged
         self.marker = self.data.with_name(self.data.name + ".reset-pending")
         self.staging = self.data.with_name(self.data.name + ".reset-data")
@@ -56,6 +62,22 @@ class DataReset:
     def validate_paths(self):
         for path in (*self.data.parents, self.data, self.marker, self.staging):
             reject_redirect(path)
+        if self.log_dir != self.data:
+            for path in (*self.log_dir.parents, self.log_dir):
+                reject_redirect(path)
+
+    def clear_source_logs(self):
+        if self.log_dir == self.data or not self.log_dir.exists():
+            return
+        targets = [path for path in self.log_dir.iterdir() if LOG_ARTIFACT.fullmatch(path.name)]
+        for path in targets:
+            reject_redirect(path)
+            if not path.is_file():
+                raise OSError("Invalid runtime log file")
+        # The reset marker remains until this also succeeds, including when logs
+        # and project data are on different volumes.
+        for path in targets:
+            path.unlink()
 
     def finish(self):
         if not self.pending():
@@ -71,12 +93,14 @@ class DataReset:
             from neto_incident_monitor.analytics_config import remove_dashboard_scope
             remove_dashboard_scope(self.data / 'dashboard-api.json')
             targets = [path for path in self.data.iterdir()
-                       if path.name in RUNTIME_NAMES or RUNTIME_EXTRA.fullmatch(path.name)]
+                       if path.name in RUNTIME_NAMES or RUNTIME_EXTRA.fullmatch(path.name)
+                       or LOG_ARTIFACT.fullmatch(path.name)]
             for path in targets:
                 check_tree(path)
             self.staging.mkdir(exist_ok=True)
             for path in targets:
                 path.rename(self.staging / path.name)
+        self.clear_source_logs()
         if self.staging.exists():
             check_tree(self.staging)
             shutil.rmtree(self.staging)

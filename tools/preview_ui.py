@@ -20,7 +20,7 @@ def main():
         stack.enter_context(patch.multiple(app_module, DATA=folder, STATE=folder/'seen.json'))
         stack.enter_context(patch.object(config_io, 'CONFIG', folder/'config.json'))
         stack.enter_context(patch.object(runtime_paths, 'DATA', folder))
-        stack.enter_context(patch.object(login_diagnostics, 'DATA', folder))
+        stack.enter_context(patch.object(login_diagnostics, 'LOG_DIR', folder))
         stack.enter_context(patch.object(login_diagnostics._logger, 'handlers', []))
         url = 'https://adeo.service-now.com/incident_list.do'
         settings = {'filters': [{'name': 'Przykładowe incydenty', 'url': url},

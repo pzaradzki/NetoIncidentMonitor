@@ -5,7 +5,7 @@ import runpy
 import sys
 import threading
 
-from neto_incident_monitor.runtime_paths import ROOT, DATA
+from neto_incident_monitor.runtime_paths import DATA, LOG_DIR
 from neto_incident_monitor.safe_logging import DiagnosticFileHandler, SafeExceptionFormatter, thread_exception
 
 
@@ -49,8 +49,7 @@ def main():
                 return
             if not finish_with_retry(DataReset()):
                 return
-        data = DATA
-        handler = DiagnosticFileHandler(data / "monitor.log", maxBytes=2_000_000,
+        handler = DiagnosticFileHandler(LOG_DIR / "monitor.log", maxBytes=2_000_000,
                                       backupCount=3, encoding="utf-8", delay=True)
         handler.setFormatter(SafeExceptionFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
         logging.getLogger().addHandler(handler)
@@ -76,7 +75,7 @@ def main():
         root = tk.Tk()
         root.withdraw()
         try:
-            messagebox.showerror("Neto Incident Monitor", f"Nie udało się uruchomić aplikacji: {exc}\n\nSzczegóły: {DATA / 'monitor.log'}", parent=root)
+            messagebox.showerror("Neto Incident Monitor", f"Nie udało się uruchomić aplikacji: {exc}\n\nSzczegóły: {LOG_DIR / 'monitor.log'}", parent=root)
         finally:
             root.destroy()
     finally:

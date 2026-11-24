@@ -1,5 +1,6 @@
 # Opisy wersji
 
+- [1.12.0-experimental.5](v1.12.0-experimental.5.md) — lokalna paczka po czterech etapach uporządkowania architektury.
 - [1.12.0-experimental.4](v1.12.0-experimental.4.md) — lokalna paczka po usunięciu starszej pętli monitoringu, z potwierdzonym startem na świeżym profilu ADEO.
 - [1.12.0-experimental.3](v1.12.0-experimental.3.md) — lokalna paczka z pobieraniem brakujących list agentów i lokalizacji po zalogowaniu.
 - [1.12.0-experimental.2](v1.12.0-experimental.2.md) — lokalna poprawka startu dashboardu bez ręcznego kopiowania plików.

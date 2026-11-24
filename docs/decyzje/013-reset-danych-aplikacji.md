@@ -9,3 +9,5 @@
 **Realizacja i ograniczenia.** Znacznik obok katalogu danych utrwala żądanie. Po zatrzymaniu zapisów dane są przenoszone na tym samym woluminie do katalogu przejściowego i usuwane. Wydanie EXE ma dedykowany katalog, a uruchomienie ze źródeł korzysta z listy nazw plików wykonawczych. Po przerwaniu reset zostaje wznowiony przed otwarciem logów i danych. Błąd usuwania wymaga ponowienia albo zamknięcia. Zdarzenia przed zwolnieniem uchwytów korzystają z istniejącego logu, który jest częścią resetu.
 
 Reset usuwa również wpis autostartu właściwy dla EXE albo źródeł. Błąd zapisu w rejestrze pozostawia znacznik do ponowienia.
+
+Reset źródeł obejmuje także własne pliki diagnostyczne i rotacje w lokalnym katalogu logów. Rozdzielenie ścieżek i zgodność z dotychczasowymi danymi opisuje [decyzja 045](045-logi-uruchomien-ze-zrodel.md).

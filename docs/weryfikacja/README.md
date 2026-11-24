@@ -14,4 +14,4 @@ Raport zachowuje zakres i wersję swojej serii. Wynik testów źródeł, prawdzi
 | [Audyt PingID](audyt-mfa-2026-11-03.md) | Pomiar bazowy i granice diagnostyki |
 | [Lokalny build 1.8.0](../wersje/v1.8.0.md#lokalny-build--2-listopada-2026) | Offline EXE/UI/Chromium i zgodność 53 modułów oraz launchera; bez publikacji |
 
-Wyniki paginacji na stronach 20/100 rekordów zapisano w [zakończonym planie](../plany/zakonczone/stabilizacja-paginacji.md). Surowe logi i lokalne manifesty są w ignorowanym `data/`, nie w dokumentacji lub wydaniu.
+Wyniki paginacji na stronach 20/100 rekordów zapisano w [zakończonym planie](../plany/zakonczone/stabilizacja-paginacji.md). Lokalne raporty testowe i manifesty pozostają w ignorowanych katalogach projektu. Ścieżki logów aplikacji opisuje [kontrakt diagnostyki](../kontrakty/diagnostyka-logowania.md).

@@ -234,7 +234,7 @@ class AlertRetentionTests(unittest.TestCase):
         self.seed(('old', 'accepted', self.aged(retention.PAYLOAD_AGE)))
         job = retention.AlertRetention(self.history.store, None, self.stop)
         log_dir = self.folder / 'logs'
-        with patch.object(login_diagnostics, 'DATA', log_dir), \
+        with patch.object(login_diagnostics, 'LOG_DIR', log_dir), \
                 patch.object(login_diagnostics._logger, 'handlers', []), patch.object(retention.time, 'time', return_value=NOW):
             try:
                 job._run(0)
@@ -265,7 +265,7 @@ class AlertRetentionTests(unittest.TestCase):
     def test_failed_diagnostics_preserve_cleanup_and_delivery_outcomes(self):
         self.seed(('old', 'accepted', self.aged(retention.PAYLOAD_AGE)), ('active', 'pending', PAYLOAD))
         job = retention.AlertRetention(self.history.store, None, self.stop)
-        with patch.object(login_diagnostics, 'DATA', self.folder), \
+        with patch.object(login_diagnostics, 'LOG_DIR', self.folder), \
                 patch.object(login_diagnostics._logger, 'handlers', []), \
                 patch.object(DiagnosticFileHandler, '_open', side_effect=PermissionError('SYNTHETIC_SECRET')), \
                 patch.object(retention.time, 'time', return_value=NOW):

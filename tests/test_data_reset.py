@@ -35,6 +35,40 @@ class DataResetTests(unittest.TestCase):
         self.assertFalse(reset.staging.exists())
         self.startup.assert_called_once_with(False, packaged=False)
 
+    def test_source_reset_clears_own_external_logs_and_keeps_other_checkouts(self):
+        logs = self.root / 'source-logs' / 'current'
+        other = logs.with_name('other')
+        logs.mkdir(parents=True)
+        other.mkdir()
+        for name in ('monitor.log', 'monitor.log.2', 'login-diagnostics.jsonl', 'keep.txt'):
+            (logs / name).write_text('synthetic', encoding='utf-8')
+        (other / 'monitor.log').write_text('another checkout', encoding='utf-8')
+        reset = DataReset(self.data, packaged=False, log_dir=logs)
+        reset.request()
+        reset.finish()
+        self.assertEqual([path.name for path in logs.iterdir()], ['keep.txt'])
+        self.assertEqual([path.name for path in self.data.iterdir()], ['release-test.log'])
+        self.assertEqual((other / 'monitor.log').read_text(encoding='utf-8'), 'another checkout')
+        self.assertFalse(reset.pending())
+
+    @unittest.skipUnless(os.name == "nt", "Windows file sharing")
+    def test_locked_external_log_keeps_reset_pending_until_retry(self):
+        logs = self.root / 'source-logs'
+        logs.mkdir()
+        path = logs / 'monitor.log'
+        path.write_text('synthetic', encoding='utf-8')
+        reset = DataReset(self.data, packaged=False, log_dir=logs)
+        reset.request()
+        with path.open('rb'):
+            with self.assertRaises(OSError):
+                reset.finish()
+            self.assertTrue(reset.pending())
+            self.startup.assert_not_called()
+        reset.finish()
+        self.assertFalse(path.exists())
+        self.assertFalse(reset.pending())
+        self.assertFalse(reset.staging.exists())
+
     def test_source_reset_removes_dashboard_scope_but_preserves_definitions(self):
         import json
 
@@ -177,10 +211,10 @@ class DataResetTests(unittest.TestCase):
         logger = logging.getLogger()
         previous_level = logger.level
         self.addCleanup(logger.setLevel, previous_level)
-        with patch.dict(main.__globals__, DATA=self.data), \
+        with patch.dict(main.__globals__, DATA=self.data, LOG_DIR=self.data), \
                 patch("neto_incident_monitor.data_reset.DataReset", return_value=reset), \
                 patch("neto_incident_monitor.app.main", side_effect=run_app) as app_main, \
-                patch.object(login_diagnostics, "DATA", self.data):
+                patch.object(login_diagnostics, "LOG_DIR", self.data):
             main()
         app_main.assert_called_once()
         self.assertFalse(self.data.exists())

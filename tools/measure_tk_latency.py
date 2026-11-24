@@ -92,6 +92,7 @@ def setup_app(folder):
     from neto_incident_monitor import runtime_paths
 
     runtime_paths.DATA = folder
+    runtime_paths.LOG_DIR = folder
     (folder / 'config.json').write_text(json.dumps({'filters': [{'url': URL, 'name': 'Pomiar'}]}), encoding='utf-8')
     from neto_incident_monitor.app import App
 

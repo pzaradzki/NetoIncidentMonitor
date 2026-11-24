@@ -64,16 +64,20 @@ class LoginDiagnosticsTests(unittest.TestCase):
         self.assertNotIn('foreign_window_handle', row)
         self.assertNotIn('PRIVATE_TITLE', captured.output[-1])
 
-    def test_rotating_log_is_created_in_data_directory(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(diagnostics, 'DATA', Path(folder)), \
+    def test_rotating_log_appends_in_configured_directory(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(diagnostics, 'LOG_DIR', Path(folder)), \
              patch.object(diagnostics._logger, 'handlers', []):
             try:
                 diagnostics.LoginDiagnostics(auto_login=True)
                 handler = diagnostics._logger.handlers[0]
                 self.assertEqual(handler.maxBytes, 2_000_000)
                 self.assertEqual(handler.backupCount, 3)
-                record = json.loads((Path(folder) / 'login-diagnostics.jsonl').read_text(encoding='utf-8'))
-                self.assertEqual(record['event'], 'start')
+                diagnostics.close_diagnostics()
+                diagnostics.LoginDiagnostics(auto_login=False)
+                records = [json.loads(line) for line in
+                           (Path(folder) / 'login-diagnostics.jsonl').read_text(encoding='utf-8').splitlines()]
+                self.assertEqual([record['event'] for record in records], ['start', 'start'])
+                self.assertEqual([record['auto_login'] for record in records], [True, False])
             finally:
                 for handler in diagnostics._logger.handlers:
                     handler.close()

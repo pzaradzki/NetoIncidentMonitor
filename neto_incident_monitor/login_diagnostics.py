@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from contextvars import ContextVar
 
-from neto_incident_monitor.runtime_paths import DATA
+from neto_incident_monitor.runtime_paths import LOG_DIR
 
 _lock = Lock()
 _logger = logging.getLogger('neto.login_diagnostics')
@@ -313,8 +313,8 @@ class LoginDiagnostics:
             self.sequence += 1
             with _lock:
                 if not _logger.handlers:
-                    DATA.mkdir(parents=True, exist_ok=True)
-                    handler = DiagnosticFileHandler(DATA / 'login-diagnostics.jsonl',
+                    LOG_DIR.mkdir(parents=True, exist_ok=True)
+                    handler = DiagnosticFileHandler(LOG_DIR / 'login-diagnostics.jsonl',
                                                   maxBytes=2_000_000, backupCount=3, encoding='utf-8')
                     handler.setFormatter(logging.Formatter('%(message)s'))
                     _logger.addHandler(handler)

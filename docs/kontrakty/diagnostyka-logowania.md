@@ -16,7 +16,13 @@ Stan: **2 listopada 2026, 1.8.0**. Bieżący kontrakt; zastępuje [wcześniejszy
 
 ## Diagnostyka
 
-W EXE: `%LOCALAPPDATA%/NetoIncidentMonitor`; w źródłach: lokalny `data/`. `monitor.log` i `login-diagnostics.jsonl` dopisują przy restarcie i rotują (2 MB, 3 archiwa). Nie dołączać ich do pakietów.
+EXE zapisuje logi w `%LOCALAPPDATA%/NetoIncidentMonitor`. Źródła używają `%LOCALAPPDATA%/NetoIncidentMonitor-SourceLogs/<id-kopii>`. `monitor.log` i `login-diagnostics.jsonl` dopisują przy restarcie i rotują (2 MB, 3 archiwa). Logi pozostają poza pakietami. [Decyzja 045](../decyzje/045-logi-uruchomien-ze-zrodel.md)
+
+Dokładną ścieżkę bieżącej kopii źródeł wyświetla polecenie uruchomione w katalogu projektu.
+
+```powershell
+.\.venv\Scripts\python.exe -B -c "from neto_incident_monitor.runtime_paths import LOG_DIR; print(LOG_DIR)"
+```
 
 Korelacja: `run_id`, `trace`, `read_id`, `action_id`, `session`, `sequence`, generacja dokumentu. Zapisywane są wybrane stany, dowody, kategorie błędu, czasy, próby, dostarczenie i widoczność. Identyczne wpisy są ograniczane, zmiany stanów zachowywane. Typowe zdarzenia:
 

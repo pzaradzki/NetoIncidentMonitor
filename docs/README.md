@@ -15,4 +15,4 @@ Stan bieżących źródeł opisuje [architektura](architektura.md). Status pacze
 
 Bieżący stan opisują architektura i kontrakty, decyzje wyjaśniają wybory, a indeks planów wskazuje pozostałe zadania. Zakończone plany i raporty zachowują datę, zakres oraz ograniczenia swoich pomiarów; starszy zapis „bez EXE” nie unieważnia późniejszego buildu.
 
-Zasady pracy: [AGENTS.md](../AGENTS.md). Dokumentacja nie stanowi polecenia wykonania planu. Nie umieszczaj tutaj logów, profili, danych zgłoszeń ani sekretów; wyniki techniczne pozostają w lokalnym ignorowanym `data/`.
+Zasady pracy opisuje [AGENTS.md](../AGENTS.md). Dokumentacja nie stanowi polecenia wykonania planu. Raporty techniczne przechowujemy w ignorowanych katalogach projektu, a logi aplikacji w lokalnym katalogu użytkownika. [Ścieżki diagnostyki](kontrakty/diagnostyka-logowania.md)

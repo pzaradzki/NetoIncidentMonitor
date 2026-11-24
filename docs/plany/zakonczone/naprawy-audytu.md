@@ -15,3 +15,5 @@ Każdy etap: test regresyjny przed poprawką, testy zakresowe, pełna regresja w
 - [x] Etap 5: izolowany preview, runner, cleanup Tk i dokumentacja; 486 testów/2 pominięcia, build i smoke OK.
 
 Zgłoszone testy użytkowe nie stanowią pełnego, udokumentowanego odbioru ServiceNow/SSO ani publikowanego wydania. Sam build nie zastąpił działającej paczki; użytkownik następnie wykonał wstępne testy funkcji.
+
+Późniejsze zmiany rozstrzygnęły A07, A08 i ścieżkę logów z A10. [Retencja](retencja-kolejki-powiadomien.md) · [Płynność Tk](plynnosc-tk.md) · [Logi uruchomień ze źródeł](../../decyzje/045-logi-uruchomien-ze-zrodel.md)
