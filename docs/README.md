@@ -10,6 +10,7 @@ Stan bieżących źródeł opisuje [architektura](architektura.md). Status pacze
 | Co rzeczywiście sprawdzono | [Raporty weryfikacji](weryfikacja/README.md) |
 | Skąd wzięły się rozwiązania | [Analizy i eksperymenty](archiwum/analizy/README.md) w archiwum oraz [rozpoznanie SMTP](analizy/README.md) |
 | Zmiany wersji i status paczki | [Wersje](wersje/README.md) |
+| Budowa i odbiór paczki Windows | [Instrukcja budowy EXE](budowa-exe.md) |
 | Materiały historyczne i zastąpione opisy | [Archiwum](archiwum/README.md) |
 
 Bieżący stan opisują architektura i kontrakty, decyzje wyjaśniają wybory, a indeks planów wskazuje pozostałe zadania. Zakończone plany i raporty zachowują datę, zakres oraz ograniczenia swoich pomiarów; starszy zapis „bez EXE” nie unieważnia późniejszego buildu.

@@ -1,38 +1,30 @@
-import json
 import os
 import sys
 from pathlib import Path
-import playwright
 from PyInstaller.utils.hooks import collect_submodules
 
 root = Path(SPECPATH).parent
 sys.path.insert(0, str(root))
-from neto_incident_monitor.analytics_config import lost_incidents_query
-from tools.import_dashboard_api import compile_config, read_rows
+from tools.package_inputs import (browser_files, dashboard_payload, read_manifest, validate_playwright,
+                                  verified_browser_folders)
 
-defaults = compile_config(read_rows(root / 'data' / 'dashboard-api-kafelki.xlsx'))
-lost_incidents_query(defaults)  # Require the complete set of current dashboard definitions.
-parameter_keys = ('version', 'monthly_group', 'held_metric', 'l1_group_name', 'smartphone_variable',
-                  'smartphone_description', 'threatened_group', 'lost_excluded_group')
+manifest = read_manifest()
+if not os.environ.get('NETO_BUILD_DASHBOARD_PARAMETERS') or not os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
+    raise RuntimeError('Use scripts/build_exe.ps1 with explicit package inputs.')
+payload = dashboard_payload(Path(os.environ['NETO_BUILD_DASHBOARD_PARAMETERS']), manifest['dashboard']['sha256'])
 seed = Path(workpath) / 'dashboard-api.json'
-seed.write_text(json.dumps({key: defaults[key] for key in parameter_keys}, ensure_ascii=False), encoding='utf-8')
-package = Path(playwright.__file__).parent / "driver" / "package"
-metadata = json.loads((package / "browsers.json").read_text(encoding="utf-8"))
-cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or
-             str(Path(os.environ["LOCALAPPDATA"]) / "ms-playwright"))
-browser_data = [(str(path), path.parent.relative_to(root).as_posix())
-                for path in sorted((root / "assets").rglob("*"))
-                if path.is_file() and path.name != "Cached Theme.pak"]
-browser_data.extend((str(root / "icons" / f"icons8-{channel}-48.png"), "icons")
-                    for channel in ("windows", "google-chat", "teams"))
+seed.write_bytes(payload)
+validate_playwright(manifest['browsers'])
+cache = Path(os.environ['PLAYWRIGHT_BROWSERS_PATH'])
+assets = (Path("assets/netology-icon.ico"), Path("assets/netology-icon.png"),
+          Path("assets/netology-logo.png"), Path("assets/neto-browser-theme/manifest.json"),
+          *(Path("icons") / f"icons8-{channel}-48.png" for channel in ("windows", "google-chat", "teams")))
+browser_data = [(str(root / path), path.parent.as_posix()) for path in assets]
 browser_data.append((str(seed), 'defaults'))
-for name in ("chromium", "ffmpeg"):
-    info = next(entry for entry in metadata["browsers"] if entry["name"] == name)
-    folder = name + "-" + info["revision"]
-    source = cache / folder
-    if not source.is_dir():
-        raise RuntimeError(f"Brak {source}. Uruchom: python -m playwright install chromium")
-    browser_data.append((str(source), "browsers/" + folder))
+for folder in verified_browser_folders(cache, manifest['browsers']):
+    for path in browser_files(folder):
+        destination = Path('browsers') / folder.name / path.parent.relative_to(folder)
+        browser_data.append((str(path), destination.as_posix()))
 
 a = Analysis([str(root / "launcher.pyw")], pathex=[str(root)],
              binaries=[], datas=browser_data,

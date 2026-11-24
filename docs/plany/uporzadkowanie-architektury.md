@@ -20,13 +20,11 @@ Naprawiono restart po pierwszym zapisie zagrożeń SLA, przeniesiono testy na `S
 
 ## Etap 4. Odtwarzalna budowa EXE
 
-Ustalić wersjonowane źródło zatwierdzonych parametrów dashboardu używanych przez PyInstaller oraz zapisać wersje narzędzi i Chromium użyte do budowy. Parametry zapytań stanowią wejście paczki. Listy agentów i lokalizacji należą do lokalnego profilu użytkownika. [Specyfikacja PyInstallera](<../../scripts/Neto Incident Monitor.spec>) · [Parametry dashboardu](../servicenow-api-sesja-przegladarki.md#uruchomienie-odczytów-api)
-
-Etap jest ukończony, gdy z czystego checkoutu i udokumentowanych wejść można zbudować paczkę, a rozpakowane EXE przechodzi próbę offline z izolowanym profilem.
+**Zakończony w źródłach.** Budowa korzysta z jawnego, wersjonowanego wejścia analityki i przypiętych narzędzi. Dwa czyste checkouty dały identyczne ZIP-y, a oba rozpakowane EXE przeszły próby offline na pustym i skonfigurowanym profilu. Raport opisuje ograniczenie testów aktywacji okien na pulpicie Windows. [Zakończony plan z checklistą](zakonczone/odtwarzalna-budowa-exe.md) · [Odbiór](../weryfikacja/odtwarzalna-budowa-exe.md) · [Decyzja 044](../decyzje/044-odtwarzalna-budowa-exe.md)
 
 ## Kolejność i plany szczegółowe
 
-Następny etap to odtwarzalna budowa EXE.
+Wszystkie cztery etapy planu uporządkowania zamknięto w źródłach.
 
 Przed wdrożeniem każdego etapu dodać w indeksie odnośnik do jego szczegółowego planu. Plan etapu określa zakres zmiany, decyzje do podjęcia, scenariusze błędu, testy regresji, diagnostykę i kryteria odbioru. Dla zmian w logowaniu lub zachowaniu Chromium uwzględnić odbiór właściwych scenariuszy na ADEO. Wyniki i otwarte kwestie zapisać po wykonaniu etapu. [Zasady utrzymania planów](README.md#utrzymanie) · [Regresja Windows](../../tools/run_regression.py)
 

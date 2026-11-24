@@ -69,6 +69,8 @@ def main():
             reset_requested = app_main(instance)
     except Exception as exc:
         logging.exception("Błąd uruchomienia aplikacji")
+        if smoke:
+            raise SystemExit(1) from None
         import tkinter as tk
         from tkinter import messagebox
         root = tk.Tk()

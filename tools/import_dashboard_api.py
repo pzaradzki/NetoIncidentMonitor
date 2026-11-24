@@ -126,22 +126,35 @@ def compile_config(rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('workbook', type=Path)
-    parser.add_argument('--output', type=Path, default=DATA / 'dashboard-api.json')
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--package-parameters', action='store_true')
     args = parser.parse_args()
+    if args.package_parameters and args.output is None:
+        parser.error('--package-parameters wymaga podania osobnego pliku --output.')
+    output = args.output if args.output is not None else DATA / 'dashboard-api.json'
     pending = None
     try:
         rows = read_rows(args.workbook)
         config = compile_config(rows)
-        if args.output.exists():
-            previous = load_config(args.output)
+        if args.package_parameters:
+            from hashlib import sha256
+            from tools.package_inputs import PARAMETER_KEYS, canonical_dashboard
+
+            payload = canonical_dashboard({key: config[key] for key in PARAMETER_KEYS})
+            with output.open('xb') as stream:
+                stream.write(payload)
+            print(f'Parametry paczki: {len(rows)} definicji. SHA-256: {sha256(payload).hexdigest()}')
+            return
+        if output.exists():
+            previous = load_config(output)
             config.update(dashboard_scope(previous))
             if 'lost_excluded_group' in previous and 'lost_excluded_group' not in config:
                 config['lost_excluded_group'] = reference(previous, 'lost_excluded_group')
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(dir=args.output.parent, mode='w', encoding='utf-8', delete=False) as stream:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(dir=output.parent, mode='w', encoding='utf-8', delete=False) as stream:
             pending = Path(stream.name)
             json.dump(config, stream, ensure_ascii=False, indent=2)
-        pending.replace(args.output)
+        pending.replace(output)
     except Exception:
         parser.exit(1, 'Nie udało się przygotować konfiguracji dashboardu. Sprawdź układ i warunki arkusza.\n')
     finally:

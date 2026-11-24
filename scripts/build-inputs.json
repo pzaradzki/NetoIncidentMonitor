@@ -1,0 +1,21 @@
+{
+  "python": "3.12.6",
+  "bootstrap_pip": "24.2",
+  "dashboard": {
+    "revision": 1,
+    "sha256": "de5055a012acdce56ae18b1f19304f693ffcd1909e1329dbe87823e1a3bf23ae"
+  },
+  "browsers": {
+    "chromium": {
+      "revision": "1243",
+      "version": "153.0.8010.12",
+      "executable": "chrome-win64/chrome.exe",
+      "sha256": "4944ae4eac9296628b9c8df4949caebb369f884b5a448ca00c08b82bc1f0e3b9"
+    },
+    "ffmpeg": {
+      "revision": "1011",
+      "executable": "ffmpeg-win64.exe",
+      "sha256": "20d2deab5feb9b7c0bc0cfa6c63fff3602f516e780e335db71c54ec00346d85c"
+    }
+  }
+}

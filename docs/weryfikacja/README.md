@@ -4,6 +4,7 @@ Raport zachowuje zakres i wersję swojej serii. Wynik testów źródeł, prawdzi
 
 | Raport | Zakres |
 | --- | --- |
+| [Odtwarzalna budowa EXE](odtwarzalna-budowa-exe.md) | Dwie zgodne paczki Windows, cztery próby offline i regresja źródeł |
 | [Płynność Tk](plynnosc-tk.md) | Pomiary przed i po zmianie zapisu cache dashboardu oraz dopasowania szerokości kolumn |
 | [Dashboard i zagrożenia](odbior-stabilizacji-dashboardu.md) | Czytniki, kontekst, ponowienia, aktualność i cache |
 | [Ukryty dashboard](odbior-ukrytego-dashboardu.md) | Wdrożenie renderowania 007 i rzeczywiste odczyty |
