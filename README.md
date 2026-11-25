@@ -1,19 +1,19 @@
 # Neto Incident Monitor
 
-Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. W bieżących źródłach dashboard, Incydenty zagrożone SLA, filtry użytkownika i import Ulubionych korzystają z REST w zalogowanej sesji Chromium. Osobny odczyt zakresu agentów i lokalizacji korzysta z interfejsu dashboardu. [Mapa architektury](docs/architektura.md)
+Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. Dashboard, Incydenty zagrożone SLA, filtry użytkownika i import Ulubionych korzystają z REST w zalogowanej sesji Chromium. Osobny odczyt zakresu agentów i lokalizacji korzysta z interfejsu dashboardu. [Mapa architektury](docs/architektura.md)
 
 ## Funkcje
 
 - Monitorowanie wielu list z niezależnymi ustawieniami.
 - Powiadomienia Windows, Microsoft Teams i Google Chat.
-- Oddzielne harmonogramy odczytu dla INC i SCTASK.
+- Oddzielne interwały odczytu dla incydentów, zgłoszeń katalogowych, Dashboardu SLA i Incydentów zagrożonych.
 - Historia zgłoszeń oraz konfiguracja kolumn dla każdej listy.
 - Praca w zasobniku systemowym i obsługa zapamiętanej sesji logowania.
 - Sprawdzanie dostępności aktualizacji.
-- Osobny widok incydentów zagrożonych SLA, sprawdzany co minutę od zakończenia poprzedniej próby, również pomiędzy odczytami filtrów.
+- Osobny widok incydentów zagrożonych SLA. Odstęp między odczytami jest liczony od zakończenia poprzedniej próby i domyślnie wynosi 60 sekund.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Opublikowana paczka [1.11.2](docs/wersje/v1.11.2.md) powstała przed migracją odczytów na REST. Historię paczek opisuje [indeks wersji](docs/wersje/README.md).
+Najnowsza stabilna paczka to [1.13.0](docs/wersje/v1.13.0.md). Historię paczek opisuje [indeks wersji](docs/wersje/README.md).
 
 ## Uruchomienie
 

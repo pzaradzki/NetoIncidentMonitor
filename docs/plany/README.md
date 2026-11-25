@@ -1,6 +1,6 @@
 # Plany i pozostałe prace
 
-Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to 1.11.2. [Indeks wersji](../wersje/README.md)
+Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to [1.13.0](../wersje/v1.13.0.md). [Indeks wersji](../wersje/README.md)
 
 ## Pozostałe tematy
 
@@ -11,6 +11,7 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.5, a ostatnie odnotowa
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.13.0](zakonczone/wydanie-1.13.0.md) | Opublikowano jako najnowsze stabilne wydanie. 584 zaliczone testy, 2 pominięcia, cztery próby offline i zgodność publicznie pobranego ZIP-a. |
 | [Interwał odczytu incydentów zagrożonych](zakonczone/interwal-incydentow-zagrozonych.md) | Wdrożono w źródłach. Domyślne 60 s, wspólny harmonogram i oczekiwanie na koniec operacji. Zaliczono 585 testów, jeden pominięto. |
 | [Cykliczne odświeżanie dashboardu](zakonczone/cykliczne-odswiezanie-dashboardu.md) | Wdrożono w źródłach. Domyślny interwał 60 s i wspólna kolejka; 580 testów zaliczono, dwa pominięto. |
 | [Liczniki zgłoszeń na liście filtrów](zakonczone/liczniki-zgloszen-na-liscie-filtrow.md) | Wdrożono w źródłach. Sprawdzono karty w Windows przy skali 100% i 125%. Regresja z ponowieniami potwierdziła 571 zaliczeń i jedno pominięcie związane z dowiązaniami symbolicznymi. |
