@@ -268,16 +268,18 @@ class FilterCounterLayoutTests(unittest.TestCase):
                     table.pack()
                     table.notification_channels = notifications
                     table.notification_rows['0'] = (False, False, False)
+                    table.notification_rows['2'] = (True, True, True)
                     table.updating_item = '0'
                     table.queued_items = {'1'}
                     table.insert('', 'end', '0', ('Bardzo długa nazwa filtra do sprawdzenia',))
                     table.insert('', 'end', '1', ('Moje - Nowe / W trakcie',))
+                    table.insert('', 'end', '2', ('Filtr bez statusu',))
                     root.update()
                     table.set_count('0', (1000, 1000))
                     total, partial, _ = table.count_items['0']
                     self.assertEqual(table.itemcget(total, 'text'), '1000')
                     self.assertEqual(table.itemcget(partial, 'text'), '(1000)')
-                    badge, _ = table.badge_layout(table.winfo_width())
+                    badge, compact = table.badge_layout(table.winfo_width())
                     labels = [item for item in table.find_all() if table.type(item) == 'text']
                     label = next(item for item in labels if table.itemcget(item, 'text').startswith('Bar'))
                     running = next(item for item in labels if table.itemcget(item, 'text') == 'Aktualizuje')
@@ -289,9 +291,16 @@ class FilterCounterLayoutTests(unittest.TestCase):
                     self.assertLessEqual(table.bbox(label)[3], table.bbox(total)[1])
                     self.assertLessEqual(table.bbox(label)[2], badge[0])
                     self.assertLessEqual(table.bbox(partial)[2], badge[0])
-                    for icon in table.find_withtag('notification_icon'):
-                        left, _, right, bottom = table.bbox(icon)
+                    icons = table.find_withtag('notification_icon')
+                    self.assertEqual(len(icons), 2 * len(notifications))
+                    for icon in icons[:len(notifications)]:
+                        left, top, right, bottom = table.bbox(icon)
                         self.assertTrue(right <= badge[0] or badge[2] <= left or bottom <= badge[1])
+                        if not compact:
+                            self.assertEqual((top + bottom) / 2, 22)
+                    for icon in icons[len(notifications):]:
+                        _, top, _, bottom = table.bbox(icon)
+                        self.assertEqual((top + bottom) / 2, 2 * table.ROW + 22)
                     unchanged = table.find_all()
                     self.assertTrue(table.set_count('0', (1000, 0)))
                     self.assertFalse(table.set_count('0', (1000, 0)))

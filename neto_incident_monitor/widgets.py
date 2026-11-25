@@ -852,7 +852,7 @@ class FilterList(tk.Canvas):
                                  fill=foreground, font=("Segoe UI", -10 if compact else -11))
             states = self.notification_rows.get(iid, ())
             icon_size = self.COMPACT_ICON_SIZE if state and compact else self.ICON_SIZE
-            icon_y = badge[1] - icon_size // 2 if state and compact else 13
+            icon_y = badge[1] - icon_size // 2 if state and compact else self.CARD_CENTER_Y
             for slot, (channel, active) in enumerate(zip(self.notification_channels, states)):
                 self.create_image(first_icon + slot * self.ICON_SLOT, y + icon_y,
                                   image=self.notification_icon(channel, active, icon_size), tags="notification_icon")
