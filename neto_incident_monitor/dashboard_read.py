@@ -1,13 +1,14 @@
 """Run a selected dashboard period and report section results to Tk."""
 import logging
 from datetime import datetime
+from time import monotonic
 
 from playwright._impl._errors import TargetClosedError
 
 from neto_incident_monitor import analytics_config, dashboard_api
 from neto_incident_monitor.analytics_api import READ_MESSAGES, data_duration, measure_data_requests
 from neto_incident_monitor.browser_actions import checkpoint
-from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES
+from neto_incident_monitor.dashboard import TITLES, HELD_TITLES, REQUEST_TITLES, measured_record
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.login_diagnostics import LoginDiagnostics, diagnostic_read
 from neto_incident_monitor.read_errors import (
@@ -20,13 +21,21 @@ LOG = logging.getLogger("servicenow")
 
 
 @diagnostic_read
-def read_dashboard_request(page, *, request, stop, events, restore):
+def read_dashboard_request(page, *, request, stop, events, restore, schedule=None):
     request_id, year, month = request
     events.put(('dashboard_updating', (request_id, year, month, 'running')))
     success, values, failures = False, {}, []
-    restarting = False
+    restarting = cancelled = False
     section = 'Dashboard SLA'
+    schedule_started = monotonic()
+    schedule_log = None
     try:
+        if schedule is not None:
+            try:
+                schedule_log = LoginDiagnostics(source='dashboard', request_id=request_id, year=year, month=month)
+            except Exception:
+                pass
+            measured_record(schedule_log, 'dashboard_schedule', outcome='started', **schedule)
         try:
             config = analytics_config.load_config()
         except DashboardReadError:
@@ -82,11 +91,18 @@ def read_dashboard_request(page, *, request, stop, events, restore):
         restarting = True
         raise
     except Cancelled:
+        cancelled = True
         events.put(('dashboard_updating', (request_id, year, month, 'cancelled')))
     except Exception as exc:
         events.put(('dashboard_section_status', (request_id, section, 'Błąd odczytu')))
         events.put(('dashboard_result', (request_id, year, month, None, True)))
     finally:
+        if schedule is not None:
+            outcome = ('cancelled' if cancelled or stop.is_set() else 'returned' if success else
+                       'partial' if values and failures and not restarting else 'error')
+            terminal = {'request_state': 'retrying'} if restarting else {}
+            measured_record(schedule_log, 'dashboard_schedule', outcome=outcome, **terminal,
+                            duration_ms=round((monotonic() - schedule_started) * 1000), **schedule)
         events.put(('dashboard_updating', (request_id, year, month,
                          'retrying' if restarting else 'finished')))
 

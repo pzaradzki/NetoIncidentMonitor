@@ -2,6 +2,10 @@
 
 4 listopada 2026. **Status: przyjęta; wdrożona w źródłach.** Zastępuje [002](002-harmonogram-zagrozen.md), zachowując zasady terminów i sekwencyjnej obsługi przeglądarki.
 
+[Decyzja 047](047-cykliczne-odswiezanie-dashboardu.md) zastępuje opis opcjonalnego pierwszego odczytu dashboardu własnym cyklem. Poniższy zapis zachowuje uzasadnienie kolejności startu i pełnej aktualizacji.
+
+Aktualny kontrakt opisuje ustawiany interwał zagrożeń z domyślnymi 60 s oraz zachowane oczekiwanie na zwolnienie karty. [Kolejka i anulowanie](../kontrakty/kolejka-i-trwalosc.md#kolejka-i-anulowanie)
+
 **Decyzja:** po logowaniu przy starcie oraz przy pełnej ręcznej aktualizacji kolejność to dashboard → incydenty zagrożone → filtry. Przy wyłączonym automatycznym dashboardzie start pomija tę sekcję. Samodzielne aktualizacje sekcji nie wymuszają dashboardu.
 
 **Powód:** użytkownik chce otrzymać dashboard jako pierwszy wynik wspólnej aktualizacji. Zmiana priorytetu nie wymaga drugiego workera, nowego harmonogramu ani interakcji z DOM.

@@ -54,7 +54,7 @@ WINDOW_EXPOSURE = {'hidden', 'minimized', 'unavailable', 'off_screen', 'exposed'
 TEXT_FIELDS = {
     'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'filter_definition', 'favorites'},
     'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled', 'filter_changed'},
-    'filter_change': {'add', 'rename', 'replace', 'remove', 'disable_limit'},
+    'filter_change': {'add', 'rename', 'replace', 'remove', 'disable_limit', 'enable_schedule', 'disable_schedule'},
     'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window',
                           'recovered_main_window', 'main_window_observed', 'debug_browser_toggled'},
     'window_exposure': WINDOW_EXPOSURE,
@@ -76,7 +76,7 @@ TEXT_FIELDS = {
                     'navigation_interrupted','network_connection','network_dns','element_unavailable','unexpected',
                     'authentication_required'},
     'cache_result': {'started', 'retry', 'saved', 'failed', 'restored', 'invalid', 'skipped'},
-    'delay_reason': {'filter','dashboard','login','browser','idle'},
+    'delay_reason': {'filter','dashboard','threatened','other','login','browser','idle'},
     'outcome': {'started', 'received', 'returned', 'partial', 'error', 'cancelled', 'authentication'},
     'activity': {'login', 'filters'},
     'readiness_reason': {'covered', 'unstable', 'disabled', 'hidden', 'detached', 'outside_viewport', 'unavailable'},
@@ -122,6 +122,9 @@ authentication_popup dashboard_operation section_read_error browser_options_chan
 NUMERIC_FIELDS.update({
     'active_request_id', 'expected_year', 'expected_month'})
 EVENTS.update({'dashboard_request_state', 'dashboard_period_state', 'dashboard_result_rejected', 'dashboard_complete'})
+EVENTS.add('dashboard_layout')
+TEXT_FIELDS['layout_mode'] = {'fit', 'scroll'}
+NUMERIC_FIELDS.update({'viewport_height', 'tile_height', 'minimum_tile_height'})
 EVENTS.add('alert_delivery')
 EVENTS.add('alert_retention')
 NUMERIC_FIELDS.update({'retention_scanned', 'retention_dated', 'retention_minimized',
@@ -131,10 +134,12 @@ EVENTS.add('windows_notification_truncated')
 NUMERIC_FIELDS.update({'title_units', 'message_units', 'title_limit', 'message_limit'})
 EVENTS.add('notification_preference')
 NUMERIC_FIELDS.update({'notify_enabled', 'previous_notify_enabled'})
-EVENTS.add('schedule_interval_change')
-NUMERIC_FIELDS.update({'inc_interval_s', 'task_interval_s', 'interval_s', 'previous_interval_s', 'batch_active'})
+EVENTS.update({'schedule_interval_change', 'dashboard_schedule', 'threatened_read_finished'})
+NUMERIC_FIELDS.update({'inc_interval_s', 'task_interval_s', 'dashboard_interval_s', 'threatened_interval_s', 'interval_s',
+                       'previous_interval_s', 'batch_active'})
 TEXT_FIELDS['interval_stage'] = {'rejected', 'saving', 'error', 'saved', 'applied'}
-TEXT_FIELDS['schedule_kind'] = {'inc', 'task'}
+TEXT_FIELDS['schedule_kind'] = {'inc', 'task', 'dashboard', 'threatened'}
+TEXT_FIELDS['schedule_trigger'] = {'periodic', 'manual', 'full'}
 EVENTS.add('startup_validation')
 EVENTS.add('dashboard_ui_state')
 EVENTS.update({'analytics_api_request', 'analytics_api_snapshot'})
@@ -177,6 +182,9 @@ NUMERIC_FIELDS.update({'item_count', 'group_count', 'duplicate_count', 'rejected
 NUMERIC_FIELDS.update({'cache_revision', 'cache_retry_ms'})
 EVENTS.add('column_fit')
 TEXT_FIELDS['column_fit_result'] = {'started', 'complete', 'cancelled', 'save_error'}
+EVENTS.add('filter_card_count')
+NUMERIC_FIELDS.add('not_displayed_count')
+TEXT_FIELDS['count_reason'] = {'snapshot', 'displayed', 'stale'}
 TEXT_FIELDS['source'].add('favorites')
 EVENTS.update({'favorites_api_result', 'favorites_error', 'favorites_end', 'favorites_preview', 'favorites_save_error',
     'favorites_saved', 'favorites_dialog_end'})

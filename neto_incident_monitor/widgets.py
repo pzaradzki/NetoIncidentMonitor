@@ -1,8 +1,9 @@
 """Small keyboard-accessible controls matching the application palette."""
 import tkinter as tk
 from time import monotonic
+from tkinter.font import Font
 from PIL import Image, ImageDraw, ImageOps, ImageTk
-from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT
+from neto_incident_monitor.theme import SURFACE, TEXT, ACCENT, MUTED
 
 
 def update_grid_scrollbar(scrollbar, first, last):
@@ -624,13 +625,22 @@ class DashboardButton(RoundedButton):
 class FilterList(tk.Canvas):
     """Card list exposing the small Treeview interface used by the app."""
     ROW = 48
+    CARD_CENTER_Y = 22
     ICON_SIZE = 20
+    COMPACT_ICON_SIZE = 12
     ICON_SLOT = 24
+    TEXT_X = 27
+    COUNT_Y = 30
+    COUNT_FONT = ("Segoe UI", -12)
+    COUNT_ACCENT = "#85caff"
 
     def __init__(self, parent):
         super().__init__(parent, width=200, height=4 * self.ROW, bg=SURFACE,
                          bd=0, highlightthickness=0, takefocus=True, cursor="hand2")
         self.rows, self.selected, self.pictures = {}, None, []
+        self.counts = {}
+        self.count_items = {}
+        self.count_font = Font(self, font=self.COUNT_FONT)
         self.card_images = {}
         self.labels = {}
         self.image_layout = None
@@ -663,6 +673,7 @@ class FilterList(tk.Canvas):
     def replace_rows(self, rows):
         """Replace a complete snapshot without an intermediate empty scroll region."""
         self.rows = dict(rows)
+        self.counts = {iid: value for iid, value in self.counts.items() if iid in self.rows}
         self.labels.clear()
         if self.selected not in self.rows:
             self.selected = None
@@ -671,6 +682,7 @@ class FilterList(tk.Canvas):
     def delete(self, *items):
         for item in items:
             self.rows.pop(item, None)
+            self.counts.pop(item, None)
         if self.selected not in self.rows:
             self.selected = None
         self.redraw()
@@ -688,6 +700,24 @@ class FilterList(tk.Canvas):
         if self.on_select:
             self.on_select()
 
+    def set_count(self, iid, value):
+        if self.counts.get(iid, (None, 0)) == value:
+            return False
+        self.counts[iid] = value
+        if iid in self.count_items:
+            self.draw_count(iid)
+        return True
+
+    def draw_count(self, iid):
+        total, unseen = self.counts.get(iid, (None, 0))
+        label, suffix, row_y = self.count_items[iid]
+        text = '—' if total is None else str(total)
+        self.itemconfigure(label, text=text)
+        self.itemconfigure(suffix, text=f'({unseen})' if unseen else '',
+                           state='normal' if unseen else 'hidden')
+        if unseen:
+            self.coords(suffix, self.TEXT_X + self.count_font.measure(text + ' '), row_y)
+
     def select_at(self, event):
         self.drag_cancel()
         index = int(self.canvasy(event.y) // self.ROW)
@@ -696,11 +726,9 @@ class FilterList(tk.Canvas):
             if event.x >= self.winfo_width() - 42 and self.on_toggle is not None:
                 self.on_toggle(items[index])
                 return "break"
-            self.selection_set(items[index])
-            if self.on_activate:
-                self.on_activate()
-            self.focus_set()
             self.drag = {"item": items[index], "y": event.y, "active": False, "slot": index}
+            self.selection_set(items[index])
+            self.focus_set()
 
     def drag_motion(self, event):
         if not self.drag:
@@ -737,8 +765,13 @@ class FilterList(tk.Canvas):
     def drag_end(self, event):
         drag = self.drag
         self.drag_cancel()
-        if drag and drag["active"] and self.on_reorder and 0 <= event.x <= self.winfo_width() and 0 <= event.y <= self.winfo_height():
-            self.on_reorder(drag["item"], drag["slot"])
+        inside = 0 <= event.x < self.winfo_width() and 0 <= event.y < self.winfo_height()
+        if drag and inside:
+            if drag["active"]:
+                if self.on_reorder:
+                    self.on_reorder(drag["item"], drag["slot"])
+            elif drag["item"] == self.selected and self.on_activate:
+                self.on_activate()
         return "break"
 
     def move(self, direction):
@@ -763,6 +796,14 @@ class FilterList(tk.Canvas):
             kwargs["height"] *= self.ROW
         return super().configure(cnf, **kwargs)
 
+    def badge_layout(self, width):
+        icon_width = len(self.notification_channels) * self.ICON_SLOT
+        compact = width - icon_width < 228
+        right = width - 48 - (0 if compact else icon_width)
+        half_height = 7 if compact and icon_width else 9
+        return (right - (54 if compact else 77), self.CARD_CENTER_Y - half_height,
+                right, self.CARD_CENTER_Y + half_height), compact
+
     def redraw(self, event=None):
         self.delete_canvas()
         width = max(100, self.winfo_width())
@@ -772,13 +813,8 @@ class FilterList(tk.Canvas):
             self.card_images.clear()
             self.labels.clear()
             self.image_layout = layout
-        badge_inline = width - icon_width >= 220
-        if badge_inline:
-            badge = (width - 127 - icon_width, 11, width - 50 - icon_width, 33)
-        else:
-            badge = (27, 24, 104, 40)
+        badge, compact = self.badge_layout(width)
         first_icon = width - 48 - icon_width + self.ICON_SLOT / 2
-        from tkinter.font import Font
         font = Font(self, font=("Segoe UI", 9))
         for index, (iid, name) in enumerate(self.rows.items()):
             chosen = self.show_selection and iid == self.selected
@@ -792,39 +828,49 @@ class FilterList(tk.Canvas):
             self.pictures.append(photo)
             y = index * self.ROW
             self.create_image(0, y, image=photo, anchor="nw")
-            label_key = (name, bool(state))
+            label_limit = width - icon_width - 76
+            if state:
+                label_limit = min(label_limit, badge[0] - self.TEXT_X - 4)
+            label_key = (name, label_limit)
             if label_key not in self.labels:
                 label = name
-                label_limit = width - icon_width - (162 if state and badge_inline else 72)
-                while label and font.measure(label) > label_limit:
-                    label = label[:-1]
-                if label != name:
-                    label = label[:-1] + "…"
+                if font.measure(label) > label_limit:
+                    available = label_limit - font.measure("…")
+                    while label and font.measure(label) > available:
+                        label = label[:-1]
+                    label += "…"
                 self.labels[label_key] = label
-            name_y = 13 if state and not badge_inline else 22
-            self.create_text(27, y + name_y, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            self.create_text(self.TEXT_X, y + 13, text=self.labels[label_key], anchor="w", fill=TEXT, font=("Segoe UI", 9))
+            count_y = y + self.COUNT_Y
+            count_item = self.create_text(self.TEXT_X, count_y, anchor="w", fill=MUTED, font=self.count_font)
+            unseen_item = self.create_text(self.TEXT_X, count_y, anchor="w", fill=self.COUNT_ACCENT, font=self.count_font)
+            self.count_items[iid] = count_item, unseen_item, count_y
+            self.draw_count(iid)
             if state:
                 text, _, foreground = WORK_BADGES[state]
-                self.create_text((badge[0] + badge[2]) / 2, y + (badge[1] + badge[3]) / 2, text=text,
-                                 fill=foreground, font=("Segoe UI", 8))
+                self.create_text((badge[0] + badge[2]) / 2, y + self.CARD_CENTER_Y, text=text,
+                                 fill=foreground, font=("Segoe UI", -10 if compact else -11))
             states = self.notification_rows.get(iid, ())
+            icon_size = self.COMPACT_ICON_SIZE if state and compact else self.ICON_SIZE
+            icon_y = badge[1] - icon_size // 2 if state and compact else 13
             for slot, (channel, active) in enumerate(zip(self.notification_channels, states)):
-                self.create_image(first_icon + slot * self.ICON_SLOT, y + name_y,
-                                  image=self.notification_icon(channel, active), tags="notification_icon")
+                self.create_image(first_icon + slot * self.ICON_SLOT, y + icon_y,
+                                  image=self.notification_icon(channel, active, icon_size), tags="notification_icon")
         self.configure(scrollregion=(0, 0, width, max(self.winfo_height(), len(self.rows) * self.ROW)))
         self.draw_drop_marker()
 
-    def notification_icon(self, channel, active):
-        if channel not in self.notification_images:
+    def notification_icon(self, channel, active, size=ICON_SIZE):
+        key = (channel, size)
+        if key not in self.notification_images:
             from neto_incident_monitor.runtime_paths import ROOT
             filename = f"icons8-{channel.replace('_', '-')}-48.png"
             with Image.open(ROOT / "icons" / filename) as source:
-                color = source.convert("RGBA").resize((self.ICON_SIZE, self.ICON_SIZE), Image.Resampling.LANCZOS)
+                color = source.convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
             gray = ImageOps.colorize(ImageOps.grayscale(color), "#696969", "#b6b6b6")
             gray.putalpha(color.getchannel("A"))
-            self.notification_images[channel] = (ImageTk.PhotoImage(gray, master=self),
-                                                 ImageTk.PhotoImage(color, master=self))
-        return self.notification_images[channel][active]
+            self.notification_images[key] = (ImageTk.PhotoImage(gray, master=self),
+                                             ImageTk.PhotoImage(color, master=self))
+        return self.notification_images[key][active]
 
     def card_image(self, width, chosen, enabled, badge, state):
         picture = Image.new("RGB", (width * 4, self.ROW * 4), SURFACE)
@@ -848,6 +894,7 @@ class FilterList(tk.Canvas):
     def delete_canvas(self):
         super().delete("all")
         self.pictures.clear()
+        self.count_items.clear()
 
 
 def confirm_dialog(parent, title, message, *, confirm_text="Tak, wyczyść", cancel_text="Anuluj"):

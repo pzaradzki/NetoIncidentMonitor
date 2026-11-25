@@ -74,6 +74,14 @@ class DashboardPeriodTests(unittest.TestCase):
         self.app.events.put(('dashboard_updating', (*request, state)))
         self.app.drain()
 
+    def start_clocked_cycle(self):
+        self.clock = 100
+        self.enterContext(patch('neto_incident_monitor.shared_session.monotonic', side_effect=lambda: self.clock))
+        self.app.start()
+        cycle = self.session.cycle
+        cycle.deadlines.update(inc=10_000, task=10_000)
+        return cycle
+
     def assert_controls(self, state):
         self.assertEqual([str(c.cget('state')) for c in self.panel.period_controls], [state, state])
 
@@ -132,6 +140,7 @@ class DashboardPeriodTests(unittest.TestCase):
             nonlocal request
             kind, value = event
             if kind == 'session_prepare_read':
+                self.app.drain()
                 self.app.handle_session_event(kind, value)
                 if value['part'].scope == 'dashboard':
                     request = value['value']
@@ -265,6 +274,7 @@ class DashboardPeriodTests(unittest.TestCase):
     def test_wrong_period_with_current_id_cannot_write_values_or_cache(self):
         self.request()
         old = self.execute()
+        self.wait_for_cache()
         old_snapshot = dict(self.panel.section_snapshots)
         cache = Path(self.temp.name) / 'dashboard-cache.json'
         previous = cache.read_bytes()
@@ -302,7 +312,6 @@ class DashboardPeriodTests(unittest.TestCase):
     def test_stop_cancels_automatic_dashboard_and_preserves_manual_dashboard(self):
         for automatic in (True, False):
             with self.subTest(automatic=automatic):
-                self.app.dashboard_auto_refresh.set(automatic)
                 self.app.start()
                 self.assertTrue(self.app.cycle_active)
                 if not automatic:
@@ -324,11 +333,155 @@ class DashboardPeriodTests(unittest.TestCase):
                 self.assert_controls('readonly')
                 self.assertEqual(self.panel.last_complete_period, None if automatic else (2026, 10))
                 if automatic:
-                    self.assertIsNone(self.session.threatened_next_read)
+                    self.assertNotIn('threatened', self.session.cycle.last_finished)
                     self.assertIsNone(self.app.history.membership)
 
+    def test_periodic_dashboard_uses_current_period_and_reschedules_partial_attempt(self):
+        cycle = self.start_clocked_cycle()
+        with self.assertLogs(_logger, level='INFO') as output:
+            def first(*_args):
+                self.clock += 10
+                return dict.fromkeys(TITLES, 10)
+
+            self.assertEqual(self.execute(first)[1:], (2026, 10))
+            self.assertEqual(cycle.deadlines['dashboard'], 170)
+            self.assert_controls('readonly')
+            self.panel.month.set('Listopad')
+            self.clock = 169
+            unexpected = Mock()
+            self.assertIsNone(self.execute(unexpected))
+            unexpected.assert_not_called()
+            self.assertEqual(self.panel.last_complete_period, (2026, 10))
+
+            self.clock = 200
+            def partial(*_args):
+                self.clock += 180
+                self.session.update_intervals({'inc': 60, 'task': 60, 'dashboard': 90, 'threatened': 60})
+                raise ValueError('synthetic partial result')
+
+            self.assertEqual(self.execute(partial)[1:], (2026, 11))
+            self.assertEqual(cycle.deadlines['dashboard'], 470)
+            self.assertEqual(self.panel.last_complete_period, (2026, 10))
+            self.assert_controls('readonly')
+
+        events = [json.loads(record.getMessage()) for record in output.records]
+        schedule = [event for event in events if event['event'] == 'dashboard_schedule']
+        self.assertEqual([event['outcome'] for event in schedule], ['started', 'returned', 'started', 'partial'])
+        self.assertEqual(schedule[-1]['lateness_ms'], 30_000)
+        self.assertEqual(schedule[-1]['delay_reason'], 'threatened')
+        self.assertTrue(all(event['schedule_trigger'] == 'periodic' and event['run_id'] for event in schedule))
+        self.assertEqual(schedule[-2]['read_id'], schedule[-1]['read_id'])
+        sections = [event for event in events if event.get('section') == 'sla']
+        self.assertTrue(any(event['read_id'] == schedule[-1]['read_id'] for event in sections))
+
+    def test_manual_and_full_dashboard_set_deadline_from_dashboard_completion(self):
+        cycle = self.start_clocked_cycle()
+        self.execute()
+        self.clock = 120
+        self.request()
+        self.execute(Mock(side_effect=ValueError('synthetic refusal')))
+        self.assertEqual(cycle.deadlines['dashboard'], 180)
+
+        self.clock = 150
+        self.request('all')
+
+        def read_filter(*_args, **_kwargs):
+            self.clock += 15
+            return 'success'
+
+        with patch.object(self.session, 'update_layout_account'), patch.object(self.app, 'read_filter', read_filter):
+            self.execute()
+        self.assertEqual(self.clock, 165)
+        self.assertEqual(cycle.deadlines['dashboard'], 210)
+        self.assert_controls('readonly')
+
+    def test_periodic_success_satisfies_only_matching_queued_dashboard(self):
+        cycle = self.start_clocked_cycle()
+        periods = []
+
+        def sla(_page, _stop, _diagnostics, _config, year, month, _completed):
+            periods.append((year, month))
+            if len(periods) == 1:
+                self.request('all')
+                self.session.submit('dashboard', [ReadPart('dashboard', (2026, 11))])
+            return dict.fromkeys(TITLES, 10)
+
+        with patch.object(self.session, 'update_layout_account'), patch.object(self.app, 'read_filter', return_value='success'):
+            self.execute(sla)
+        self.assertEqual(periods, [(2026, 10), (2026, 11)])
+        self.assertFalse(self.session.work.pending_refreshes()[1])
+        self.assertEqual(cycle.deadlines['dashboard'], 160)
+
+    def test_stop_during_periodic_attempt_preserves_matching_manual_request(self):
+        cycle = self.start_clocked_cycle()
+        attempts = []
+
+        def sla(_page, stop, *_args):
+            attempts.append(stop)
+            if len(attempts) == 1:
+                self.request()
+                self.app.stop_monitoring()
+                self.assertTrue(stop.is_set())
+            return dict.fromkeys(TITLES, 10)
+
+        self.execute(sla)
+        self.assertEqual(len(attempts), 2)
+        self.assertFalse(attempts[1].is_set())
+        self.assertNotIn('dashboard', cycle.last_finished)
+        self.assertEqual(self.panel.last_complete_period, (2026, 10))
+        self.assert_controls('readonly')
+
+    def test_periodic_reconnect_preserves_request_before_later_work(self):
+        cycle = self.start_clocked_cycle()
+        with self.assertRaises(BrowserClosedError):
+            self.execute(Mock(side_effect=BrowserClosedError('synthetic close')))
+        self.app.drain()
+        request = self.panel.active_request
+        self.assertIsNotNone(request)
+        self.assert_controls('disabled')
+        self.clock = 131
+        self.assertEqual(self.execute(), request)
+        self.assertEqual(cycle.deadlines['dashboard'], 191)
+        self.assertIsNone(cycle.dashboard_part)
+        self.assert_controls('readonly')
+
+    def test_start_during_manual_dashboard_uses_its_completion_for_first_deadline(self):
+        self.clock = 100
+        with patch('neto_incident_monitor.shared_session.monotonic', side_effect=lambda: self.clock):
+            self.request()
+
+            def sla(*_args):
+                self.app.start()
+                self.session.cycle.deadlines.update(inc=10_000, task=10_000)
+                self.clock = 110
+                return dict.fromkeys(TITLES, 10)
+
+            read = Mock(side_effect=sla)
+            self.execute(read)
+        read.assert_called_once()
+        self.assertEqual(self.session.cycle.deadlines['dashboard'], 170)
+
+    def test_stopped_dashboard_completion_does_not_set_deadline_of_restarted_cycle(self):
+        cancelled_cycle = self.start_clocked_cycle()
+        attempts = []
+
+        def sla(_page, _stop, diagnostics, *_args):
+            attempts.append(diagnostics.context['request_id'])
+            if len(attempts) == 1:
+                self.app.stop_monitoring()
+                self.clock = 115
+                self.app.start()
+                self.session.cycle.deadlines.update(inc=10_000, task=10_000)
+                return dict.fromkeys(TITLES, 99)
+            return dict.fromkeys(TITLES, 10)
+
+        self.execute(sla)
+        self.assertEqual(len(set(attempts)), 2)
+        self.assertNotIn('dashboard', cancelled_cycle.last_finished)
+        self.assertEqual(self.session.cycle.deadlines['dashboard'], 175)
+        self.assertEqual(self.panel.values[TITLES[0]].get(), '10')
+
     def test_stop_after_browser_close_releases_interrupted_automatic_dashboard(self):
-        self.app.dashboard_auto_refresh.set(True)
         self.app.start()
         with self.assertRaises(BrowserClosedError):
             self.execute(Mock(side_effect=BrowserClosedError('closed')))
@@ -376,7 +529,6 @@ class DashboardPeriodTests(unittest.TestCase):
         self.assert_controls('readonly')
 
     def test_startup_request_locks_before_prepare_and_stop_releases_it(self):
-        self.app.dashboard_auto_refresh.set(True)
         self.app.start()
         self.assertEqual(self.panel.queued_period, (2026, 10))
         self.assert_controls('disabled')

@@ -7,6 +7,8 @@ from itertools import count
 
 
 DEFAULT_TASK_INTERVAL = 60
+DEFAULT_DASHBOARD_INTERVAL = 60
+DEFAULT_THREATENED_INTERVAL = 60
 
 
 @dataclass(frozen=True)

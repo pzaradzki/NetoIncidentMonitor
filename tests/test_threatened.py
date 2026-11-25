@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from neto_incident_monitor.app import App
 from neto_incident_monitor.threatened import KEYS, THREATENED_URL
-from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
+from neto_incident_monitor.read_errors import AuthenticationRequired, BrowserClosedError, Cancelled
 
 class ThreatenedPresentationTests(unittest.TestCase):
     def test_sidebar_activity_badge_fits_with_warning_icons(self):
@@ -203,14 +203,70 @@ class ThreatenedPresentationTests(unittest.TestCase):
         self.assertFalse(button.alert)
 
 
+    def test_periodic_request_resumes_after_disconnect_and_stop_discards_late_result(self):
+        app = self.ready_app()
+        session = app.session
+        session.connected = True
+        app.cycle_active = True
+        session.start_cycle([], {'threatened': 60})
+        cycle = session.cycle
+        panel = app.threatened_view
+        page = Mock()
+        page.is_closed.return_value = False
+        enqueue = app.events.put
+
+        def prepare_or_queue(event):
+            if event[0] == 'session_prepare_read':
+                app.drain()
+                app.handle_session_event(*event)
+            else:
+                enqueue(event)
+
+        values = dict.fromkeys(KEYS, 0)
+        attempts = [BrowserClosedError('synthetic close'), (values, {}), BrowserClosedError('synthetic close')]
+        with patch.object(app.events, 'put', side_effect=prepare_or_queue), \
+                patch('neto_incident_monitor.shared_session.monotonic', return_value=100) as clock, \
+                patch('neto_incident_monitor.shared_session.authentication_required', return_value=False), \
+                patch('neto_incident_monitor.analytics_config.load_config', return_value={}), \
+                patch('neto_incident_monitor.threatened_api.read_threats', side_effect=attempts), \
+                patch('neto_incident_monitor.browser_actions.wait_for_browser_cycle', side_effect=Cancelled):
+            with self.assertRaises(BrowserClosedError):
+                session.serve(page)
+            app.drain()
+            request = panel.request_id
+            self.assertTrue(panel.pending)
+            self.assertNotIn('threatened', cycle.last_finished)
+
+            clock.return_value = 120
+            with self.assertRaises(Cancelled):
+                session.serve(page)
+            app.drain()
+            self.assertEqual(panel.request_id, request)
+            self.assertFalse(panel.pending)
+            self.assertEqual(cycle.deadlines['threatened'], 180)
+
+            clock.return_value = 180
+            with self.assertRaises(BrowserClosedError):
+                session.serve(page)
+            app.drain()
+
+        app.handle_session_event('session_problem', None)
+        self.assertTrue(panel.pending)
+        interrupted = panel.request_id
+        last_full_read = panel.last_full_read
+        app.stop_monitoring()
+        self.assertFalse(panel.pending)
+        panel.apply_result(interrupted, dict.fromkeys(KEYS, 1), last_full_read + 10)
+        self.assertEqual(panel.values, values)
+        self.assertEqual(panel.last_full_read, last_full_read)
+
 class ThreatenedWorkerTests(unittest.TestCase):
     def app(self):
         app = App.__new__(App)
         app.stop, app.events = threading.Event(), queue.Queue()
         app.browser_runtime = Mock()
-        app.session = Mock(threatened_delay_reason='idle')
+        app.session = Mock()
         app.session.authenticate.return_value = True
-        app.session.finish_threatened_read.side_effect = lambda request: app.events.put(('threatened_finished', request))
         app.history = Mock()
         app.history.commit_threatened.return_value = ({}, 0)
         app.submit_alert_delivery = Mock()

@@ -57,7 +57,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
         threat_time.monotonic.side_effect = lambda: self.clock
         for module in ('shared_session', 'read_budget', 'section_runner'):
             self.enterContext(patch(f'neto_incident_monitor.{module}.monotonic', side_effect=lambda: self.clock))
-        self.session.start_cycle([], {'inc': 3600, 'task': 3600})
+        self.session.start_cycle([], {'inc': 3600, 'task': 3600, 'threatened': 60})
 
     def prepare_read(self, event):
         if event[0] == 'session_prepare_read':
@@ -96,7 +96,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 25)
             self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3])
-            self.assertEqual(app.session.threatened_next_read, 140)
+            self.assertEqual(self.session.cycle.deadlines['threatened'], 140)
             self.clock = 142
             self.assertEqual(self.serve_until_idle(), 60)
         self.assertEqual(order, ['threatened', 1, 2, 'threatened', 3, 'threatened'])
@@ -106,7 +106,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
 
     def test_overdue_during_dashboard_runs_once_and_logs_dashboard_delay(self):
         app = self.app
-        app.session.threatened_next_read = 10
+        self.session.cycle.schedule_next('threatened', -50)
         order = []
 
         def dashboard(*_args, **_kwargs):
@@ -124,10 +124,11 @@ class ThreatenedScheduleTests(unittest.TestCase):
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 60)
         self.assertEqual(order, ['dashboard', 'threatened'])
-        self.assertEqual(app.session.threatened_next_read, 195)
+        self.assertEqual(self.session.cycle.deadlines['threatened'], 195)
         schedule, = self.diagnostic_entries('threatened_schedule')
         self.assertEqual(schedule['delay_reason'], 'dashboard')
         self.assertEqual(schedule['lateness_ms'], 120_000)
+        self.assertEqual(schedule['interval_s'], 60)
         self.assertEqual(schedule['request_id'], 1)
         self.assertTrue(schedule['run_id'] and schedule['read_id'])
         completed, = self.diagnostic_entries('threatened_details_complete')
@@ -148,13 +149,13 @@ class ThreatenedScheduleTests(unittest.TestCase):
 
         with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.session.threatened_next_read, 180)
+            self.assertEqual(self.session.cycle.deadlines['threatened'], 180)
             self.clock = 179
             self.assertEqual(self.serve_until_idle(), 1)
             self.assertEqual(len(attempts), 1)
             self.assertTrue(app.request_refresh('threatened'))
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.session.threatened_next_read, 259)
+            self.assertEqual(self.session.cycle.deadlines['threatened'], 259)
             saved = app.history.threatened_snapshot(with_summary=True)
             self.assertEqual(saved[1]['counters'], dict.fromkeys(KEYS, 0))
             self.clock = 258
@@ -162,7 +163,7 @@ class ThreatenedScheduleTests(unittest.TestCase):
             self.assertEqual(len(attempts), 2)
             self.clock = 259
             self.assertEqual(self.serve_until_idle(), 60)
-            self.assertEqual(app.session.threatened_next_read, 339)
+            self.assertEqual(self.session.cycle.deadlines['threatened'], 339)
             self.assertEqual(app.history.threatened_snapshot(with_summary=True), saved)
             self.session.stop_cycle()
             self.clock = 500
@@ -170,6 +171,123 @@ class ThreatenedScheduleTests(unittest.TestCase):
         self.assertEqual(attempts, [(100, 1), (179, 2), (259, 3)])
         log = (self.folder / 'login-diagnostics.jsonl').read_text(encoding='utf-8')
         self.assertNotIn('SYNTHETIC_PRIVATE_SCHEDULE_DATA', log)
+        self.assertEqual([entry['outcome'] for entry in self.diagnostic_entries('threatened_read_finished')],
+                         ['error', 'returned', 'error'])
+
+    def test_saved_interval_retimes_idle_and_running_threat_reads_from_completion(self):
+        cycle = self.session.cycle
+        self.clock = 100
+        read_times = []
+
+        def threats(*_args):
+            read_times.append(self.clock)
+            self.clock += 5
+            if len(read_times) == 2:
+                self.session.update_intervals({**cycle.intervals, 'threatened': 45})
+            return dict.fromkeys(KEYS, 0), {}
+
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 60)
+            self.clock = 120
+            self.session.update_intervals({**cycle.intervals, 'threatened': 20})
+            self.assertEqual(self.serve_until_idle(), 5)
+            self.assertEqual(cycle.deadlines['threatened'], 125)
+            self.clock = 125
+            self.assertEqual(self.serve_until_idle(), 45)
+        self.assertEqual(read_times, [100, 125])
+        self.assertEqual(cycle.last_finished['threatened'], 130)
+        self.assertEqual(cycle.deadlines['threatened'], 175)
+        self.session.log.record.assert_any_call('schedule_interval_change', interval_stage='applied',
+                                               schedule_kind='threatened', previous_interval_s=60,
+                                               interval_s=20, batch_active=False)
+        self.session.log.record.assert_any_call('schedule_interval_change', interval_stage='applied',
+                                               schedule_kind='threatened', previous_interval_s=20,
+                                               interval_s=45, batch_active=True)
+
+    def test_full_read_sets_threat_deadline_before_remaining_filter_parts_finish(self):
+        app = self.app
+        self.clock = 100
+        cycle = self.session.cycle
+        cycle.schedule_next('threatened', 90)
+        app.filters = [{'name': 'A', 'url': 'https://adeo.service-now.com/incident_list.do?sysparm_query=priority=1'}]
+        app.update_session_filters()
+
+        def filter_read(*_args, **_kwargs):
+            self.clock += 25
+            return 'success'
+
+        def threats(*_args):
+            self.clock += 5
+            return dict.fromkeys(KEYS, 0), {}
+
+        app.read_dashboard_request = Mock(return_value=True)
+        app.read_filter = Mock(side_effect=filter_read)
+        self.assertTrue(app.request_refresh('all'))
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 35)
+        self.assertEqual(self.clock, 130)
+        self.assertEqual(cycle.last_finished['threatened'], 105)
+        self.assertEqual(cycle.deadlines['threatened'], 165)
+
+    def test_stopped_automatic_read_does_not_set_restarted_cycle_deadline(self):
+        previous_cycle = self.session.cycle
+        self.clock = 100
+        attempts = []
+
+        def threats(_page, _stop, diagnostics, _config):
+            attempts.append(diagnostics.context['request_id'])
+            if len(attempts) == 1:
+                self.session.stop_cycle()
+                self.clock = 110
+                self.session.start_cycle([], {**previous_cycle.intervals, 'threatened': 90})
+            return dict.fromkeys(KEYS, 0), {}
+
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 90)
+        self.assertEqual(attempts, [1, 2])
+        self.assertNotIn('threatened', previous_cycle.last_finished)
+        self.assertEqual(self.session.cycle.deadlines['threatened'], 200)
+        self.assertEqual([entry['outcome'] for entry in self.diagnostic_entries('threatened_read_finished')],
+                         ['cancelled', 'returned'])
+
+    def test_overdue_dashboard_runs_once_between_filters_after_due_threats(self):
+        app = self.app
+        order = []
+        app.filters = [{'name': str(i), 'url': f'https://adeo.service-now.com/incident_list.do?sysparm_query=priority={i}'}
+                       for i in range(1, 3)]
+        app.update_session_filters()
+        self.clock = 100
+        self.session.start_cycle([], {'inc': 3600, 'task': 3600, 'dashboard': 60, 'threatened': 60})
+
+        def dashboard(*_args, **_kwargs):
+            order.append('dashboard')
+            self.clock += 10
+            return True
+
+        def filter_read(_page, _url, _name, index, *_args, **_kwargs):
+            order.append(index)
+            if index == 1:
+                self.clock += 200
+            return 'success'
+
+        def threats(*_args):
+            order.append('threatened')
+            return dict.fromkeys(KEYS, 0), {}
+
+        app.read_dashboard_request = Mock(side_effect=dashboard)
+        app.read_filter = Mock(side_effect=filter_read)
+        with patch('neto_incident_monitor.threatened_api.read_threats', side_effect=threats):
+            self.assertEqual(self.serve_until_idle(), 50)
+            self.assertEqual(order, ['dashboard', 'threatened', 1, 'threatened', 'dashboard', 2])
+            self.assertEqual(self.session.cycle.deadlines['dashboard'], 380)
+            self.assertEqual(self.session.cycle.deadlines['inc'], 3920)
+            timing = app.read_dashboard_request.call_args.kwargs['schedule']
+            self.assertEqual(timing['lateness_ms'], 140_000)
+            self.assertEqual(timing['delay_reason'], 'threatened')
+
+            self.session.update_intervals({'inc': 3600, 'task': 3600, 'dashboard': 15, 'threatened': 60})
+            self.assertEqual(self.serve_until_idle(), 15)
+            self.assertEqual(self.session.cycle.deadlines['dashboard'], 335)
 
 
 class RefreshRequestsTests(unittest.TestCase):

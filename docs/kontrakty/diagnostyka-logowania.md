@@ -36,6 +36,12 @@ Korelacja: `run_id`, `trace`, `read_id`, `action_id`, `session`, `sequence`, gen
 | `login_recovery`, `document_failed`, `document_response` | Odzyskiwanie i sklasyfikowany stan sieci |
 | `rendering_start`, `rendering_stop`, `rendering_error` | Zakres renderowania, czas i liczniki techniczne |
 | `session_confirmed`, `login_complete`, `login_cancelled` | Potwierdzenie i zakończenie przebiegu |
+| `filter_card_count` | Zmiana licznika karty po przyjęciu wyniku lub wyświetleniu listy oraz odrzucenie spóźnionego potwierdzenia. Pola liczbowe mogą obejmować pozycję filtra, obie liczby z karty i czas od zakończenia wczytywania do potwierdzenia wyświetlenia. |
+| `filter_config_change` | Zmiana konfiguracji filtra. Przy udanym przełączeniu harmonogramu zapis obejmuje pozycję filtra i liczbę zgłoszeń w zachowanej liście, jeśli filtr ma przyjęty wynik. |
+| `dashboard_layout` | Przejście między widokiem mieszczącym wszystkie kafelki a przewijaniem. Zapisuje wysokość obszaru, wspólną wysokość kafelków oraz minimum wynikające z ich zawartości. |
+| `dashboard_schedule` | Źródło, początek i wynik próby dashboardu. Dla cyklu obejmuje interwał, zwłokę względem terminu i rodzaj pracy poprzedzającej odczyt. ID odczytu łączy zdarzenie z sekcjami dashboardu. |
+| `schedule_interval_change` | Walidacja, zapis i zastosowanie ustawienia interwału. Obejmuje zagrożenia SLA także przy zapisaniu zmiany w trakcie odczytu. |
+| `threatened_schedule`, `threatened_read_finished` | Pierwsze zdarzenie zapisuje interwał, zwłokę i jej przyczynę dla odczytu po terminie. Drugie zapisuje wynik oraz czas próby, także po błędzie, anulowaniu lub utracie karty. ID odczytu łączy je ze zdarzeniami sekcji. |
 
 Allowlista odrzuca dowolne teksty i nieznane pola przed zapisem. Bez loginów, haseł, cookies, tokenów, pełnych URL SSO, HTML, danych zgłoszeń i surowych wyjątków. Źródłem kodów/pól jest `login_diagnostics.py`, nie ta skrócona tabela. Awaria zapisu/rotacji diagnostyki nie przerywa funkcji: stałe ostrzeżenie raz, ponowienie IO po 30 s i sygnał przywrócenia; rekordy w czasie awarii mogą zostać utracone.
 

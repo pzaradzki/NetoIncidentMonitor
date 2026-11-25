@@ -63,8 +63,7 @@ class ReadQueueTests(unittest.TestCase):
                 session.connected = True
                 account = session.layout_account = LayoutAccount('fixture', 'pl')
                 session.default_layouts = set(RECORD_TABLES.values())
-                initial_dashboard = ReadPart('dashboard', (2026, 11))
-                session.start_cycle([initial_dashboard, ReadPart('threatened')], {'inc': 60, 'task': 60})
+                session.start_cycle([ReadPart('threatened')], {'inc': 60, 'task': 60, 'dashboard': 60, 'threatened': 60})
                 session.work.submit('favorites', [ReadPart('favorites', 'queued', {})])
                 trace = []
 
@@ -207,7 +206,6 @@ class ReadQueueTests(unittest.TestCase):
     def test_interval_change_during_batch_keeps_reads_and_uses_new_delay_at_finish(self):
         app = Mock()
         session = SharedSession(app, Path('unused'))
-        session.threatened_next_read = 10_000
         session.log = Mock()
         session.connected = True
         page = Mock()
@@ -242,7 +240,6 @@ class ReadQueueTests(unittest.TestCase):
     def test_interval_change_while_waiting_uses_last_batch_and_latest_saved_value(self):
         app = Mock()
         session = SharedSession(app, Path('unused'))
-        session.threatened_next_read = 10_000
         session.log = Mock()
         inc = ReadPart('filter', ('A', None), {'kind': 'inc', 'scheduled': True})
         task = ReadPart('filter', ('B', None), {'kind': 'task', 'scheduled': True})
@@ -353,15 +350,15 @@ class ReadQueueTests(unittest.TestCase):
     def test_scheduled_threats_and_filter_get_time_between_manual_requests(self):
         app = Mock()
         session = SharedSession(app, Path('unused'))
-        session.threatened_next_read = 9
         session.log = Mock()
         session.filter_parts = (ReadPart('filter', ('A', None), {'kind': 'inc'}),)
-        session.start_cycle([], {'inc': 30, 'task': 90})
+        session.start_cycle([], {'inc': 30, 'task': 90, 'threatened': 60})
+        session.cycle.schedule_next('threatened', -51)
         dashboard = ReadPart('dashboard', (2026, 11))
         session.work.submit('dashboard', [dashboard])
         with patch('neto_incident_monitor.shared_session.monotonic', return_value=10):
             self.assertEqual(session.next_part(session.cycle), (ReadPart('threatened'), 'threatened'))
-            session.threatened_next_read = 70
+            session.cycle.schedule_next('threatened', 10)
             self.assertEqual(session.next_part(session.cycle), (dashboard, 'manual'))
             session.work.complete_part(dashboard, manual=True, success=True)
             session.work.submit('dashboard', [dashboard])
@@ -370,7 +367,6 @@ class ReadQueueTests(unittest.TestCase):
     def test_stop_during_periodic_read_leaves_matching_manual_work(self):
         app = Mock()
         session = SharedSession(app, Path('unused'))
-        session.threatened_next_read = time.monotonic() + 60
         session.log = Mock()
         session.connected = True
         page = Mock()
@@ -393,7 +389,7 @@ class ReadQueueTests(unittest.TestCase):
 
         app.execute_session_part.side_effect = read
         part = ReadPart('threatened')
-        session.start_cycle([part], {'inc': 30, 'task': 90})
+        session.start_cycle([part], {'inc': 30, 'task': 90, 'threatened': 60})
         with patch('neto_incident_monitor.shared_session.authentication_required', return_value=False):
             worker = threading.Thread(target=session.serve, args=(page,), daemon=True)
             worker.start()
@@ -437,7 +433,6 @@ class ReadQueueTests(unittest.TestCase):
     def test_full_read_satisfies_due_filter_batch_without_an_immediate_repeat(self):
         app = Mock()
         session = SharedSession(app, Path('unused'))
-        session.threatened_next_read = 70
         session.log = Mock()
         part = ReadPart('filter', ('A', None), {'kind': 'inc'})
         session.filter_parts = (part,)
@@ -627,6 +622,10 @@ class SharedApplicationTests(unittest.TestCase):
                     cycle = app.session.cycle
                     self.assertEqual(str(app.interval_entry['state']), 'normal')
                     self.assertEqual(str(app.task_interval_entry['state']), 'normal')
+                    self.assertEqual(str(app.dashboard_interval_entry['state']), 'normal')
+                    self.assertEqual(app.dashboard_interval.get(), '60')
+                    self.assertEqual(str(app.threatened_interval_entry['state']), 'normal')
+                    self.assertEqual(app.threatened_interval.get(), '60')
                     settings_window = app.settings_window
                     close_button = next(child for parent in settings_window.winfo_children()
                                         for child in parent.winfo_children()
@@ -635,19 +634,22 @@ class SharedApplicationTests(unittest.TestCase):
                     settings_window.deiconify()
                     app.interval.set('30')
                     app.task_interval.set('90')
+                    app.dashboard_interval.set('75')
+                    app.threatened_interval.set('45')
                     self.assertEqual(read_json(config, {})['interval'], 60)
                     settings_window.tk.call(settings_window.protocol('WM_DELETE_WINDOW'))
                     saved = read_json(config, {})
-                    self.assertEqual((saved['interval'], saved['task_interval']), (30, 90))
+                    self.assertEqual((saved['interval'], saved['task_interval'], saved['dashboard_interval'],
+                                      saved['threatened_interval']), (30, 90, 75, 45))
                     self.assertEqual(settings_window.state(), 'withdrawn')
                     self.assertIsNone(app.schedule_interval_autosave.timer)
                     cycle.apply_interval_changes()
-                    self.assertEqual(cycle.intervals, {'inc': 30, 'task': 90})
+                    self.assertEqual(cycle.intervals, {'inc': 30, 'task': 90, 'dashboard': 75, 'threatened': 45})
                     self.assertIn('Zapisano', app.schedule_interval_status.get())
 
                     before = config.read_bytes()
                     settings_window.deiconify()
-                    app.interval.set('14')
+                    app.threatened_interval.set('14')
                     close_button.invoke()
                     self.assertIn('15 sekund', app.schedule_interval_status.get())
                     self.assertEqual(settings_window.state(), 'normal')
@@ -655,6 +657,8 @@ class SharedApplicationTests(unittest.TestCase):
                     self.assertFalse(cycle.apply_interval_changes())
 
                     app.interval.set('45')
+                    app.dashboard_interval.set('100')
+                    app.threatened_interval.set('120')
                     with patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('PRIVATE_FAILURE')), \
                             self.assertLogs(_logger, level='INFO') as captured:
                         close_button.invoke()
@@ -668,14 +672,18 @@ class SharedApplicationTests(unittest.TestCase):
                     changes = [event for event in events if event['event'] == 'schedule_interval_change']
                     self.assertEqual([event['interval_stage'] for event in changes], ['saving', 'error'])
                     self.assertEqual(changes[-1]['inc_interval_s'], 45)
+                    self.assertEqual(changes[-1]['dashboard_interval_s'], 100)
+                    self.assertEqual(changes[-1]['threatened_interval_s'], 120)
                     self.assertNotIn('PRIVATE_FAILURE', ''.join(captured.output))
 
                     app.stop_monitoring()
                     app.start_session_cycle()
-                    self.assertEqual(app.session.cycle.intervals, {'inc': 30, 'task': 90})
+                    self.assertEqual(app.session.cycle.intervals,
+                                     {'inc': 30, 'task': 90, 'dashboard': 75, 'threatened': 45})
                     close_button.invoke()
                     app.session.cycle.apply_interval_changes()
-                    self.assertEqual(app.session.cycle.intervals, {'inc': 45, 'task': 90})
+                    self.assertEqual(app.session.cycle.intervals,
+                                     {'inc': 45, 'task': 90, 'dashboard': 100, 'threatened': 120})
                     self.assertEqual(settings_window.state(), 'withdrawn')
             finally:
                 root.destroy()
@@ -1422,8 +1430,6 @@ root.mainloop()
         def reader(kind):
             def invoke(tab, *_args, **_kwargs):
                 calls.append((kind, tab, threading.get_ident()))
-                if kind == 'threatened':
-                    app.session.threatened_next_read = time.monotonic() + 60
                 return 'success' if kind == 'filter' else True
             return invoke
 
@@ -1477,7 +1483,6 @@ root.mainloop()
             wait_for(lambda: len(calls) == 4)
             app.favorites_import.cancel()
             app.submit_alert_delivery = Mock()
-            app.dashboard_auto_refresh.set(True)
             calls.clear()
             app.start()
             self.assertEqual(app.session.cycle.intervals['task'], 60)

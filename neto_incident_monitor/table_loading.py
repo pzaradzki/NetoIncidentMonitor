@@ -49,6 +49,8 @@ class TableLoading:
                 self.cancel_table_load(table)
         if getattr(visible, 'load_dirty', False):
             (self.refresh_current if visible is self.current_table else self.refresh_history)()
+        elif visible is self.current_table:
+            self.queue_filter_display()
 
     def load_table(self, table, history=False):
         table.load_dirty = True
@@ -65,7 +67,7 @@ class TableLoading:
             selected.update(previous.get('selection', set()))
         scroll = table.yview()[0]
         # Snapshots are replaced by monitoring events rather than modified in place.
-        snapshot = self.snapshots.get(self.selected_filter_index(), {})
+        snapshot = self.snapshots.get(self.selected_filter_index())
         result = queue.Queue(maxsize=1)
         cancel = threading.Event()
         job = {'cancel': cancel, 'timer': None, 'url': url, 'selection': selected}
@@ -83,7 +85,7 @@ class TableLoading:
                         records.items(), key=lambda pair: pair[1]['detected'], reverse=True)]
                 else:
                     source = [(n, incident, None) for n, incident in sorted(
-                        snapshot.items(), key=lambda pair: int(re.sub(r'\D', '', pair[0]) or 0), reverse=True)]
+                        (snapshot or {}).items(), key=lambda pair: int(re.sub(r'\D', '', pair[0]) or 0), reverse=True)]
                 rows = []
                 for index, (number, incident, record) in enumerate(source):
                     if cancel.is_set():
@@ -167,6 +169,8 @@ class TableLoading:
                     self.table_load_status.set('')
                     for key, title in table.heading_titles.items():
                         table.heading(key, text=title + ((' ▼' if descending else ' ▲') if key == column else ''))
+                    if not history:
+                        self.current_table_rendered(url, snapshot)
                     return
             job['timer'] = self.root.after(10, step)
         job['timer'] = self.root.after(0, step)

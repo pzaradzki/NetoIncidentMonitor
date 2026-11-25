@@ -43,3 +43,7 @@
   - [x] Regresja objęła warunki, dwa zakresy kalendarzowe, wspólne listy ID, 11 wywołań, poprawne zero, ponowienie i migrację cache.
   - [x] W Windows sprawdzono kolejność, kolumny i ich rzeczywiste szerokości w Tk dla wąskiego widoku przy skalach 100% i 125%. Testy okresu potwierdziły zachowanie widoku podczas odświeżania.
   - [x] W ADEO sprawdzono trzy zapytania aplikacji oraz niezależne porównania, które obsłużył Table API. Wyniki i granice weryfikacji zapisano powyżej i w [kontrakcie dashboardu](../../kontrakty/kontrakt-odczytu-dashboardu.md). Regresja potwierdziła niezmienione obliczenia wcześniejszych liczników dla identycznych danych.
+
+Późniejsze dopasowanie wysokości potwierdziło widoczność wszystkich 22 kafelków o jednakowej wysokości w zmaksymalizowanym oknie i na pełnym ekranie 1920 × 1080 przy skali Tk 100% i 125%. Przy zmniejszeniu okna test potwierdził przewijanie do ostatniego rzędu i jego wyłączenie po powiększeniu okna. Zestaw 69 testów zakresowych przeszedł na danych syntetycznych. [Test zmiany rozmiaru](../../../tests/test_dashboard_snapshots.py)
+
+Przy wdrażaniu cyklu dashboardu regresja wykryła naprzemienne zmiany wysokości i widoczności paska przewijania przy pośredniej szerokości okna. Zawijanie tytułów oblicza się teraz na podstawie szerokości obszaru z rezerwą na pasek. Po poprawce przeszły testy zwijania listy filtrów i ponowione próby Full HD. [Układ dashboardu](../../../neto_incident_monitor/dashboard_ui.py) · [Test listy filtrów](../../../tests/test_filter_reorder.py)

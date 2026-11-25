@@ -37,13 +37,12 @@ class ActivityStatusTests(unittest.TestCase):
     def begin_dashboard(self, *, automatic=False):
         app = self.app
         if automatic:
-            app.dashboard_auto_refresh.set(True)
             app.start()
         else:
             self.assertTrue(app.request_refresh('dashboard'))
         cycle = app.session.cycle if automatic else None
         self.part, source = app.session.next_part(cycle)
-        self.assertEqual(source, 'initial' if automatic else 'manual')
+        self.assertEqual(source, 'dashboard' if automatic else 'manual')
         self.token = object()
         stop = StopSignal(app.session.closed, cycle.stop) if cycle else app.session.closed
         preparation = {'part': self.part, 'stop': stop, 'done': threading.Event(), 'value': None}

@@ -58,21 +58,7 @@ def build_dashboard(parent, app, cache_path=None):
     content = tk.Frame(canvas, bg=BG)
     content.columnconfigure(0, weight=1)
     window = canvas.create_window((0, 0), window=content, anchor='nw')
-    def scrollbar(first, last):
-        scroll.set(first, last)
-        if content.winfo_reqheight() > canvas.winfo_height():
-            scroll.pack(side='right', fill='y', padx=(6, 0))
-        else:
-            scroll.pack_forget()
-    canvas.configure(yscrollcommand=scrollbar)
-    def update_scroll_layout(event=None):
-        width, height = canvas.winfo_width(), canvas.winfo_height()
-        canvas.itemconfigure(window, width=width)
-        canvas.configure(scrollregion=(0, 0, width, max(height, content.winfo_reqheight())))
-        if content.winfo_reqheight() <= height:
-            canvas.yview_moveto(0)
-    content.bind('<Configure>', update_scroll_layout)
-    canvas.bind('<Configure>', update_scroll_layout)
+    canvas.configure(yscrollcommand=scroll.set)
     panel.values = {}
     panel.value_labels = {}
     panel.data_period = None
@@ -161,8 +147,12 @@ def build_dashboard(parent, app, cache_path=None):
     panel.message = tk.StringVar(panel)
     panel.month = tk.StringVar(panel, value="")
     panel.year = tk.StringVar(panel, value=str(date.today().year))
+    toolbar_gap = 10
+    section_padding = (16, 8)
+    tile_gap = 8
+    scroll_gap = 6
     toolbar = tk.Frame(content, bg=BG)
-    toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+    toolbar.grid(row=0, column=0, sticky="ew", pady=(0, toolbar_gap))
     panel.heading_row = toolbar
     section_header(toolbar, 'Dashboard SLA').pack(side='left', anchor='s')
     period = tk.Frame(toolbar, bg=BG)
@@ -331,12 +321,14 @@ def build_dashboard(parent, app, cache_path=None):
 
     RoundedButton(period, text='Otwórz w SNOW', command=open_dashboard,
                   background=BG).pack(side='left', anchor='s', padx=(8, 0))
-    metrics = tk.Frame(content, bg=BG)
-    metrics.grid(row=1, column=0, sticky="ew")
-    metrics.columnconfigure(tuple(range(5)), weight=1, uniform='metrics')
-    metrics.rowconfigure((0, 1, 2), weight=1, uniform='metric_rows')
+    sla_metrics = tk.Frame(content, bg=BG)
+    sla_metrics.grid(row=1, column=0, sticky="ew")
+    sla_metrics.columnconfigure(tuple(range(5)), weight=1, uniform='metrics')
+    tile_padding = 12
+    grid_padding = 6
+    tile_titles = []
 
-    def tile(title, column, row, *, span=1, muted_value=False, dot=None, title_wrap=0):
+    def tile(parent, title, column, row, *, span=1, muted_value=False, dot=None, title_wrap=0):
         color = SURFACE
         accent = '#8db7e8'
         if title == 'WJRUW':
@@ -349,42 +341,44 @@ def build_dashboard(parent, app, cache_path=None):
             accent = '#c8a7ec'
         elif title in REQUEST_TITLES:
             accent = '#83c9b9'
-        card = AnimatedMetricTile(metrics, accent, padx=12, pady=16)
-        card.grid(row=row, column=column, columnspan=span, sticky="nsew",
-                  padx=6,
-                  pady=(0 if row == 0 else 12, 0))
+        card = AnimatedMetricTile(parent, accent, padx=tile_padding, pady=6)
+        card.grid(row=row, column=column, columnspan=span, sticky="nsew", padx=grid_padding, pady=(0, tile_gap))
         label = tk.Frame(card, bg=color)
         label.pack(anchor="w")
         if dot:
             tk.Label(label, text="●", fg=dot, bg=color, font=("Segoe UI", 10)).pack(side="left", padx=(0, 5))
-        tk.Label(label, text=title, bg=color, fg=accent, font=("Segoe UI", 9),
-                 wraplength=title_wrap, justify='left').pack(side="left")
+        caption = tk.Label(label, text=title, bg=color, fg=accent, font=("Segoe UI", 9),
+                           wraplength=title_wrap, justify='left')
+        caption.pack(side="left")
+        if title_wrap:
+            tile_titles.append(caption)
         variable = panel.values[title] = tk.StringVar(panel, value="—")
         value_label = panel.value_labels[title] = tk.Label(
             card, textvariable=variable, bg=color, fg=MUTED if muted_value else TEXT,
             font=("Segoe UI", 28))
-        value_label.pack(anchor="w", expand=True, pady=(18, 0))
+        value_label.pack(anchor="w", expand=True, pady=(4, 0))
         card.bind_content(*card.winfo_children(), *label.winfo_children())
-    tile('Liczba zgłoszeń', 0, 0, span=2)
-    tile(UNASSIGNED_TITLE, 2, 0, title_wrap=112)
-    tile(LOST_TITLE, 3, 0, title_wrap=112)
-    tile('WJRUW', 4, 0)
+    tile(sla_metrics, 'Liczba zgłoszeń', 0, 0, span=2)
+    tile(sla_metrics, UNASSIGNED_TITLE, 2, 0, title_wrap=112)
+    tile(sla_metrics, LOST_TITLE, 3, 0, title_wrap=112)
+    tile(sla_metrics, 'WJRUW', 4, 0)
     for column, priority in enumerate(range(1, 6)):
-        tile(f'Zgłoszenia P{priority}', column, 1, dot=PriorityDots.COLORS[str(priority)])
-        tile(f'Przekroczone P{priority}', column, 2, muted_value=True)
-    section_header(content, 'Wstrzymane L1').grid(row=2, column=0, sticky='w', pady=(24, 14))
-    metrics = tk.Frame(content, bg=BG)
-    metrics.grid(row=3, column=0, sticky='ew')
+        tile(sla_metrics, f'Zgłoszenia P{priority}', column, 1, dot=PriorityDots.COLORS[str(priority)])
+        tile(sla_metrics, f'Przekroczone P{priority}', column, 2, muted_value=True)
+    held_header = section_header(content, 'Wstrzymane L1')
+    held_header.grid(row=2, column=0, sticky='w', pady=section_padding)
+    held_metrics = tk.Frame(content, bg=BG)
+    held_metrics.grid(row=3, column=0, sticky='ew')
     for column, title in enumerate(HELD_TITLES):
-        metrics.columnconfigure(column, weight=1, uniform='held')
-        tile(title, column, 0)
-    section_header(content, 'Wnioski L1').grid(row=4, column=0, sticky='w', pady=(24, 14))
-    metrics = tk.Frame(content, bg=BG)
-    metrics.grid(row=5, column=0, sticky='ew')
-    columns = len(REQUEST_TITLES)
+        held_metrics.columnconfigure(column, weight=1, uniform='held')
+        tile(held_metrics, title, column, 0)
+    requests_header = section_header(content, 'Wnioski L1')
+    requests_header.grid(row=4, column=0, sticky='w', pady=section_padding)
+    request_metrics = tk.Frame(content, bg=BG)
+    request_metrics.grid(row=5, column=0, sticky='ew')
     for column, title in enumerate(REQUEST_TITLES):
-        metrics.columnconfigure(column, weight=1, uniform='requests')
-        tile(title, column, 0, title_wrap=112)
+        request_metrics.columnconfigure(column, weight=1, uniform='requests')
+        tile(request_metrics, title, column, 0, title_wrap=112)
 
     def render_snapshots():
         from datetime import datetime
@@ -499,13 +493,77 @@ def build_dashboard(parent, app, cache_path=None):
             set_section_state(panel.request_id, NAMES[alias], 'Dane nieaktualne')
         panel.restored_snapshot = True
         set_message('Dane mogą być nieaktualne')
+    metric_rows = ((sla_metrics, (0, 1, 2)), (held_metrics, (0,)), (request_metrics, (0,)))
+    row_count = sum(len(rows) for _, rows in metric_rows)
+    cards = tuple(label.master for label in panel.value_labels.values())
+    header_padding = toolbar_gap + 2 * sum(section_padding)
+    caption_padding = (grid_padding + tile_padding + cards[0].winfo_pixels(cards[0].cget('highlightthickness'))
+                       + tile_titles[0].winfo_pixels(tile_titles[0].cget('padx')))
+    caption_columns = max(5, len(REQUEST_TITLES))
+    row_height = 0
+    caption_width = 0
+    layout_mode = None
+    layout_timer = None
+
+    def update_scroll_layout():
+        nonlocal row_height, caption_width, layout_mode, layout_timer
+        layout_timer = None
+        width, height = canvas.winfo_width(), canvas.winfo_height()
+        if width <= 1 or height <= 1:
+            return
+        # Reserve the scrollbar's width even when hidden to keep wrapping stable at the fit threshold.
+        available_width = view.winfo_width() - scroll.winfo_reqwidth() - scroll_gap
+        wrap = max(1, available_width // caption_columns - 2 * caption_padding)
+        if wrap != caption_width:
+            caption_width = wrap
+            for caption in tile_titles:
+                caption.configure(wraplength=wrap)
+            queue_scroll_layout()
+            return
+        headers_height = (header_padding + toolbar.winfo_reqheight() + held_header.winfo_reqheight()
+                          + requests_header.winfo_reqheight())
+        minimum_tile_height = max(card.winfo_reqheight() for card in cards)
+        # Leave the same whole-pixel height for every tile, including wrapped titles.
+        target = max(minimum_tile_height + tile_gap, (height - headers_height) // row_count)
+        if target != row_height:
+            row_height = target
+            for grid, rows in metric_rows:
+                grid.rowconfigure(rows, minsize=row_height)
+        content_height = headers_height + row_count * row_height
+        canvas.itemconfigure(window, width=width)
+        canvas.configure(scrollregion=(0, 0, width, max(height, content_height)))
+        needs_scroll = content_height > height
+        if needs_scroll:
+            if not scroll.winfo_manager():
+                scroll.pack(side='right', fill='y', padx=(scroll_gap, 0))
+        else:
+            scroll.pack_forget()
+            canvas.yview_moveto(0)
+        mode = 'scroll' if needs_scroll else 'fit'
+        if mode != layout_mode:
+            layout_mode = mode
+            record('dashboard_layout', layout_mode=mode, viewport_height=height,
+                   tile_height=row_height - tile_gap, minimum_tile_height=minimum_tile_height)
+
+    def queue_scroll_layout(_event=None):
+        nonlocal layout_timer
+        if layout_timer is None:
+            layout_timer = content.after_idle(update_scroll_layout)
+
+    def cancel_scroll_layout(_event):
+        if layout_timer is not None:
+            content.after_cancel(layout_timer)
+
     def scroll_wheel(event):
-        if content.winfo_reqheight() > canvas.winfo_height():
+        if scroll.winfo_manager():
             canvas.yview_scroll(-int(event.delta / 120), 'units')
         else:
             canvas.yview_moveto(0)
         return 'break'
 
+    content.bind('<Destroy>', cancel_scroll_layout, add='+')
+    content.bind('<Configure>', queue_scroll_layout)
+    canvas.bind('<Configure>', queue_scroll_layout)
     canvas.bind('<MouseWheel>', scroll_wheel)
     bind_dashboard_wheel(content, scroll_wheel)
     return panel

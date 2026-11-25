@@ -32,6 +32,8 @@ def handle_read_event(app, kind, value):
         app.threatened_view.apply_details(*value)
     elif kind == 'threatened_finished':
         app.threatened_view.finish_request(value)
+        if value == app.threatened_view.request_id:
+            app.threatened_request_stop = None
     else:
         return False
     return True

@@ -30,8 +30,8 @@ class FilterViewTests(unittest.TestCase):
                 def images():
                     return [table.itemcget(item, 'image') for item in table.find_withtag('notification_icon')]
 
-                def image(channel, active):
-                    return str(table.notification_icon(channel, active))
+                def image(channel, active, size=table.ICON_SIZE):
+                    return str(table.notification_icon(channel, active, size))
 
                 windows_gray, windows_color = image('windows', False), image('windows', True)
                 chat_color, chat_gray = image('google_chat', True), image('google_chat', False)
@@ -51,10 +51,14 @@ class FilterViewTests(unittest.TestCase):
                 name = next(item for item in table.find_all()
                             if table.type(item) == 'text' and table.itemcget(item, 'text') == 'Lista A')
                 self.assertLess(table.bbox(icon)[3], table.bbox(status)[1])
-                self.assertLess(table.bbox(name)[3], table.bbox(status)[1])
+                self.assertLess(table.bbox(name)[2], table.bbox(status)[0])
 
+                compact = table.COMPACT_ICON_SIZE
+                compact_windows_gray = image('windows', False, compact)
+                compact_windows_color = image('windows', True, compact)
+                compact_teams_gray = image('teams', False, compact)
                 app.google_chat_enabled.set(False)
-                self.assertEqual(images(), [windows_gray, teams_gray, windows_color, teams_color])
+                self.assertEqual(images(), [compact_windows_gray, compact_teams_gray, windows_color, teams_color])
 
                 app.configure_filter_notifications('0')
                 dialog = next(widget for widget in root.winfo_children()
@@ -64,10 +68,10 @@ class FilterViewTests(unittest.TestCase):
                     isinstance(label, ttk.Label) and label.cget('text') == 'Powiadomienia Windows'
                     for label in row.winfo_children()))
                 next(widget for widget in windows_row.winfo_children() if isinstance(widget, Toggle)).toggle()
-                self.assertEqual(images()[0], windows_gray)
+                self.assertEqual(images()[0], compact_windows_gray)
                 next(widget for row in panel.winfo_children() for widget in row.winfo_children()
                      if isinstance(widget, RoundedButton) and widget.text == 'Zapisz').invoke()
-                self.assertEqual(images(), [windows_color, teams_gray, windows_color, teams_color])
+                self.assertEqual(images(), [compact_windows_color, compact_teams_gray, windows_color, teams_color])
 
                 app.notify.set(False)
                 app.teams_enabled.set(False)

@@ -18,6 +18,7 @@ class SortingTests(unittest.TestCase):
             app.selected_filter_url = Mock(return_value='filter')
             app.selected_filter_index = Mock(return_value=1)
             app.filters = [{'name': 'Test'}]
+            app.current_table_rendered = Mock()
             app.current_table = app.make_table(ttk.Frame(root), False)
             for prefix in ('INC', 'SCTASK'):
                 app.snapshots = {1: {prefix+number: {'number': prefix+number, 'url': 'https://adeo.service-now.com/task'}

@@ -30,7 +30,6 @@ class ScheduledFilterStateTests(unittest.TestCase):
         app.disabled_filter_urls = frozenset()
         app.history = History(folder / 'history.json')
         session = self.session = app.session = SharedSession(app, folder / 'profile')
-        app.session.threatened_next_read = 600
         session.connected = True
         session.log = Mock()
         self.page = Mock()

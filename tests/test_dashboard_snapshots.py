@@ -291,6 +291,53 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual({card.master.grid_columnconfigure(i)['uniform'] for i, card in enumerate(cards)},
                          {'requests'})
 
+    def test_dashboard_fits_uniform_tiles_and_restores_scroll_on_resize(self):
+        for dpi in (96, 120):
+            with self.subTest(dpi=dpi), self.assertLogs(_logger, level='INFO') as output:
+                self.root.tk.call('tk', 'scaling', dpi / 72)
+                self.root.geometry('1500x850')
+                panel = self.restored()
+                panel.pack(fill='both', expand=True)
+                self.root.deiconify()
+                self.root.update()
+                cards = [label.master for label in panel.value_labels.values()]
+                canvas = cards[0].master.master.master
+                scrollbar = next(widget for widget in canvas.master.winfo_children()
+                                 if widget.winfo_class() == 'TScrollbar')
+                self.assertEqual(len({card.winfo_height() for card in cards}), 1)
+                self.assertTrue(all(card.winfo_height() >= card.winfo_reqheight() for card in cards))
+                self.assertEqual(canvas.yview(), (0.0, 1.0))
+                self.assertFalse(scrollbar.winfo_ismapped())
+                self.assertLessEqual(max(card.winfo_rooty() + card.winfo_height() for card in cards),
+                                     canvas.winfo_rooty() + canvas.winfo_height())
+
+                self.root.geometry('810x530')
+                self.root.update()
+                self.assertEqual(len({card.winfo_height() for card in cards}), 1)
+                self.assertTrue(all(card.winfo_height() >= card.winfo_reqheight() for card in cards))
+                self.assertTrue(scrollbar.winfo_ismapped())
+                canvas.event_generate('<MouseWheel>', delta=-120)
+                self.assertGreater(canvas.yview()[0], 0)
+                canvas.yview_moveto(1)
+                self.root.update()
+                self.assertEqual(canvas.yview()[1], 1.0)
+                self.assertLessEqual(cards[-1].winfo_rooty() + cards[-1].winfo_height(),
+                                     canvas.winfo_rooty() + canvas.winfo_height())
+
+                self.root.geometry('1500x850')
+                self.root.update()
+                self.assertEqual(canvas.yview(), (0.0, 1.0))
+                self.assertFalse(scrollbar.winfo_ismapped())
+                self.assertEqual(len({card.winfo_height() for card in cards}), 1)
+                panel.destroy()
+
+                records = [json.loads(record.getMessage()) for record in output.records]
+                layouts = [record for record in records if record['event'] == 'dashboard_layout']
+                self.assertIn('scroll', [record['layout_mode'] for record in layouts])
+                self.assertEqual(layouts[-1]['layout_mode'], 'fit')
+                self.assertTrue(all(record['tile_height'] >= record['minimum_tile_height'] > 0 and
+                                    record['viewport_height'] > 0 and record['run_id'] for record in layouts))
+
     def test_tiles_keep_hover_without_click_actions_after_refresh(self):
         self.complete_read()
         for title, value_label in self.panel.value_labels.items():

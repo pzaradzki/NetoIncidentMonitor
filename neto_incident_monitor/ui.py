@@ -269,6 +269,7 @@ def build_ui(app, settings):
     def show_incidents():
         select_view('incidents')
         main.tkraise()
+        app.activate_filter_view()
 
     def show_dashboard():
         select_view('dashboard')
@@ -412,6 +413,7 @@ def build_ui(app, settings):
     root.after_idle(fit_sidebar)
     app.splitter = splitter
     app.current_table = app.make_table(current, False)
+    app.current_table.bind('<Map>', lambda _event: app.queue_filter_display(), add='+')
     app.table = app.make_table(history, True)
     app.current_table.bind("<Double-1>", app.open_incident)
     app.table.bind("<Double-1>", app.open_incident)

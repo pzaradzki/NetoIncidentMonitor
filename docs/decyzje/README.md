@@ -21,7 +21,7 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [015](015-rownowaznosc-dat-filtrow.md) | Ścisłe porównywanie filtrów z potwierdzoną równoważnością siedmiodniowej daty. |
 | [016](016-normalizacja-adresow-list.md) | Rozpakowanie długich adresów list bez utraty kodowania i parametrów. |
 | [017](017-odpornosc-lokalnego-io.md) | Odporne logowanie, obserwowana kolejka alertów, kompletny podział wiadomości i walidacja przed startem. |
-| [018](018-kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry; zachowany niezależny harmonogram zagrożeń. |
+| [018](018-kolejnosc-aktualizacji.md) | Dashboard → zagrożenia → filtry. Zasady cyklu dashboardu zastąpiono przez [047](047-cykliczne-odswiezanie-dashboardu.md). |
 | [040](040-startowy-zakres-dashboardu.md) | Startowe pobranie brakujących list agentów i lokalizacji w kolejce sesji. |
 
 | [019](019-odzyskiwanie-sesji-sekcji.md) | Niezależne ponowienie odczytu i odzyskanie logowania, wspólny budżet 60 s. |
@@ -29,6 +29,10 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 | [020](020-spojne-statusy-dashboardu.md) | Ochrona statusów dashboardu cyklem żądania. Prezentację zastępuje [039](039-statusy-widokow-i-kolejki.md). |
 
 ## Format i utrzymanie
+
+[047 — Cykliczne odświeżanie dashboardu](047-cykliczne-odswiezanie-dashboardu.md) opisuje interwał, kolejność i wspólny termin po odświeżeniu ręcznym.
+
+[046 — Liczniki bieżących i niewyświetlonych zgłoszeń](046-liczniki-zgloszen-w-filtrach.md) opisuje liczby na kartach filtrów i moment zaliczenia wyświetlenia.
 
 [045 — Logi uruchomień ze źródeł](045-logi-uruchomien-ze-zrodel.md) opisuje lokalizację plików i ich obsługę podczas resetu.
 

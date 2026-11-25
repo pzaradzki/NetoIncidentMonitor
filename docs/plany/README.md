@@ -11,6 +11,9 @@ Ostatnia odnotowana paczka lokalna to 1.12.0-experimental.5, a ostatnie odnotowa
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Interwał odczytu incydentów zagrożonych](zakonczone/interwal-incydentow-zagrozonych.md) | Wdrożono w źródłach. Domyślne 60 s, wspólny harmonogram i oczekiwanie na koniec operacji. Zaliczono 585 testów, jeden pominięto. |
+| [Cykliczne odświeżanie dashboardu](zakonczone/cykliczne-odswiezanie-dashboardu.md) | Wdrożono w źródłach. Domyślny interwał 60 s i wspólna kolejka; 580 testów zaliczono, dwa pominięto. |
+| [Liczniki zgłoszeń na liście filtrów](zakonczone/liczniki-zgloszen-na-liscie-filtrow.md) | Wdrożono w źródłach. Sprawdzono karty w Windows przy skali 100% i 125%. Regresja z ponowieniami potwierdziła 571 zaliczeń i jedno pominięcie związane z dowiązaniami symbolicznymi. |
 | [Lokalizacja logów uruchomień ze źródeł](../decyzje/045-logi-uruchomien-ze-zrodel.md) | Rozstrzygnięto A10. Każda kopia źródeł ma własny lokalny katalog logów, a reset usuwa właściwe pliki. Regresja Windows zaliczyła 563 testy, jeden pominięto. |
 | [Odtwarzalna budowa EXE](zakonczone/odtwarzalna-budowa-exe.md) | Dwa czyste checkouty dały identyczne ZIP-y. Oba EXE przeszły próby offline na dwóch profilach. [Odbiór i ograniczenia regresji](../weryfikacja/odtwarzalna-budowa-exe.md) |
 | [Płynność Tk](zakonczone/plynnosc-tk.md) | Cache zapisuje się w tle, a duże tabele mierzą szerokości kolumn w porcjach. Maksymalne opóźnienie Tk przy odmowie zapisu spadło z 1232 do 4 ms, a w historii z 10 tys. wierszy z 461 do 9 ms. [Pomiary i odbiór](../weryfikacja/plynnosc-tk.md) |

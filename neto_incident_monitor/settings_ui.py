@@ -4,7 +4,7 @@ from math import ceil
 from time import monotonic
 from tkinter import ttk
 
-from neto_incident_monitor.monitoring import DEFAULT_TASK_INTERVAL
+from neto_incident_monitor.monitoring import DEFAULT_DASHBOARD_INTERVAL, DEFAULT_TASK_INTERVAL, DEFAULT_THREATENED_INTERVAL
 from neto_incident_monitor.theme import SURFACE, MUTED
 from neto_incident_monitor.widgets import RoundedButton, Toggle
 
@@ -140,21 +140,31 @@ def build_settings(app, settings):
         return controls
 
     monitoring = section("MONITOROWANIE")
-    controls = row(monitoring, "Incydenty (INC)", "Odstęp między kolejnymi sprawdzeniami list incydentów.")
-    app.interval = tk.StringVar(value=str(settings.get("interval", 60)))
-    app.interval_entry = ttk.Entry(controls, textvariable=app.interval, width=6, justify="center")
-    app.interval_entry.pack(side="left")
-    ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
+    def interval_field(title, description, key, default):
+        controls = row(monitoring, title, description)
+        value = tk.StringVar(value=str(settings.get(key, default)))
+        entry = ttk.Entry(controls, textvariable=value, width=6, justify="center")
+        entry.pack(side="left")
+        ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
+        return value, entry
 
-    controls = row(monitoring, "Zgłoszenia katalogowe (SCTASK, REQ, RITM)", "Odstęp między kolejnymi sprawdzeniami list katalogowych.")
-    app.task_interval = tk.StringVar(value=str(settings.get("task_interval", DEFAULT_TASK_INTERVAL)))
-    app.task_interval_entry = ttk.Entry(controls, textvariable=app.task_interval, width=6, justify="center")
-    app.task_interval_entry.pack(side="left")
-    ttk.Label(controls, text="sekund", style="WhiteMuted.TLabel").pack(side="left", padx=(8, 0))
+    app.interval, app.interval_entry = interval_field(
+        "Incydenty (INC)", "Odstęp między kolejnymi sprawdzeniami list incydentów.", 'interval', 60)
+    app.task_interval, app.task_interval_entry = interval_field(
+        "Zgłoszenia katalogowe (SCTASK, REQ, RITM)", "Odstęp między kolejnymi sprawdzeniami list katalogowych.",
+        'task_interval', DEFAULT_TASK_INTERVAL)
+    app.dashboard_interval, app.dashboard_interval_entry = interval_field(
+        "Dashboard SLA", "Odstęp między odczytami dashboardu podczas monitoringu.",
+        'dashboard_interval', DEFAULT_DASHBOARD_INTERVAL)
+    app.threatened_interval, app.threatened_interval_entry = interval_field(
+        "Incydenty zagrożone SLA", "Odstęp między odczytami zagrożeń podczas monitoringu.",
+        'threatened_interval', DEFAULT_THREATENED_INTERVAL)
 
     app.schedule_interval_status = tk.StringVar(master=window)
     interval_autosave = app.schedule_interval_autosave = ScheduleIntervalAutosave(
-        app.root, (app.interval, app.task_interval), app.schedule_interval_status, app.save_schedule_intervals)
+        app.root, (app.interval, app.task_interval, app.dashboard_interval, app.threatened_interval),
+        app.schedule_interval_status,
+        app.save_schedule_intervals)
     ttk.Label(footer, textvariable=app.schedule_interval_status, style='WhiteMuted.TLabel',
               wraplength=330).pack(side='left', padx=(12, 0))
 
@@ -163,11 +173,6 @@ def build_settings(app, settings):
             interval_autosave.cancel()
 
     window.bind('<Destroy>', cancel_on_destroy, add='+')
-
-    controls = row(monitoring, "Automatycznie zaktualizuj dashboard przy starcie monitoringu",
-                   "Pobierz dane dashboardu po zalogowaniu do ServiceNow. Kolejne odczyty uruchamiaj przyciskiem Aktualizuj.")
-    app.dashboard_auto_refresh = tk.BooleanVar(value=settings.get('dashboard_auto_refresh', False))
-    Toggle(controls, app.dashboard_auto_refresh).pack(side='right')
 
     notifications = section("POWIADOMIENIA")
     controls = row(notifications, "Powiadomienia Windows", "Powiadomienia systemowe i sygnał dźwiękowy.")

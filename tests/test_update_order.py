@@ -96,7 +96,7 @@ class UpdateOrderTests(unittest.TestCase):
                             self.assertTrue(app.request_refresh('all'))
                         else:
                             app.start()
-                        self.assertEqual(app.dashboard_button.queued, manual or dashboard)
+                        self.assertTrue(app.dashboard_button.queued)
                         self.assertTrue(app.threatened_incidents_button.queued)
                         self.assertEqual(app.work_status.get(), 'Oczekuje w kolejce')
                         session.thread.start()
@@ -110,7 +110,7 @@ class UpdateOrderTests(unittest.TestCase):
                             self.assertEqual(app.cycle_active, not manual)
                             self.assertEqual(set(app.history.membership or ()), {entry['url'] for entry in filters[:2]})
                             self.assertIsNotNone(app.threatened_view.last_full_read)
-                            expected_sections = {'sla', 'held', 'requests'} if manual or dashboard else set()
+                            expected_sections = {'sla', 'held', 'requests'}
                             if dashboard_error:
                                 expected_sections.remove('sla')
                             self.assertEqual(set(app.dashboard_view.section_snapshots), expected_sections)
@@ -135,9 +135,9 @@ class UpdateOrderTests(unittest.TestCase):
                 order = self.run_shared_cycle(manual=manual, dashboard=not manual)
                 self.assertEqual(order, ['sla', 'held', 'requests', 'threatened', 'incident', 'sc_task'])
 
-    def test_no_startup_dashboard_request_skips_dashboard(self):
+    def test_legacy_disabled_startup_dashboard_uses_periodic_default(self):
         order = self.run_shared_cycle(dashboard=False)
-        self.assertEqual(order, ['threatened', 'incident', 'sc_task'])
+        self.assertEqual(order, ['sla', 'held', 'requests', 'threatened', 'incident', 'sc_task'])
 
     def test_dashboard_section_error_does_not_block_other_work(self):
         for manual in (False, True):

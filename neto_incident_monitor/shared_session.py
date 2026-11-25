@@ -37,9 +37,12 @@ class MonitorCycle:
         self.initial = deque(initial)
         self.intervals = dict(intervals)
         self.deadlines = dict.fromkeys(intervals, 0.0)
+        if 'dashboard' in self.deadlines:
+            self.deadlines['dashboard'] = monotonic()
         self.last_finished = {}
         self.filters = deque()
         self.filter_kinds = set()
+        self.dashboard_part = None
         self._interval_lock = Lock()
         self._pending_intervals = None
 
@@ -47,7 +50,7 @@ class MonitorCycle:
         with self._interval_lock:
             self._pending_intervals = dict(intervals)
 
-    def apply_interval_changes(self):
+    def apply_interval_changes(self, *, finishing=None):
         """Consume the latest saved settings in the session thread."""
         with self._interval_lock:
             pending = self._pending_intervals
@@ -59,7 +62,8 @@ class MonitorCycle:
             interval = pending[kind]
             if interval == previous:
                 continue
-            active = kind in self.filter_kinds
+            active = (kind == finishing or kind in self.filter_kinds or
+                      (kind == 'dashboard' and self.dashboard_part is not None))
             if not active and kind in self.last_finished:
                 self.deadlines[kind] = self.last_finished[kind] + interval
             self.intervals[kind] = interval
@@ -68,7 +72,8 @@ class MonitorCycle:
 
     def next_filter(self, parts):
         if not self.filters:
-            due = {kind for kind, deadline in self.deadlines.items() if deadline <= monotonic()}
+            now = monotonic()
+            due = {kind for kind in ('inc', 'task') if self.deadlines.get(kind, float('inf')) <= now}
             self.filters.extend(part for part in parts if part.data['kind'] in due)
             self.filter_kinds = due
             if not self.filters:
@@ -87,9 +92,9 @@ class MonitorCycle:
 
     def finish_full_read(self, requested, current):
         now = monotonic()
-        for kind in self.intervals:
+        for kind in ('inc', 'task'):
             enabled = {part for part in current if part.data['kind'] == kind}
-            if enabled and enabled.issubset(requested):
+            if kind in self.intervals and enabled and enabled.issubset(requested):
                 self.schedule_next(kind, now)
                 self.filter_kinds.discard(kind)
                 self.filters = deque(part for part in self.filters if part.data['kind'] != kind)
@@ -114,8 +119,8 @@ class SharedSession:
         self.active_job_success = True
         self.after_manual = False
         self.last_idle = None
-        self.threatened_next_read = None
         self.threatened_delay_reason = 'idle'
+        self.dashboard_delay_reason = 'idle'
         self.runtime = None
         self.health = Health()
         self.legacy_membership = None
@@ -192,8 +197,8 @@ class SharedSession:
             cycle.request_intervals(intervals)
             self.app.schedule.request()
 
-    def apply_interval_changes(self, cycle):
-        for kind, previous, interval, active in cycle.apply_interval_changes():
+    def apply_interval_changes(self, cycle, *, finishing=None):
+        for kind, previous, interval, active in cycle.apply_interval_changes(finishing=finishing):
             self.log.record('schedule_interval_change', interval_stage='applied', schedule_kind=kind,
                             previous_interval_s=previous, interval_s=interval, batch_active=active)
 
@@ -542,9 +547,8 @@ class SharedSession:
                     self.prefetch_layout(page)
                     continue
                 self.threatened_delay_reason = 'idle'
+                self.dashboard_delay_reason = 'idle'
                 deadlines = tuple(cycle.deadlines.values()) if cycle else ()
-                if cycle and self.threatened_next_read is not None:
-                    deadlines += (self.threatened_next_read,)
                 next_read = min(deadlines, default=monotonic() + 1)
                 idle = (cycle is not None, next_read if cycle else None, dict(cycle.deadlines) if cycle else {})
                 if idle != self.last_idle:
@@ -571,6 +575,22 @@ class SharedSession:
                 stop = StopSignal(stop, invalidated=lambda part=part: not self.filter_is_current(part))
             token = object()
             self.emit('session_part_started', (token, part))
+            if source == 'dashboard':
+                part.data['timing'] = {
+                    'schedule_trigger': 'periodic', 'interval_s': cycle.intervals['dashboard'],
+                    'lateness_ms': round(max(0, monotonic() - cycle.deadlines['dashboard']) * 1000),
+                    'delay_reason': 'browser' if 'request' in part.data else self.dashboard_delay_reason,
+                }
+            if part.scope != 'dashboard':
+                self.dashboard_delay_reason = 'filter' if is_filter else (
+                    'threatened' if part.scope == 'threatened' else 'other')
+            elif source != 'dashboard':
+                self.dashboard_delay_reason = 'other'
+            if source == 'threatened' and 'threatened' in cycle.last_finished:
+                part = ReadPart('threatened', data={
+                    'deadline': cycle.deadlines['threatened'], 'interval_s': cycle.intervals['threatened'],
+                    'delay_reason': self.threatened_delay_reason,
+                })
             layout_refresh = part.scope == 'default_layouts'
             if layout_refresh:
                 self.emit('session_default_layout_started', self.active_job.id)
@@ -609,8 +629,24 @@ class SharedSession:
             finally:
                 self.emit('session_part_finished', token)
             skipped = is_filter and not self.filter_is_current(part)
-            self.work.complete_part(part, manual=source == 'manual', success=success)
-            if source == 'initial':
+            completed_part = part
+            if source == 'dashboard':
+                request = part.data.get('request')
+                if request is not None:
+                    completed_part = ReadPart('dashboard', request[1:])
+            if part.scope in ('dashboard', 'threatened'):
+                if source != 'manual':
+                    success = success and not stop.is_set()
+                read_cycle = self.cycle if source == 'manual' else cycle
+                if (read_cycle is not None and read_cycle is self.cycle
+                        and part.scope in read_cycle.deadlines and not read_cycle.stop.is_set()
+                        and not stop.is_set()):
+                    self.apply_interval_changes(read_cycle, finishing=part.scope)
+                    read_cycle.schedule_next(part.scope, monotonic())
+            if source == 'dashboard':
+                cycle.dashboard_part = None
+            self.work.complete_part(completed_part, manual=source == 'manual', success=success)
+            if source == 'initial' or (cycle and cycle.initial and part == cycle.initial[0]):
                 cycle.initial.popleft()
             if source == 'filter':
                 cycle.filters.popleft()
@@ -627,17 +663,13 @@ class SharedSession:
                     self.active_job_success &= bool(success)
             self.emit('refresh_state')
 
-    def finish_threatened_read(self, request):
-        # Count from completion, including failed reads; never accumulate overdue runs.
-        self.threatened_next_read = monotonic() + 60
-        self.emit('threatened_finished', request)
-
     def next_part(self, cycle):
         if cycle is not None:
             self.apply_interval_changes(cycle)
+            if cycle.dashboard_part is not None:
+                return cycle.dashboard_part, 'dashboard'
         job = self.active_job
-        deadline = self.threatened_next_read
-        threats_due = cycle is not None and (deadline is None or deadline <= monotonic())
+        threats_due = cycle is not None and cycle.deadlines.get('threatened', float('inf')) <= monotonic()
         if job is not None:
             if job.parts:
                 if (job.scope == 'all' and threats_due and job.parts[0].scope == 'filter' and
@@ -646,12 +678,18 @@ class SharedSession:
                 return job.parts[0], 'manual'
             self.finish_manual_job(cycle)
         startup_scope = self.startup_scope_id is not None
-        if not startup_scope and cycle and cycle.initial:
-            return cycle.initial[0], 'initial'
-        if not startup_scope and threats_due:
-            if self.work.next_scope() not in ('all', 'threatened'):
+        dashboard_due = (not startup_scope and cycle is not None and
+                         cycle.deadlines.get('dashboard', float('inf')) <= monotonic())
+        first_dashboard = dashboard_due and 'dashboard' not in cycle.last_finished
+        if not startup_scope and not first_dashboard:
+            if cycle and cycle.initial:
+                return cycle.initial[0], 'initial'
+            if threats_due and self.work.next_scope() not in ('all', 'threatened'):
                 return ReadPart('threatened'), 'threatened'
-        if not startup_scope and cycle and self.after_manual:
+        if dashboard_due and not any(part.scope == 'dashboard' for part in self.work.pending_refreshes()[1]):
+            cycle.dashboard_part = ReadPart('dashboard', data={})
+            return cycle.dashboard_part, 'dashboard'
+        if not startup_scope and not first_dashboard and cycle and self.after_manual:
             self.after_manual = False
             part = cycle.next_filter(self.filter_parts)
             if part:
@@ -662,7 +700,7 @@ class SharedSession:
             self.active_job_success = True
             self.record_job(job, 'running')
             return job.parts[0], 'manual'
-        if cycle:
+        if cycle and not first_dashboard:
             part = cycle.next_filter(self.filter_parts)
             if part:
                 return part, 'filter'
