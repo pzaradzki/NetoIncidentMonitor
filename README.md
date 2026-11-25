@@ -13,7 +13,7 @@ Aplikacja dla Windows do monitorowania zgłoszeń w ServiceNow. Dashboard, Incyd
 - Osobny widok incydentów zagrożonych SLA. Odstęp między odczytami jest liczony od zakończenia poprzedniej próby i domyślnie wynosi 60 sekund.
 - Pierwszy poprawny odczyt nowego filtra zapisuje stan początkowy bez powiadomień o istniejących zgłoszeniach.
 
-Najnowsza stabilna paczka to [1.13.0](docs/wersje/v1.13.0.md). Historię paczek opisuje [indeks wersji](docs/wersje/README.md).
+Najnowsza stabilna paczka to [1.13.1](docs/wersje/v1.13.1.md). Historię paczek opisuje [indeks wersji](docs/wersje/README.md).
 
 ## Uruchomienie
 

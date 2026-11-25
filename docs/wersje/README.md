@@ -1,5 +1,6 @@
 # Opisy wersji
 
+- [1.13.1](v1.13.1.md) — stabilna poprawka pionowego wyrównania ikon powiadomień na kartach filtrów.
 - [1.13.0](v1.13.0.md) — stabilne wydanie z migracją na REST, niezależnymi interwałami odczytu i licznikami filtrów.
 - [1.12.0-experimental.5](v1.12.0-experimental.5.md) — lokalna paczka po czterech etapach uporządkowania architektury.
 - [1.12.0-experimental.4](v1.12.0-experimental.4.md) — lokalna paczka po usunięciu starszej pętli monitoringu, z potwierdzonym startem na świeżym profilu ADEO.
