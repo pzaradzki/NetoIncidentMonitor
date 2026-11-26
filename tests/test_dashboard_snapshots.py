@@ -257,9 +257,9 @@ class SnapshotTests(unittest.TestCase):
 
     def test_new_cards_match_the_approved_grid(self):
         top = ['Liczba zgłoszeń', UNASSIGNED_TITLE, LOST_TITLE, 'WJRUW']
-        expected = [(0, 0, 2), (0, 2, 1), (0, 3, 1), (0, 4, 1)]
-        expected += [(row, column, 1) for row in (1, 2) for column in range(5)]
-        expected += [(0, column, 1) for column in range(3)]
+        expected = [(0, 0, 3), (0, 4, 1), (0, 6, 1), (0, 8, 1)]
+        expected += [(row, column, 1) for row in (1, 2) for column in range(0, 10, 2)]
+        expected += [(0, column, 1) for column in range(0, 6, 2)]
         names = [*top, *MONTHLY_TITLES[1:], *HELD_TITLES]
         self.panel.pack(fill='both', expand=True)
         self.root.geometry('810x680')
@@ -287,8 +287,9 @@ class SnapshotTests(unittest.TestCase):
     def test_request_tiles_share_one_row_in_title_order(self):
         cards = [self.panel.value_labels[title].master for title in REQUEST_TITLES]
         self.assertEqual([int(card.grid_info()['row']) for card in cards], [0] * 5)
-        self.assertEqual([int(card.grid_info()['column']) for card in cards], list(range(5)))
-        self.assertEqual({card.master.grid_columnconfigure(i)['uniform'] for i, card in enumerate(cards)},
+        columns = [int(card.grid_info()['column']) for card in cards]
+        self.assertEqual(columns, list(range(0, 10, 2)))
+        self.assertEqual({card.master.grid_columnconfigure(i)['uniform'] for i, card in zip(columns, cards)},
                          {'requests'})
 
     def test_dashboard_fits_uniform_tiles_and_restores_scroll_on_resize(self):
@@ -304,6 +305,18 @@ class SnapshotTests(unittest.TestCase):
                 canvas = cards[0].master.master.master
                 scrollbar = next(widget for widget in canvas.master.winfo_children()
                                  if widget.winfo_class() == 'TScrollbar')
+
+                def verify_tile_edges():
+                    rows = {(card.master, int(card.grid_info()['row'])) for card in cards}
+                    for grid, row in rows:
+                        tiles = sorted(grid.grid_slaves(row=row), key=lambda card: card.winfo_x())
+                        self.assertEqual(tiles[0].winfo_rootx(), canvas.winfo_rootx())
+                        self.assertEqual(tiles[-1].winfo_rootx() + tiles[-1].winfo_width(),
+                                         canvas.winfo_rootx() + canvas.winfo_width())
+                        self.assertEqual([right.winfo_x() - left.winfo_x() - left.winfo_width()
+                                          for left, right in zip(tiles, tiles[1:])], [12] * (len(tiles) - 1))
+
+                verify_tile_edges()
                 self.assertEqual(len({card.winfo_height() for card in cards}), 1)
                 self.assertTrue(all(card.winfo_height() >= card.winfo_reqheight() for card in cards))
                 self.assertEqual(canvas.yview(), (0.0, 1.0))
@@ -313,6 +326,7 @@ class SnapshotTests(unittest.TestCase):
 
                 self.root.geometry('810x530')
                 self.root.update()
+                verify_tile_edges()
                 self.assertEqual(len({card.winfo_height() for card in cards}), 1)
                 self.assertTrue(all(card.winfo_height() >= card.winfo_reqheight() for card in cards))
                 self.assertTrue(scrollbar.winfo_ismapped())

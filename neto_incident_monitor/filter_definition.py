@@ -12,12 +12,13 @@ UNSUPPORTED_LIST_PARAMETERS = {
     'sysparm_collection_related_file',
 }
 ORDER = re.compile(r'ORDERBY(DESC)?([a-zA-Z_][\w.]*)')
+EMPTY_ASSIGNEE = re.compile(r'(OR|NQ)?assigned_to=')
 # ADEO advertises this catalog field in getList but may omit it from Table API.
 OPTIONAL_LAYOUT_FIELDS = {'sc_req_item': frozenset({'cat_item.workflow'})}
 
 
-def api_query(query):
-    """Keep the verified list conditions and order, adding a unique tie-breaker."""
+def api_query(query, *, table=None, facts=None):
+    """Prepare the verified conditions and a stable order for Table API."""
     terms = query.split('^') if query else []
     order = []
     while terms and (terms[-1] == 'EQ' or ORDER.fullmatch(terms[-1])):
@@ -31,6 +32,15 @@ def api_query(query):
            or term.startswith(('ORDERBY', 'GROUPBY', 'RLQUERY', 'ENDRLQUERY'))
            or any(ord(char) < 32 or ord(char) == 127 for char in term) for term in terms):
         raise DashboardReadError('api_configuration', retryable=False)
+    if table == 'incident':
+        aliases = 0
+        for index, term in enumerate(terms):
+            match = EMPTY_ASSIGNEE.fullmatch(term)
+            if match:
+                terms[index] = (match[1] or '') + 'assigned_toISEMPTY'
+                aliases += 1
+        if facts is not None and aliases:
+            facts['assigned_to_empty_aliases'] = aliases
     return '^'.join([*terms, *order]), order == ['ORDERBYsys_id']
 
 
@@ -91,7 +101,7 @@ def ready_definition(entry):
         return False
     path, queries, views = direct
     try:
-        api_query(definition['query'])
+        api_query(definition['query'], table=definition['table'])
     except DashboardReadError:
         return False
     return (path == f"/{definition['table']}_list.do"

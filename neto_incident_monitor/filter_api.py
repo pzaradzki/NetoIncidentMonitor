@@ -39,7 +39,10 @@ def read_filter_records(page, stop, diagnostics, definition):
     if table == 'incident':
         fields.add('sys_created_on')
     required = fields - OPTIONAL_LAYOUT_FIELDS.get(table, frozenset())
-    query, ordered_by_id = api_query(definition['query'])
+    query_facts = {}
+    query, ordered_by_id = api_query(definition['query'], table=table, facts=query_facts)
+    if query_facts:
+        measured_record(diagnostics, 'filter_query_prepared', api_target=table, **query_facts)
     # Keep the whole source view so hidden columns remain usable in history and templates.
     params = {'sysparm_query': query,
               'sysparm_fields': ','.join(sorted(fields)), 'sysparm_display_value': 'all',

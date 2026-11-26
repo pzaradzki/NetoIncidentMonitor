@@ -321,12 +321,17 @@ def build_dashboard(parent, app, cache_path=None):
 
     RoundedButton(period, text='Otwórz w SNOW', command=open_dashboard,
                   background=BG).pack(side='left', anchor='s', padx=(8, 0))
-    sla_metrics = tk.Frame(content, bg=BG)
-    sla_metrics.grid(row=1, column=0, sticky="ew")
-    sla_metrics.columnconfigure(tuple(range(5)), weight=1, uniform='metrics')
     tile_padding = 12
-    grid_padding = 6
+    column_gap = 12
     tile_titles = []
+
+    def metric_grid(row, columns, group):
+        grid = tk.Frame(content, bg=BG)
+        grid.grid(row=row, column=0, sticky='ew')
+        grid.columnconfigure(tuple(range(0, 2 * columns, 2)), weight=1, uniform=group)
+        for gap in range(1, 2 * columns - 1, 2):
+            grid.columnconfigure(gap, minsize=column_gap)
+        return grid
 
     def tile(parent, title, column, row, *, span=1, muted_value=False, dot=None, title_wrap=0):
         color = SURFACE
@@ -342,7 +347,7 @@ def build_dashboard(parent, app, cache_path=None):
         elif title in REQUEST_TITLES:
             accent = '#83c9b9'
         card = AnimatedMetricTile(parent, accent, padx=tile_padding, pady=6)
-        card.grid(row=row, column=column, columnspan=span, sticky="nsew", padx=grid_padding, pady=(0, tile_gap))
+        card.grid(row=row, column=2 * column, columnspan=2 * span - 1, sticky='nsew', pady=(0, tile_gap))
         label = tk.Frame(card, bg=color)
         label.pack(anchor="w")
         if dot:
@@ -358,6 +363,9 @@ def build_dashboard(parent, app, cache_path=None):
             font=("Segoe UI", 28))
         value_label.pack(anchor="w", expand=True, pady=(4, 0))
         card.bind_content(*card.winfo_children(), *label.winfo_children())
+
+    sla_columns = 5
+    sla_metrics = metric_grid(1, sla_columns, 'metrics')
     tile(sla_metrics, 'Liczba zgłoszeń', 0, 0, span=2)
     tile(sla_metrics, UNASSIGNED_TITLE, 2, 0, title_wrap=112)
     tile(sla_metrics, LOST_TITLE, 3, 0, title_wrap=112)
@@ -367,17 +375,13 @@ def build_dashboard(parent, app, cache_path=None):
         tile(sla_metrics, f'Przekroczone P{priority}', column, 2, muted_value=True)
     held_header = section_header(content, 'Wstrzymane L1')
     held_header.grid(row=2, column=0, sticky='w', pady=section_padding)
-    held_metrics = tk.Frame(content, bg=BG)
-    held_metrics.grid(row=3, column=0, sticky='ew')
+    held_metrics = metric_grid(3, len(HELD_TITLES), 'held')
     for column, title in enumerate(HELD_TITLES):
-        held_metrics.columnconfigure(column, weight=1, uniform='held')
         tile(held_metrics, title, column, 0)
     requests_header = section_header(content, 'Wnioski L1')
     requests_header.grid(row=4, column=0, sticky='w', pady=section_padding)
-    request_metrics = tk.Frame(content, bg=BG)
-    request_metrics.grid(row=5, column=0, sticky='ew')
+    request_metrics = metric_grid(5, len(REQUEST_TITLES), 'requests')
     for column, title in enumerate(REQUEST_TITLES):
-        request_metrics.columnconfigure(column, weight=1, uniform='requests')
         tile(request_metrics, title, column, 0, title_wrap=112)
 
     def render_snapshots():
@@ -497,9 +501,10 @@ def build_dashboard(parent, app, cache_path=None):
     row_count = sum(len(rows) for _, rows in metric_rows)
     cards = tuple(label.master for label in panel.value_labels.values())
     header_padding = toolbar_gap + 2 * sum(section_padding)
-    caption_padding = (grid_padding + tile_padding + cards[0].winfo_pixels(cards[0].cget('highlightthickness'))
+    caption_padding = (tile_padding + cards[0].winfo_pixels(cards[0].cget('highlightthickness'))
                        + tile_titles[0].winfo_pixels(tile_titles[0].cget('padx')))
-    caption_columns = max(5, len(REQUEST_TITLES))
+    caption_columns = max(sla_columns, len(REQUEST_TITLES))
+    caption_gaps = (caption_columns - 1) * column_gap
     row_height = 0
     caption_width = 0
     layout_mode = None
@@ -513,7 +518,7 @@ def build_dashboard(parent, app, cache_path=None):
             return
         # Reserve the scrollbar's width even when hidden to keep wrapping stable at the fit threshold.
         available_width = view.winfo_width() - scroll.winfo_reqwidth() - scroll_gap
-        wrap = max(1, available_width // caption_columns - 2 * caption_padding)
+        wrap = max(1, (available_width - caption_gaps) // caption_columns - 2 * caption_padding)
         if wrap != caption_width:
             caption_width = wrap
             for caption in tile_titles:

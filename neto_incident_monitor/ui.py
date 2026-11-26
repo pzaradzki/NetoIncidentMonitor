@@ -162,9 +162,9 @@ def build_ui(app, settings):
         window.deiconify()
         window.lift()
     RoundedButton(app.controls, text="Ustawienia", icon="gear", command=show_settings,
-                  background=BG).pack(side="left", padx=4)
+                  background=BG).pack(side="left", padx=(4, 0))
 
-    body = ttk.Frame(root, padding=(24, 0, 24, 20))
+    body = ttk.Frame(root, padding=(24, 0))
     body.pack(fill="both", expand=True)
     body.columnconfigure(2, weight=1)
     body.rowconfigure(0, weight=1)
@@ -422,23 +422,25 @@ def build_ui(app, settings):
     app.work_status = tk.StringVar()
     footer_color = BG
     footer_font = ('Segoe UI', 9)
+    footer_status_font = (*footer_font, 'bold')
+    footer_padding = 3
     app.footer_line = tk.Frame(body, bg=ReadStatusBar.BORDER, height=1)
     app.footer_line.grid(row=1, column=0, columnspan=3, sticky='ew', pady=(6, 0))
     app.footer_surface = tk.Frame(body, bg=footer_color)
     app.footer_surface.grid(row=2, column=0, columnspan=3, sticky='nsew')
 
-    session_bar = app.session_bar = tk.Frame(body, bg=footer_color, padx=4, pady=5)
+    session_bar = app.session_bar = tk.Frame(body, bg=footer_color, padx=4, pady=footer_padding)
     session_bar.grid(row=2, column=0, sticky='new')
     light = tk.Canvas(session_bar, width=9, height=9, bg=footer_color, highlightthickness=0)
     light.pack(side='left', padx=(0, 5))
     dot = light.create_oval(1, 1, 8, 8, outline='')
     displayed_session = tk.StringVar()
-    state_label = tk.Label(session_bar, textvariable=displayed_session, bg=footer_color, fg=MUTED,
-                           font=footer_font, anchor='w', justify='left', width=1)
+    state_label = tk.Label(session_bar, textvariable=displayed_session, bg=footer_color, fg=TEXT,
+                           font=footer_status_font, anchor='w', justify='left', width=1)
     state_label.pack(side='left', fill='x', expand=True)
     state_label.bind('<Configure>', lambda event: state_label.configure(wraplength=max(60, event.width - 4)))
 
-    work_bar = app.work_bar = tk.Frame(body, bg=footer_color, pady=5, padx=0)
+    work_bar = app.work_bar = tk.Frame(body, bg=footer_color, pady=footer_padding)
     work_bar.grid(row=2, column=2, sticky='new')
     work_bar.columnconfigure(1, weight=1)
     activity_icon = tk.Canvas(work_bar, width=17, height=15, bg=footer_color, highlightthickness=0)
@@ -446,11 +448,12 @@ def build_ui(app, settings):
     pulse = activity_icon.create_line(1, 8, 4, 8, 7, 2, 10, 13, 13, 8, 16, 8,
                                       width=1.5, capstyle='round', joinstyle='round')
     displayed_work = tk.StringVar()
-    work_label = tk.Label(work_bar, textvariable=displayed_work, bg=footer_color, fg=MUTED,
-                          font=footer_font, width=1, anchor='w', justify='left')
+    work_label = tk.Label(work_bar, textvariable=displayed_work, bg=footer_color, fg=TEXT,
+                          font=footer_status_font, width=1, anchor='w', justify='left')
     work_label.grid(row=0, column=1, sticky='ew')
     app.footer_actions = tk.Frame(work_bar, bg=footer_color)
     app.footer_actions.grid(row=0, column=2, sticky='e', padx=(8, 6))
+    app.footer_actions.grid_remove()
     app.login_window_button = RoundedButton(app.footer_actions, text='Pokaż okno logowania',
                                             background=footer_color,
                                             command=lambda: app.events.put(('show_browser', None)), compact=True)

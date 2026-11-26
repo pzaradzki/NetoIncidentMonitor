@@ -3,12 +3,16 @@ import tempfile
 import threading
 import tkinter as tk
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.parse import urlencode
 
 from neto_incident_monitor.analytics_api import data_duration, get, measure_data_requests
 from neto_incident_monitor.app import App
 from neto_incident_monitor.dashboard_cache import SECTIONS, load_snapshot
+from neto_incident_monitor.filter_conditions import FilterConditionError
+from neto_incident_monitor.filter_layouts import LayoutAccount, LayoutStore
 from neto_incident_monitor.login_diagnostics import safe_facts
 from neto_incident_monitor.monitoring import ReadPart
 from neto_incident_monitor.threatened import KEYS
@@ -93,7 +97,6 @@ class ViewStatusTests(unittest.TestCase):
 
     def test_settings_layout_preview_shows_field_identifiers_and_clears_on_relogin(self):
         from tkinter import ttk
-        from neto_incident_monitor.filter_layouts import LayoutAccount, LayoutStore
         from neto_incident_monitor.widgets import RoundedButton
 
         app = self.app
@@ -126,7 +129,6 @@ class ViewStatusTests(unittest.TestCase):
         from tkinter import ttk
         from neto_incident_monitor.dashboard_context import DashboardReadError
         from neto_incident_monitor.filter_layout_ui import show_saved_layouts
-        from neto_incident_monitor.filter_layouts import LayoutAccount, LayoutStore
         from neto_incident_monitor.widgets import RoundedButton
 
         app = self.app
@@ -266,6 +268,9 @@ class ViewStatusTests(unittest.TestCase):
         self.assertEqual(app.status.get(), 'Nie zapisano konfiguracji.')
 
     def test_shared_footer_spans_gap_and_follows_sidebar_resize(self):
+        from tkinter.font import Font
+        from neto_incident_monitor.theme import MUTED, TEXT
+
         app = self.app
         app.show_incident_view()
         self.root.geometry('1500x780')
@@ -303,6 +308,9 @@ class ViewStatusTests(unittest.TestCase):
         self.assertNotEqual(icon.itemcget(pulse, 'fill'), idle_color)
         app.work_status.set('')
         self.assertEqual(state_label.cget('font'), work_label.cget('font'))
+        self.assertEqual(state_label.cget('foreground'), TEXT)
+        self.assertEqual(work_label.cget('foreground'), TEXT)
+        self.assertEqual(Font(self.root, font=work_label.cget('font')).actual('weight'), 'bold')
         self.assertEqual(state_label.winfo_height(), work_label.winfo_height())
         self.assertEqual(work_label.getvar(work_label.cget('textvariable')), 'Aktywność · Brak zleceń')
         self.emit(('session_waiting', None), ('session_activity', ('Wymagane logowanie', 'waiting', True)))
@@ -311,7 +319,56 @@ class ViewStatusTests(unittest.TestCase):
         self.assertIs(app.login_window_button.master, app.footer_actions)
         self.assertEqual(app.session_status.get(), 'Wymagane logowanie')
         self.assertEqual(state_label.getvar(state_label.cget('textvariable')), 'ServiceNow · Wymagane logowanie')
+        app.status.set('Przykładowy komunikat')
+        self.root.update()
+        notice, = app.work_bar.grid_slaves(row=1)
+        notice_label = next(child for child in notice.winfo_children() if isinstance(child, tk.Label))
+        self.assertEqual(notice_label.cget('foreground'), MUTED)
+        self.assertEqual(Font(self.root, font=notice_label.cget('font')).actual('weight'), 'normal')
         self.root.report_callback_exception.assert_not_called()
+
+    def test_shared_footer_fits_text_and_shrinks_after_actions_and_notices(self):
+        app, root = self.app, self.root
+        app.show_incident_view()
+        app.window_restoring = False
+        app.session.ready_once = True
+        surface = app.footer_surface
+        work_label = next(child for child in app.work_bar.winfo_children() if isinstance(child, tk.Label))
+
+        for dpi in (96, 120):
+            with self.subTest(dpi=dpi):
+                root.tk.call('tk', 'scaling', dpi / 72)
+                root.geometry(f'{root.minsize()[0]}x680')
+                self.emit(('session_ready', None))
+                root.update()
+                compact_height = surface.winfo_height()
+                self.assertLessEqual(compact_height, work_label.winfo_height() + 6)
+                self.assertEqual(surface.winfo_rooty() + compact_height, root.winfo_rooty() + root.winfo_height())
+                self.assertFalse(app.footer_actions.winfo_ismapped())
+
+                for events, button_name in (
+                    ((('session_waiting', None),
+                      ('session_activity', ('Wymagane logowanie', 'waiting', True))), 'login_window_button'),
+                    ((('session_problem', None),), 'reconnect_button'),
+                ):
+                    self.emit(*events)
+                    root.update()
+                    button = getattr(app, button_name)
+                    self.assertTrue(button.winfo_ismapped())
+                    self.assertGreaterEqual(surface.winfo_height(), compact_height)
+                    self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
+                                         surface.winfo_rooty() + surface.winfo_height())
+                    self.emit(('session_ready', None))
+                    root.update()
+                    self.assertFalse(app.footer_actions.winfo_ismapped())
+                    self.assertEqual(surface.winfo_height(), compact_height)
+
+                app.status.set('Przykładowy komunikat w dolnej belce. ' * 5)
+                root.update()
+                self.assertGreater(surface.winfo_height(), compact_height)
+                app.status.set('')
+                root.update()
+                self.assertEqual(surface.winfo_height(), compact_height)
 
     def test_filter_read_follows_selected_filter_and_ignores_old_revision(self):
         app = self.app
@@ -338,6 +395,292 @@ class ViewStatusTests(unittest.TestCase):
         self.root.update()
         self.assertEqual(fields[0].get(), 'Błąd odczytu')
         self.root.report_callback_exception.assert_not_called()
+
+    def test_condition_error_reaches_the_filter_bar_through_manual_and_scheduled_reads(self):
+        from neto_incident_monitor.filter_metadata import metadata_from_address
+        from neto_incident_monitor.filter_state import FilterState
+        from neto_incident_monitor.login_diagnostics import _logger
+
+        app, bar = self.app, self.app.filter_read_bar
+        session = app.session
+        session.layout_account = LayoutAccount('synthetic', 'pl')
+        session.layouts = LayoutStore(self.path / 'filter-layouts.json')
+        session.legacy_membership = FilterState(self.path / 'seen.json')
+        session.ready_once = session.connected = True
+        app.session_state = 'ready'
+        assigned = dict(field='assigned_to', key='assigned_to', label='Przypisany do')
+        session.layouts.save(session.layout_account, 'incident', 'named', [assigned])
+        base = 'https://adeo.service-now.com/incident_list.do?'
+        argument = 'SYNTHETIC_ARGUMENT_MARKER'
+        url = base + urlencode(dict(sysparm_query=f'short_descriptionLIKE{argument}^assigned_to!=',
+                                    sysparm_view='named'))
+        corrected = base + urlencode(dict(sysparm_query='assigned_toISEMPTY', sysparm_view='named'))
+        page = Mock()
+        page.is_closed.return_value = False
+        stop = threading.Event()
+
+        with (patch('neto_incident_monitor.config_io.read_json', return_value={}),
+              patch('neto_incident_monitor.config_io.save_json'),
+              patch.object(session, 'update_layout_account')):
+            first, second = app.filters
+            app.save_filter_change([dict(first, url=url), second], 'replace', url)
+            part = session.manual_filter_parts[url]
+            with self.assertLogs(_logger, 'INFO') as diagnostics, self.assertLogs('servicenow', 'ERROR') as monitor:
+                self.assertFalse(app.execute_session_part(page, part, stop, 'manual'))
+            page.evaluate.assert_not_called()
+            self.assertIsNone(app.history.membership)
+            self.assertEqual(app.history.pending_alerts(), [])
+            app.drain()
+
+            detail = bar.detail.cget('text')
+            self.assertEqual(detail, 'Sprawdź warunek dla pola „Przypisany do” w ServiceNow. '
+                             'Upewnij się, że wybrano właściwy operator i uzupełniono wartość, jeśli jest wymagana.')
+            self.assertEqual(bar.title.cget('text'), 'Błąd odczytu')
+            self.assertEqual(bar.button.text, 'Ponów odczyt')
+            self.assertFalse(bar.meta.winfo_manager())
+            records = [json.loads(record.getMessage()) for record in diagnostics.records]
+            error = next(record for record in records if record['event'] == 'filter_read_error')
+            self.assertEqual((error['filter_stage'], error['read_reason'], error['error_type']),
+                             ('definition', 'filter_condition_value', 'FilterConditionError'))
+            events = [record['event'] for record in records if record.get('read_id') == error['read_id']]
+            self.assertEqual(events, ['start', 'filter_read_start', 'filter_definition_discovery',
+                                      'filter_read_error', 'filter_read_end'])
+            log_text = '\n'.join(diagnostics.output + monitor.output)
+            for private in (argument, url, 'assigned_to', 'Przypisany do', detail):
+                self.assertNotIn(private, log_text)
+
+            generation = app.monitor_generation
+            layout_generation = session.layout_generation
+            self.emit(('snapshot', (url, {}, part.target[1], generation, True, False, layout_generation, (100, 250))))
+            self.assertFalse(app.execute_session_part(page, part, stop, 'filter'))
+            app.drain()
+            self.assertEqual(bar.detail.cget('text'), detail + ' Zachowano wynik poprzedniego odczytu.')
+            self.assertEqual(bar.fields[2].get(), 'Zapytanie 0,25 s')
+            app.filter_table.selection_set('1')
+            self.assertFalse(bar.message.winfo_manager())
+            app.filter_table.selection_set('0')
+            self.assertIn('Przypisany do', bar.detail.cget('text'))
+
+            definition_part = ReadPart('filter_definition', part.target)
+            self.assertFalse(app.execute_session_part(page, definition_part, stop, 'manual'))
+            app.drain()
+            self.assertEqual(app.status.get(), detail)
+            page.evaluate.assert_not_called()
+
+            previous = app.filter_read_status[url]
+            session.health.success(part.target)
+            self.assertFalse(app.execute_session_part(page, part, stop, 'filter'))
+            session.layout_generation = object()
+            app.drain()
+            self.assertIs(app.filter_read_status[url], previous)
+
+            saved = dict(metadata_from_address(corrected), version=2, source_url=corrected, instance=None,
+                         account=session.layout_account.key)
+            app.save_filter_change([dict(first, url=corrected, list_definition=saved), second], 'replace', corrected)
+            self.emit(('filter_activity', (url, ('filter_error', (detail, 'filter_condition_value')),
+                                          part.target[1], generation)))
+            self.assertFalse(bar.message.winfo_manager())
+            self.assertTrue(app.enqueue_refresh('filter', corrected))
+            job = session.work.take()
+            page.evaluate.return_value = dict(status=200, next=False, total='0', result=[])
+            self.assertTrue(app.execute_session_part(page, job.parts[0], stop, 'manual'))
+            app.drain()
+            page.evaluate.assert_called_once()
+            self.assertEqual(page.evaluate.call_args.args[1]['params']['sysparm_query'],
+                             'assigned_toISEMPTY^ORDERBYsys_id')
+            self.assertFalse(bar.message.winfo_manager())
+            self.assertEqual(bar.fields[0].get(), 'Odczyt udany')
+
+    def test_third_failed_read_disables_only_that_filter_and_allows_manual_refresh(self):
+        from neto_incident_monitor.config_io import read_json
+        from neto_incident_monitor.filter_metadata import metadata_from_address
+        from neto_incident_monitor.filter_state import FilterState
+        from neto_incident_monitor.login_diagnostics import _logger
+        from neto_incident_monitor.read_errors import Cancelled
+        from neto_incident_monitor.shared_session import MonitorCycle
+
+        app, session = self.app, self.app.session
+        config_path = self.path / 'config.json'
+        session.log = Mock()
+        session.layout_account = LayoutAccount('synthetic', 'pl')
+        session.legacy_membership = FilterState(self.path / 'seen.json')
+        session.ready_once = session.connected = True
+        app.session_state = 'ready'
+        page, stop = Mock(), threading.Event()
+        page.is_closed.return_value = False
+        failure = {'status': 403}
+        records = {'status': 200, 'result': [{'number': 'SCTASK1', 'sys_id': '1' * 32}],
+                   'next': False, 'total': '1'}
+        columns = [{'key': 'number', 'field': 'number', 'label': 'Numer'}]
+        other, target = (entry['url'] for entry in app.filters)
+
+        with (patch('neto_incident_monitor.config_io.CONFIG', config_path),
+              patch.object(session, 'update_layout_account'),
+              patch.object(session, 'filter_layout', return_value=columns),
+              patch('neto_incident_monitor.windows_notifications.notify') as notice,
+              patch.object(app, 'show_window')):
+            proposed = []
+            for entry in app.filters:
+                url = entry['url']
+                definition = dict(metadata_from_address(url), source_url=url, version=2,
+                                  instance=entry.get('filter_instance'), account=session.layout_account.key)
+                proposed.append(dict(entry, enabled=True, list_definition=definition))
+            app.persist_filters(proposed)
+            app.update_session_filters()
+            part = session.manual_filter_parts[target]
+
+            def read(reply, part=part, source='filter'):
+                page.evaluate.return_value = reply
+                return app.execute_session_part(page, part, stop, source)
+
+            self.assertFalse(read(failure))
+            self.assertFalse(read(failure))
+            self.assertEqual(session.health.failures[part.target], 2)
+            self.assertTrue(read(records))
+            app.drain()
+            self.assertNotIn(part.target, session.health.failures)
+            accepted = app.snapshots[2]
+            self.assertEqual(set(accepted), {'SCTASK1'})
+            self.assertFalse(read(failure))
+            self.assertFalse(read(failure))
+            self.assertTrue(app.filters[1]['enabled'])
+            with patch.object(page, 'evaluate', side_effect=Cancelled()):
+                self.assertFalse(app.execute_session_part(page, part, stop, 'filter'))
+            self.assertEqual(session.health.failures[part.target], 2)
+
+            self.assertTrue(app.enqueue_refresh('filter', target))
+            queued = threading.Event()
+            put = app.events.put
+
+            def observe(event):
+                put(event)
+                if event[0] == 'save_filter_disable_after_failures':
+                    queued.set()
+
+            with (patch.object(app.events, 'put', side_effect=observe),
+                  self.assertLogs(_logger, level='INFO') as captured,
+                  ThreadPoolExecutor(max_workers=1) as worker):
+                future = worker.submit(read, failure)
+                try:
+                    self.assertTrue(queued.wait(5))
+                    self.assertFalse(future.done())
+                    self.assertTrue(read_json(config_path, {})['filters'][1]['enabled'])
+                    app.drain()
+                    self.assertFalse(future.result(timeout=5))
+                finally:
+                    if not future.done():
+                        stop.set()
+            events = [json.loads(record.getMessage()) for record in captured.records]
+            error, = (event for event in events if event['event'] == 'filter_read_error')
+            changes = [event for event in events if event.get('filter_change') == 'disable_failures']
+            self.assertEqual([change['outcome'] for change in changes], ['started', 'returned'])
+            self.assertTrue(all(change['read_id'] == error['read_id'] for change in changes))
+            self.assertNotIn(target, '\n'.join(captured.output))
+
+            self.assertFalse(read_json(config_path, {})['filters'][1]['enabled'])
+            self.assertFalse(app.filter_table.enabled_rows['1'])
+            self.assertEqual(app.selected_filter_url(), other)
+            self.assertIs(app.snapshots[2], accepted)
+            self.assertEqual(set(app.history.snapshot(target)), {'SCTASK1'})
+            self.assertEqual(app.history.pending_alerts(), [])
+            self.assertIn('wyłączony z harmonogramu po trzech kolejnych nieudanych odczytach', app.status.get())
+            notice.assert_called_once_with('ServiceNow — harmonogram filtrów', app.status.get(), timeout=15)
+            self.assertNotIn(part, session.work.pending_refreshes()[1])
+            self.assertEqual(session.filter_parts, (session.manual_filter_parts[other],))
+            disabled = session.manual_filter_parts[target]
+            self.assertNotIn(disabled, app.full_refresh_parts())
+            cycle = MonitorCycle((), {'inc': 60, 'task': 60})
+            self.assertEqual(cycle.next_filter(session.filter_parts), session.manual_filter_parts[other])
+            page.evaluate.reset_mock()
+            self.assertFalse(read(failure, part))
+            self.assertFalse(read(failure, disabled))
+            page.evaluate.assert_not_called()
+
+            app.filter_table.selection_set('1')
+            app.update_refresh_controls()
+            self.assertEqual(app.filter_read_bar.button.text, 'Ponów odczyt')
+            app.filter_read_bar.invoke_action()
+            manual, source = session.next_part(None)
+            self.assertEqual((manual, source), (disabled, 'manual'))
+            self.assertTrue(read(records, manual, source))
+            session.work.complete_part(manual, manual=True, success=True)
+            session.finish_manual_job(None)
+            app.drain()
+            self.assertFalse(app.filters[1]['enabled'])
+            self.assertFalse(app.filter_table.enabled_rows['1'])
+            app.toggle_filter('1')
+            reenabled = session.manual_filter_parts[target]
+            self.assertIn(reenabled, app.full_refresh_parts())
+            self.assertTrue(read_json(config_path, {})['filters'][1]['enabled'])
+            self.assertFalse(read(failure, reenabled))
+            self.assertEqual(session.health.failures[reenabled.target], 1)
+
+    def test_automatic_filter_disable_rejects_stale_requests_and_failed_saves(self):
+        from neto_incident_monitor.login_diagnostics import LoginDiagnostics, _logger
+
+        app = self.app
+        url = app.selected_filter_url()
+        current = dict(url=url, revision=app.filter_revisions.get(url), generation=app.monitor_generation,
+                       layout_generation=app.session.layout_generation,
+                       diagnostics=LoginDiagnostics(source='filter_read', filter_index=1))
+        with (patch('neto_incident_monitor.config_io.save_json', side_effect=OSError('SYNTHETIC_SAVE_ERROR')) as save,
+              patch('neto_incident_monitor.windows_notifications.notify'),
+              patch.object(app, 'show_window'),
+              self.assertLogs(_logger, level='INFO') as captured):
+            for stale_key in ('revision', 'generation', 'layout_generation', 'stop', None):
+                with self.subTest(stale=stale_key):
+                    request = dict(current, done=threading.Event(), stop=threading.Event(), saved=False)
+                    if stale_key == 'stop':
+                        request['stop'].set()
+                    elif stale_key is not None:
+                        request[stale_key] = object()
+                    self.emit(('save_filter_disable_after_failures', request))
+                    self.assertTrue(request['done'].is_set())
+                    self.assertFalse(request['saved'])
+                    self.assertTrue(app.filters[0].get('enabled', True))
+                    self.assertTrue(app.filter_table.enabled_rows['0'])
+                    self.assertIn(app.session.manual_filter_parts[url], app.full_refresh_parts())
+                    if stale_key is not None:
+                        save.assert_not_called()
+            save.assert_called_once()
+            self.assertIn('Filtr pozostaje w harmonogramie', app.status.get())
+        self.assertNotIn('SYNTHETIC_SAVE_ERROR', '\n'.join(captured.output))
+        changes = [json.loads(record.getMessage()) for record in captured.records]
+        outcomes = [entry['outcome'] for entry in changes if entry.get('filter_change') == 'disable_failures']
+        self.assertIn('cancelled', outcomes)
+        self.assertEqual(outcomes[-2:], ['started', 'error'])
+
+    def test_condition_message_uses_the_exact_field_and_scoped_cached_labels(self):
+        app = self.app
+        session = app.session
+        session.layouts = LayoutStore(self.path / 'filter-layouts.json')
+        account = session.layout_account = LayoutAccount('synthetic', 'pl')
+        assigned = dict(field='assigned_to', key='assigned_to', label='Przypisany do')
+        session.layouts.save(account, 'incident', 'default', [assigned])
+        session.layouts.save(account, 'sc_task', 'named', [dict(assigned, label='Wykonawca')])
+        session.layouts.save(LayoutAccount('other', 'pl'), 'incident', 'named',
+                             [dict(assigned, label='Etykieta innego konta')])
+        error = FilterConditionError('filter_condition_value', field='assigned_to')
+        error.table, error.view = 'incident', 'named'
+        self.assertIn('„Przypisany do”', app.filter_condition_message(error))
+        session.layout_account = LayoutAccount('synthetic', 'en')
+        self.assertIn('„assigned_to”', app.filter_condition_message(error))
+        session.layout_account = account
+        error.field = 'caller_id.assigned_to'
+        self.assertIn('„caller_id.assigned_to”', app.filter_condition_message(error))
+        error.table, error.field = 'sc_request', 'assigned_to'
+        self.assertIn('„assigned_to”', app.filter_condition_message(error))
+        generic = 'Sprawdź warunki filtra w ServiceNow, w szczególności wybrane operatory i wymagane wartości.'
+        error.field = None
+        self.assertEqual(app.filter_condition_message(error), generic)
+        variable = 'a' * 32
+        error.table, error.field = 'sc_task', 'variables.' + variable
+        self.assertEqual(app.filter_condition_message(error), generic)
+        column = dict(field=error.field, key='sn:' + error.field, label=variable.upper())
+        session.layouts.save(account, 'sc_task', 'named', [column])
+        self.assertEqual(app.filter_condition_message(error), generic)
+        session.layouts.save(account, 'sc_task', 'named', [dict(column, label='Termin odbioru')])
+        self.assertIn('„Termin odbioru”', app.filter_condition_message(error))
 
     def test_notice_actions_share_the_header_controls_and_follow_filter_selection(self):
         app = self.app

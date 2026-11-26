@@ -206,6 +206,70 @@ class FilterApiTests(unittest.TestCase):
                           page_log['total_rows'], page_log['row_count'], page_log['page_size'],
                           page_log['api_list_check']), (7, 'sc_task', 'error', 2, 0, 1000, 'record_count'))
 
+    def test_empty_assignee_alias_is_logged_safely_even_on_transport_error(self):
+        definition = filter_definition('https://adeo.service-now.com/incident_list.do')
+        definition['query'] = 'assigned_to=^short_description=synthetic_private_condition'
+        page = Mock()
+        page.evaluate.return_value = {'issue': 'network'}
+        with self.assertLogs('neto.login_diagnostics', level='INFO') as captured:
+            log = LoginDiagnostics(source='filter_read', request_id=17)
+            with self.assertRaisesRegex(DashboardReadError, 'api_network'):
+                read_filter_records(page, threading.Event(), log, definition)
+        self.assertNotIn('synthetic_private_condition', '\n'.join(captured.output))
+        self.assertNotIn(definition['source_url'], '\n'.join(captured.output))
+        records = [json.loads(record.getMessage()) for record in captured.records]
+        prepared, = (record for record in records if record['event'] == 'filter_query_prepared')
+        error, = (record for record in records if record.get('read_reason') == 'api_network')
+        self.assertEqual((prepared['assigned_to_empty_aliases'], prepared['api_target']), (1, 'incident'))
+        self.assertEqual((prepared['read_id'], prepared['request_id']), (error['read_id'], 17))
+
+    def test_empty_assignee_alias_keeps_the_last_state_until_a_complete_read(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.filter_state import FilterState
+        from neto_incident_monitor.history import History
+        from neto_incident_monitor.monitoring import Health, ReadPart
+
+        url = 'https://adeo.service-now.com/incident_list.do?sysparm_query=assigned_to%3D'
+        definition = filter_definition(url)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            app = App.__new__(App)
+            app.events = queue.Queue()
+            app.browser_runtime = None
+            app.disabled_filter_urls = frozenset()
+            app.filters = [{'url': url}]
+            app.history = History(path / 'history.json')
+            app.submit_alert_delivery = Mock()
+            app.session = Mock()
+            app.session.filter_is_current.return_value = True
+            app.read_shared_filter_definition = Mock(return_value=definition)
+            membership = FilterState(path / 'seen.json')
+            health = Health()
+            part = ReadPart('filter', (url, None))
+            page = Mock()
+            page.is_closed.return_value = False
+
+            def read(response):
+                page.evaluate.side_effect = [response]
+                outcome = app.read_filter(page, url, 'Synthetic', 1, membership, health,
+                                          {}, None, threading.Event(), part=part)
+                self.assertEqual(page.evaluate.call_args.args[1]['params']['sysparm_query'],
+                                 'assigned_toISEMPTY^ORDERBYsys_id')
+                return outcome
+
+            row = dict(number='INC1', sys_id='1' * 32, sys_created_on='2026-01-01 12:00:00')
+            self.assertEqual(read(dict(status=200, result=[row], next=False, total='1')), 'success')
+            self.assertEqual(read(dict(status=200, result=[], next=False, total='1')), 'error')
+            self.assertEqual(read(Cancelled()), 'cancelled')
+            self.assertEqual(app.history.membership[url]['present'], ['INC1'])
+            self.assertEqual(read(dict(status=200, result=[], next=False, total='0')), 'success')
+            self.assertEqual(app.history.membership[url]['present'], [])
+            self.assertEqual(set(app.history.snapshot(url)), {'INC1'})
+            self.assertEqual(app.history.pending_alerts(), [])
+            app.submit_alert_delivery.assert_not_called()
+            snapshots = [event[1][1] for event in list(app.events.queue) if event[0] == 'snapshot']
+            self.assertEqual([set(snapshot) for snapshot in snapshots], [{'INC1'}, set()])
+
     def test_large_lists_are_rejected_after_one_request(self):
         definition = filter_definition('https://adeo.service-now.com/sc_task_list.do')
         for count in (1001, 6817, 80000):

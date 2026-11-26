@@ -51,15 +51,23 @@ class Condition:
         return self.field.startswith('variables.')
 
 
-def condition_error(reason='filter_query_scope'):
-    return DashboardReadError(reason, retryable=False)
+class FilterConditionError(DashboardReadError):
+    """A rejected condition with optional context for the filter view."""
+
+    def __init__(self, reason='filter_query_scope', *, field=None):
+        super().__init__(reason, retryable=False)
+        self.field = field
+        self.table = self.view = None
 
 
-def parse_query(query):
+def parse_query(query, *, table=None):
     if isinstance(query, str) and any(term.removeprefix('OR').removeprefix('NQ').startswith(UNSUPPORTED_DIRECTIVES)
                                       for term in query.split('^')):
-        raise condition_error('filter_condition_operator')
-    normalized, _ = api_query(query)
+        raise FilterConditionError('filter_condition_operator')
+    try:
+        normalized, _ = api_query(query, table=table)
+    except DashboardReadError as error:
+        raise FilterConditionError(error.reason) from None
     conditions, sort_fields = [], []
     group = 0
     for term in normalized.split('^'):
@@ -69,22 +77,22 @@ def parse_query(query):
             continue
         match = TERM.fullmatch(term)
         if not match or (not conditions and match['join']):
-            raise condition_error()
-        operator, argument = match['operator'], match['argument']
+            raise FilterConditionError()
+        field, operator, argument = match['field'], match['operator'], match['argument']
         expects_argument = operator not in EMPTY_OPERATORS
         if bool(argument) != expects_argument:
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if operator in RELATIVE_OPERATORS and not RELATIVE_ARGUMENT.fullmatch(argument):
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if operator in FIELD_COMPARISONS and not re.fullmatch(FIELD_PATH, argument):
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if operator == 'DYNAMIC' and not IDENTIFIER.fullmatch(argument):
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if match['join'] == 'NQ':
             group += 1
-        conditions.append(Condition(match['field'], operator, argument, match['join'], bool(match['goto']), group))
+        conditions.append(Condition(field, operator, argument, match['join'], bool(match['goto']), group))
     if not conditions:
-        raise condition_error()
+        raise FilterConditionError()
     return conditions, sort_fields
 
 
@@ -116,7 +124,7 @@ class CachedMetadata:
 def _field_schema(result):
     columns = result.get('columns') if isinstance(result, dict) else None
     if not isinstance(columns, dict) or not columns:
-        raise condition_error()
+        raise DashboardReadError('filter_query_scope', retryable=False)
     fields = {}
     for name, column in columns.items():
         if not isinstance(column, dict):
@@ -132,17 +140,17 @@ def _field_schema(result):
 
 def _variable_definition(result, identifier):
     if not isinstance(result, dict) or result.get('sys_id') != identifier:
-        raise condition_error('filter_variable_metadata')
+        raise DashboardReadError('filter_variable_metadata', retryable=False)
     active, kind = result.get('active'), result.get('type')
     item, variable_set = result.get('cat_item'), result.get('variable_set')
     if active in ('false', False):
-        raise condition_error('filter_variable_missing')
+        raise DashboardReadError('filter_variable_missing', retryable=False)
     if (active not in ('true', True) or not isinstance(kind, str)
             or not {'cat_item', 'variable_set'}.issubset(result)
             or any(value not in ('', None) and (not isinstance(value, str) or not IDENTIFIER.fullmatch(value))
                    for value in (item, variable_set))
             or not (item or variable_set)):
-        raise condition_error('filter_variable_metadata')
+        raise DashboardReadError('filter_variable_metadata', retryable=False)
     return Variable(kind, item or None, variable_set or None)
 
 
@@ -183,11 +191,11 @@ class ConditionValidator:
                         reason = {'api_access': 'filter_variable_access',
                                   'api_schema': 'filter_variable_metadata'}.get(reason, reason)
                     self.cache[key] = CachedMetadata(None, time() + METADATA_BACKOFF, reason)
-                    raise condition_error(reason) from None
+                    raise DashboardReadError(reason, retryable=False) from None
                 checkpoint(self.stop)
                 entry = self.cache[key] = CachedMetadata(value, time() + METADATA_LIFETIME)
             if entry.error is not None:
-                raise condition_error(entry.error)
+                raise DashboardReadError(entry.error, retryable=False)
             self.used.add(key)
             self.valid_until = min(self.valid_until, entry.valid_until)
             facts['outcome'] = 'returned'
@@ -205,45 +213,46 @@ class ConditionValidator:
             measured_record(self.diagnostics, 'filter_condition_metadata',
                             duration_ms=round((monotonic() - started) * 1000), **facts)
 
-    def field(self, table, path):
+    def field(self, table, path, *, condition_field=None):
         chain = path.split('.')
         if (not re.fullmatch(FIELD_PATH, path) or len(chain) > 6 or path in OPTIONAL_LAYOUT_FIELDS.get(table, ())):
-            raise condition_error()
+            raise FilterConditionError(field=condition_field)
         for index, segment in enumerate(chain):
             schema = self.lookup(('field_schema', table), lambda: _field_schema(
                 field_metadata(self.page, self.stop, self.diagnostics, table)))
             field = schema.get(segment)
             if field is None:
-                raise condition_error()
+                raise FilterConditionError(field=condition_field)
             if index == len(chain) - 1:
                 return field
             if field.reference is None:
-                raise condition_error()
+                raise FilterConditionError(field=condition_field)
             table = field.reference
 
     def catalog_condition(self, table, condition, item):
+        field = condition.field
         if table not in CATALOG_ITEM_FIELDS:
-            raise condition_error('filter_variable_context')
-        identifier = condition.field.removeprefix('variables.')
+            raise FilterConditionError('filter_variable_context', field=field)
+        identifier = field.removeprefix('variables.')
         if not IDENTIFIER.fullmatch(identifier):
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if condition.goto or condition.operator not in {'RELATIVELT', 'ISEMPTY', 'ISNOTEMPTY'}:
-            raise condition_error('filter_condition_operator')
+            raise FilterConditionError('filter_condition_operator', field=field)
         variable = self.lookup(('catalog_variable', identifier), lambda: _variable_definition(
             catalog_variable_metadata(self.page, self.stop, self.diagnostics, identifier), identifier))
         if condition.operator not in CATALOG_OPERATORS.get(variable.type, ()):
-            raise condition_error('filter_condition_operator')
+            raise FilterConditionError('filter_condition_operator', field=field)
         if condition.operator == 'RELATIVELT' and not CATALOG_DATE_ARGUMENT.fullmatch(condition.argument):
-            raise condition_error('filter_condition_value')
+            raise FilterConditionError('filter_condition_value', field=field)
         if item is not None and item != variable.item:
             if variable.variable_set is None or not self.lookup(('catalog_membership', item, variable.variable_set),
                     lambda: catalog_set_membership(self.page, self.stop, self.diagnostics, item, variable.variable_set)):
-                raise condition_error('filter_variable_context')
+                raise FilterConditionError('filter_variable_context', field=field)
 
     def validate(self, table, conditions, sort_fields):
         for field in dict.fromkeys(sort_fields):
             if field.startswith('variables.'):
-                raise condition_error('filter_condition_operator')
+                raise FilterConditionError('filter_condition_operator')
             self.field(table, field)
         for _, branch in groupby(conditions, key=lambda condition: condition.group):
             conditions_in_group = list(branch)
@@ -252,13 +261,14 @@ class ConditionValidator:
                 if condition.catalog:
                     self.catalog_condition(table, condition, item)
                     continue
-                left = self.field(table, condition.field)
+                field = condition.field
+                left = self.field(table, field, condition_field=field)
                 if condition.operator in FIELD_COMPARISONS:
-                    right = self.field(table, condition.argument)
+                    right = self.field(table, condition.argument, condition_field=field)
                     if (left.type not in COMPARABLE_TYPES or left.type != right.type
                             or left.type == 'reference' and (not left.reference or left.reference != right.reference)):
-                        raise condition_error('filter_condition_operator')
+                        raise FilterConditionError('filter_condition_operator', field=field)
                 elif condition.operator == 'DYNAMIC' and left.type not in {'reference', 'glide_list'}:
-                    raise condition_error('filter_condition_operator')
+                    raise FilterConditionError('filter_condition_operator', field=field)
                 elif condition.operator in RELATIVE_OPERATORS and left.type not in DATE_TYPES:
-                    raise condition_error('filter_condition_operator')
+                    raise FilterConditionError('filter_condition_operator', field=field)

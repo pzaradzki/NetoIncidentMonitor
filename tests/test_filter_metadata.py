@@ -4,17 +4,19 @@ from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
 from unittest.mock import Mock, patch
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.dynamic_columns import update_profile, load_profiles
 from neto_incident_monitor.filter_api import read_filter_records
-from neto_incident_monitor.filter_conditions import parse_query
+from neto_incident_monitor.filter_conditions import FilterConditionError, parse_query
+from neto_incident_monitor.filter_definition import api_query
 from neto_incident_monitor.filter_layouts import LayoutAccount, LayoutStore, fetch_layout, parse_layout
 from neto_incident_monitor.filter_metadata import (
     discover_query, metadata_from_address, resolve_route_payload, saved_query, validate_fields,
 )
 from neto_incident_monitor.read_budget import BudgetExpired
+from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
 from neto_incident_monitor.shared_session import SharedSession
 
 
@@ -170,8 +172,9 @@ class FilterMetadataTests(unittest.TestCase):
             metadata = dict(table='incident', query='caller_idSAMEASopened_by^NQcaller_idNSAMEASopened_by')
             self.assertEqual(validate_fields(Mock(), Event(), Mock(), metadata, {})['version'], 1)
             for rhs, reason in [('unknown', 'filter_query_scope'), ('assignment_group', 'filter_condition_operator')]:
-                with self.assertRaisesRegex(DashboardReadError, reason):
+                with self.assertRaisesRegex(FilterConditionError, reason) as caught:
                     validate_fields(Mock(), Event(), Mock(), dict(metadata, query='caller_idSAMEAS' + rhs), {})
+                self.assertEqual(caught.exception.field, 'caller_id')
 
     def test_stored_complex_definition_revalidates_at_expiry_without_losing_preview(self):
         query = 'active=true^variables.' + '1' * 32 + 'RELATIVELT@dayofweek@ago@4'
@@ -191,6 +194,125 @@ class FilterMetadataTests(unittest.TestCase):
         conditions, ordering = parse_query('active=true^ORactive=false^NQnumberLIKEINC^EQ^ORDERBYDESCnumber')
         self.assertEqual([(x.join, x.group) for x in conditions], [(None, 0), ('OR', 0), ('NQ', 1)])
         self.assertEqual(ordering, ['number', 'sys_id'])
+
+    def test_empty_incident_assignee_is_prepared_for_all_address_formats(self):
+        raw = 'assigned_to=^active=true^ORassigned_to=^NQassigned_to=^ORDERBYDESCnumber^EQ'
+        prepared = ('assigned_toISEMPTY^active=true^ORassigned_toISEMPTY^NQassigned_toISEMPTY'
+                    '^ORDERBYDESCnumber^ORDERBYsys_id')
+        target = 'incident_list.do?' + urlencode(dict(sysparm_query=raw))
+        direct = ORIGIN + '/' + target
+        wrapper = ORIGIN + '/now/nav/ui/classic/params/target/' + quote(target, safe='')
+        payload = json.dumps({'__tinyId__': SHORT.rsplit('/', 1)[1], 'wasTinyURLResolved': True,
+                              'params': {'target': target}})
+        html = f"<script>window.__initialRoutePayload = JSON.parse('{payload}');</script>"
+        self.assertEqual(api_query(raw, table='incident'), (prepared, False))
+        self.assertEqual(api_query(prepared, table='incident'), (prepared, False))
+        conditions, sort = parse_query(raw, table='incident')
+        self.assertEqual([(item.operator, item.join, item.group) for item in conditions if item.field == 'assigned_to'],
+                         [('ISEMPTY', None, 0), ('ISEMPTY', 'OR', 0), ('ISEMPTY', 'NQ', 1)])
+        self.assertEqual(sort, ['number', 'sys_id'])
+
+        def respond(_script, request):
+            route = request['route']
+            if route == urlsplit(SHORT).path:
+                return {'status': 200, 'result': html}
+            if route == '/api/now/ui/meta/incident':
+                return {'status': 200, 'next': False,
+                        'result': {'columns': {field: {} for field in ('assigned_to', 'active', 'number', 'sys_id')}}}
+            self.assertEqual(route, '/api/now/table/incident')
+            self.assertEqual(request['params']['sysparm_query'], prepared)
+            return {'status': 200, 'next': False, 'result': [], 'total': '0'}
+
+        for url in (direct, wrapper, SHORT):
+            with self.subTest(url_kind=urlsplit(url).path):
+                page, stop, log = Mock(), Event(), Mock()
+                page.evaluate.side_effect = respond
+                if url != SHORT:
+                    self.assertEqual(metadata_from_address(url)['query'], raw)
+                definition, resolved = discover_query(page, stop, log, {'url': url}, 'a', {})
+                self.assertEqual(definition['query'], raw)
+                self.assertEqual(read_filter_records(page, stop, log, dict(definition, columns=[])), {})
+                entry = json.loads(json.dumps(dict(url=url, list_definition=definition, resolved_list_url=resolved)))
+                self.assertEqual(saved_query(entry, 'a', for_display=True)['query'], raw)
+                page.evaluate.reset_mock()
+                self.assertEqual(read_filter_records(page, stop, log, dict(saved_query(entry, 'a'), columns=[])), {})
+                page.evaluate.assert_called_once()
+
+    def test_empty_assignment_alias_has_exact_field_operator_value_and_table_boundaries(self):
+        unchanged = ('assigned_toISEMPTY', 'assigned_to=' + 'a' * 32, 'assigned_to=puste', 'assigned_to= ',
+                     'short_descriptionLIKEassigned_to=')
+        for query in unchanged:
+            with self.subTest(query=query):
+                facts = {}
+                self.assertEqual(api_query(query, table='incident', facts=facts)[0], query + '^ORDERBYsys_id')
+                self.assertEqual(facts, {})
+                parse_query(query, table='incident')
+        malformed = [('incident', query) for query in ('assigned_to!=', 'location=', 'caller_id.assigned_to=',
+                                                       'GOTOassigned_to=')]
+        malformed += [(table, 'assigned_to=') for table in ('sc_task', 'sc_request', 'sc_req_item', None)]
+        for table, query in malformed:
+            with self.subTest(table=table, query=query), self.assertRaisesRegex(FilterConditionError,
+                                                                              'filter_condition_value'):
+                parse_query(query, table=table)
+        with self.assertRaisesRegex(FilterConditionError, 'filter_query_scope'):
+            parse_query('ORassigned_to=', table='incident')
+
+    def test_discovery_reports_the_first_invalid_condition_before_requesting_metadata(self):
+        cases = (
+            ('active=true^ORcaller_id=^NQlocationLIKE', 'filter_condition_value', 'caller_id'),
+            ('active=true^NQlocationLIKE', 'filter_condition_value', 'location'),
+            ('active=true^RLQUERYincident.parent,>=1^ENDRLQUERY', 'filter_condition_operator', None),
+            ('active=true^unreadable', 'filter_query_scope', None),
+            ('active=true^^locationLIKEExample', 'api_configuration', None),
+        )
+        for query, reason, field in cases:
+            with self.subTest(query=query):
+                target = 'incident_list.do?' + urlencode(dict(sysparm_query=query, sysparm_view='example'))
+                url = ORIGIN + '/now/nav/ui/classic/params/target/' + quote(target, safe='')
+                page = Mock()
+                with self.assertRaises(FilterConditionError) as caught:
+                    discover_query(page, Event(), Mock(), {'url': url}, 'account', {})
+                error = caught.exception
+                self.assertEqual((error.reason, error.field, error.table, error.view),
+                                 (reason, field, 'incident', 'example'))
+                self.assertFalse(error.retryable)
+                page.evaluate.assert_not_called()
+        conditions, _ = parse_query('assigned_toISEMPTY')
+        self.assertEqual((conditions[0].field, conditions[0].operator), ('assigned_to', 'ISEMPTY'))
+
+    def test_field_problem_reports_the_condition_with_the_original_table_and_view(self):
+        fields = {'sys_id': {}, 'active': {}, 'assignment_group': {'type': 'reference', 'reference': 'sys_user_group'}}
+        cases = (
+            ('incident', 'active=true^ORunknown_field=example', 'filter_query_scope', 'unknown_field'),
+            ('incident', 'assignment_group.unknown=example', 'filter_query_scope', 'assignment_group.unknown'),
+            ('sc_task', 'activeRELATIVELT@dayofweek@ago@4', 'filter_condition_operator', 'active'),
+        )
+        with patch('neto_incident_monitor.filter_conditions.field_metadata', return_value={'columns': fields}):
+            for table, query, reason, field in cases:
+                with self.subTest(query=query):
+                    with self.assertRaisesRegex(FilterConditionError, reason) as caught:
+                        validate_fields(Mock(), Event(), Mock(), dict(table=table, query=query, view='named'), {})
+                    self.assertEqual((caught.exception.field, caught.exception.table, caught.exception.view),
+                                     (field, table, 'named'))
+
+    def test_definition_transport_failures_and_cancellation_remain_separate_from_condition_errors(self):
+        page, stop, diagnostics = Mock(), Event(), Mock()
+        for response, reason in (({'status': 403}, 'api_access'), ({'issue': 'network'}, 'api_network'),
+                                 ({'status': 200, 'result': {}}, 'api_schema'),
+                                 ({'status': 200, 'result': {}, 'next': False}, 'filter_query_scope')):
+            with self.subTest(reason=reason):
+                page.evaluate.return_value = response
+                with self.assertRaisesRegex(DashboardReadError, reason) as caught:
+                    discover_query(page, stop, diagnostics, {'url': DIRECT}, 'account', {})
+                self.assertNotIsInstance(caught.exception, FilterConditionError)
+        page.evaluate.return_value = {'status': 401}
+        with self.assertRaises(AuthenticationRequired):
+            discover_query(page, stop, diagnostics, {'url': DIRECT}, 'account', {})
+        page.evaluate.reset_mock()
+        stop.set()
+        with self.assertRaises(Cancelled):
+            discover_query(page, stop, diagnostics, {'url': DIRECT}, 'account', {})
+        page.evaluate.assert_not_called()
 
     def test_uncertified_directives_and_list_context_have_distinct_errors(self):
         with self.assertRaisesRegex(DashboardReadError, 'filter_context_unsupported'):
@@ -217,8 +339,9 @@ class FilterMetadataTests(unittest.TestCase):
         diagnostics = LoginDiagnostics(source='filter_read', request_id=17)
         with self.assertLogs(_logger, level='INFO') as captured:
             for fresh in (False, False, True):
-                with self.assertRaisesRegex(DashboardReadError, 'filter_variable_access'):
+                with self.assertRaisesRegex(DashboardReadError, 'filter_variable_access') as caught:
                     discover_query(page, Event(), diagnostics, {'url': url}, 'account', cache, fresh=fresh)
+                self.assertNotIsInstance(caught.exception, FilterConditionError)
         routes = [call.args[1]['route'] for call in page.evaluate.call_args_list]
         self.assertEqual(routes.count('/api/now/table/item_option_new/' + variable), 1)
         records = [json.loads(record.getMessage()) for record in captured.records]

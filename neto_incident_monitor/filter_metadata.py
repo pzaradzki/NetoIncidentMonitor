@@ -9,7 +9,8 @@ from neto_incident_monitor.analytics_api import short_link
 from neto_incident_monitor.dashboard import measured_record
 from neto_incident_monitor.dashboard_context import DashboardReadError
 from neto_incident_monitor.filter_conditions import (
-    METADATA_LIFETIME, VALIDATION_VERSION, ConditionValidator, parse_query, requires_current_validation,
+    METADATA_LIFETIME, VALIDATION_VERSION, ConditionValidator, FilterConditionError, parse_query,
+    requires_current_validation,
 )
 from neto_incident_monitor.filter_definition import unsupported_context
 from neto_incident_monitor.read_errors import AuthenticationRequired, Cancelled
@@ -104,9 +105,10 @@ def metadata_from_address(address, *, validate_syntax=True):
     view = (views[0] if views else '') or 'default'
     if not VIEW_NAME.fullmatch(view):
         raise _error('filter_layout_view')
+    table = parsed.path[1:-len('_list.do')]
     if validate_syntax:
-        parse_query(query)
-    return {'table': parsed.path[1:-len('_list.do')], 'view': view, 'query': query}
+        parse_query(query, table=table)
+    return {'table': table, 'view': view, 'query': query}
 
 
 def saved_query(entry, account=None, *, for_display=False):
@@ -120,7 +122,7 @@ def saved_query(entry, account=None, *, for_display=False):
     direct = entry.get('resolved_list_url') if is_short_url(address) else address
     try:
         metadata = metadata_from_address(direct, validate_syntax=False)
-        conditions = None if for_display else parse_query(metadata['query'])[0]
+        conditions = None if for_display else parse_query(metadata['query'], table=metadata['table'])[0]
     except DashboardReadError:
         return None
     if not all(saved.get(key) == value for key, value in metadata.items()):
@@ -145,7 +147,7 @@ def discover_query(page, stop, diagnostics, entry, account, schemas, *, fresh=Fa
     try:
         if facts['filter_url_kind'] == 'short':
             direct = resolve_route_payload(address, short_link(page, stop, diagnostics, address, MAX_ROUTE_BYTES))
-        metadata = metadata_from_address(direct)
+        metadata = metadata_from_address(direct, validate_syntax=False)
         facts['api_target'] = metadata['table']
         validation = validate_fields(page, stop, diagnostics, metadata, schemas, fresh=fresh)
         if validation is not None:
@@ -169,8 +171,12 @@ def discover_query(page, stop, diagnostics, entry, account, schemas, *, fresh=Fa
 
 def validate_fields(page, stop, diagnostics, metadata, schemas, *, fresh=False):
     """Check field paths against the table schema instead of trusting ignored conditions."""
-    conditions, sort_fields = parse_query(metadata['query'])
-    validator = ConditionValidator(page, stop, diagnostics, schemas, fresh=fresh)
-    validator.validate(metadata['table'], conditions, sort_fields)
+    try:
+        conditions, sort_fields = parse_query(metadata['query'], table=metadata['table'])
+        validator = ConditionValidator(page, stop, diagnostics, schemas, fresh=fresh)
+        validator.validate(metadata['table'], conditions, sort_fields)
+    except FilterConditionError as error:
+        error.table, error.view = metadata['table'], metadata.get('view')
+        raise
     if requires_current_validation(conditions):
         return {'version': VALIDATION_VERSION, 'valid_until': validator.valid_until}

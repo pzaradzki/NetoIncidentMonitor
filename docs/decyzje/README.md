@@ -30,6 +30,10 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[049 — Puste przypisanie w filtrach INC](049-puste-przypisanie-w-inc.md) opisuje zakres zgodności z klasyczną listą ADEO.
+
+[048 — Wyłączenie filtra po błędach odczytu](048-wylaczenie-filtra-po-bledach.md) opisuje próg błędów, trwały zapis i ręczne ponowienie.
+
 [047 — Cykliczne odświeżanie dashboardu](047-cykliczne-odswiezanie-dashboardu.md) opisuje interwał, kolejność i wspólny termin po odświeżeniu ręcznym.
 
 [046 — Liczniki bieżących i niewyświetlonych zgłoszeń](046-liczniki-zgloszen-w-filtrach.md) opisuje liczby na kartach filtrów i moment zaliczenia wyświetlenia.

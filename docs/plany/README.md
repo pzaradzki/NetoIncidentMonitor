@@ -11,6 +11,8 @@ Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Puste przypisanie w filtrach INC](zakonczone/puste-przypisanie-w-filtrach-inc.md) | Wdrożono interpretację pustego przypisania i potwierdzono zgodność na ADEO. Regresja Windows z odrębnym powtórzeniem potwierdziła 596 zaliczeń i dwa pominięcia. |
+| [Komunikaty o błędnych warunkach filtrów](zakonczone/komunikaty-bledow-warunkow-filtrow.md) | Wdrożono wybór etykiety, nazwy technicznej lub komunikatu ogólnego w istniejącej belce. Regresja Windows zaliczyła 589 testów, a 2 pominięto. |
 | [Wydanie 1.13.1](zakonczone/wydanie-1.13.1.md) | Opublikowano stabilną poprawkę wyrównania ikon. Cztery próby offline i zgodność publicznie pobranego ZIP-a. |
 | [Wydanie 1.13.0](zakonczone/wydanie-1.13.0.md) | Opublikowano stabilne wydanie. 584 zaliczone testy, 2 pominięcia, cztery próby offline i zgodność publicznie pobranego ZIP-a. |
 | [Interwał odczytu incydentów zagrożonych](zakonczone/interwal-incydentow-zagrozonych.md) | Wdrożono w źródłach. Domyślne 60 s, wspólny harmonogram i oczekiwanie na koniec operacji. Zaliczono 585 testów, jeden pominięto. |

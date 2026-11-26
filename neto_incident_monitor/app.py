@@ -3,6 +3,7 @@ from neto_incident_monitor import config_io
 from neto_incident_monitor.dashboard_ui import handle_read_event as handle_dashboard_read_event
 from neto_incident_monitor.threatened_ui import handle_read_event as handle_threatened_read_event
 from neto_incident_monitor.dynamic_columns import DynamicColumns, load_profiles
+from neto_incident_monitor.filter_conditions import FIELD_PATH, FilterConditionError
 from neto_incident_monitor.filter_definition import ready_definition
 from neto_incident_monitor.filter_metadata import discover_query, saved_query
 from neto_incident_monitor.analytics_api import READ_MESSAGES
@@ -901,10 +902,11 @@ class App(DynamicColumns, TableLoading):
         if proposed is not None:
             self.filters = filters
 
-    def save_filter_change(self, proposed, action, selected_url):
+    def save_filter_change(self, proposed, action, selected_url, *, diagnostics=None):
         from neto_incident_monitor.login_diagnostics import LoginDiagnostics
 
-        diagnostics = LoginDiagnostics(source='monitor')
+        if diagnostics is None:
+            diagnostics = LoginDiagnostics(source='monitor')
         started = time.monotonic()
         diagnostics.record('filter_config_change', filter_change=action, outcome='started')
         previous = self.filters
@@ -935,6 +937,11 @@ class App(DynamicColumns, TableLoading):
         diagnostics.record('filter_config_change', filter_change=action, outcome='returned', item_count=len(proposed),
                            duration_ms=round((time.monotonic() - started) * 1000), **facts)
 
+    def disable_filter_schedule(self, index, action, *, diagnostics=None):
+        proposed = list(self.filters)
+        proposed[index - 1] = dict(proposed[index - 1], enabled=False)
+        self.save_filter_change(proposed, action, self.selected_filter_url(), diagnostics=diagnostics)
+
     def save_sidebar_width(self, width):
         try:
             settings = config_io.read_json(config_io.CONFIG, {})
@@ -957,10 +964,8 @@ class App(DynamicColumns, TableLoading):
         enabled = entry.get('enabled', True)
         save_failed = False
         if enabled:
-            proposed = list(self.filters)
-            proposed[index - 1] = dict(entry, enabled=False)
             try:
-                self.save_filter_change(proposed, 'disable_limit', self.selected_filter_url())
+                self.disable_filter_schedule(index, 'disable_limit')
             except (OSError, ValueError):
                 save_failed = True
         title = ('Nie udało się wyłączyć filtra' if save_failed else
@@ -1105,6 +1110,26 @@ class App(DynamicColumns, TableLoading):
                                         previous.failed(detail, title=title, action=action, warning=warning))
         if url == self.selected_filter_url():
             self.update_filter_read_bar()
+
+    def filter_condition_message(self, error):
+        field = error.field
+        label = None
+        variable = field.removeprefix('variables.') if field and field.startswith('variables.') else None
+        account = self.session.layout_account
+        if field and account and error.table and error.view:
+            for view in dict.fromkeys((error.view, 'default')):
+                columns = self.session.layouts.get(account, error.table, view) or ()
+                label = next((' '.join(column['label'].split()) for column in columns
+                              if column['field'] == field), None)
+                if label and (not variable or variable not in label.lower()):
+                    break
+                label = None
+        if not label and field and not variable and len(field) <= 256 and re.fullmatch(FIELD_PATH, field):
+            label = field
+        if label:
+            return (f'Sprawdź warunek dla pola „{label}” w ServiceNow. '
+                    'Upewnij się, że wybrano właściwy operator i uzupełniono wartość, jeśli jest wymagana.')
+        return 'Sprawdź warunki filtra w ServiceNow, w szczególności wybrane operatory i wymagane wartości.'
 
     def set_phase(self, phase):
         self.monitoring_phase = phase
@@ -1636,15 +1661,15 @@ class App(DynamicColumns, TableLoading):
             return
         webbrowser.open(url)
 
-    def interruption(self, message):
+    def interruption(self, message, *, title='ServiceNow — przerwa w monitoringu'):
         self.status.set(message)
         self.show_window()
         try:
             from neto_incident_monitor import windows_notifications
             self.root.bell()
-            windows_notifications.notify("ServiceNow — przerwa w monitoringu", message, timeout=15)
-        except Exception:
-            LOG.exception("Nie udało się pokazać alertu o przerwie w monitoringu")
+            windows_notifications.notify(title, message, timeout=15)
+        except Exception as error:
+            LOG.warning('Nie udało się pokazać powiadomienia o przerwie w odczycie (%s).', type(error).__name__)
 
     def session_expired(self, message):
         self.status.set(message)
@@ -1904,6 +1929,19 @@ class App(DynamicColumns, TableLoading):
                 and self.threatened_request_stop.is_set()):
             self.handle_session_event('session_cancel_prepared', ('threatened', self.threatened_view.request_id))
 
+    def request_filter_save(self, kind, *, stop, **fields):
+        from neto_incident_monitor.browser_actions import checkpoint
+
+        done = threading.Event()
+        request = dict(fields, stop=stop, done=done, saved=False)
+        self.events.put((kind, request))
+        try:
+            while not done.wait(.05):
+                checkpoint(stop)
+        finally:
+            done.set()
+        return request['saved']
+
     def read_shared_filter_definition(self, page, entry, stop, diagnostics, revision, generation, part):
         from neto_incident_monitor.browser_actions import checkpoint
         from neto_incident_monitor.dashboard_context import DashboardReadError
@@ -1917,17 +1955,11 @@ class App(DynamicColumns, TableLoading):
         if metadata is None or scope == 'filter_definition':
             metadata, direct = discover_query(page, stop, diagnostics, entry, account.key,
                                               session.filter_field_schemas, fresh=scope == 'filter_definition')
-            request = dict(done=threading.Event(), saved=False, stop=stop, url=entry['url'],
-                           revision=revision, generation=generation, definition=metadata, direct=direct,
-                           layout_generation=session.layout_generation, diagnostics=diagnostics)
-            self.events.put(('save_filter_definition', request))
-            try:
-                while not request['done'].wait(.05):
-                    checkpoint(stop)
-            finally:
-                request['done'].set()
+            saved = self.request_filter_save(
+                'save_filter_definition', stop=stop, url=entry['url'], revision=revision, generation=generation,
+                definition=metadata, direct=direct, layout_generation=session.layout_generation, diagnostics=diagnostics)
             checkpoint(stop)
-            if not request['saved']:
+            if not saved:
                 raise DashboardReadError('filter_definition_save', retryable=False)
         else:
             diagnostics.record('filter_definition', outcome='returned', reused=True,
@@ -2116,6 +2148,9 @@ class App(DynamicColumns, TableLoading):
             if not is_current():
                 outcome = 'discarded'
                 return outcome
+            if stop.is_set():
+                outcome = 'cancelled'
+                return outcome
             outcome = "error"
             reason = getattr(exc, "reason", None)
             read_diagnostics.record("filter_read_error", filter_stage=read_stage["stage"],
@@ -2125,6 +2160,8 @@ class App(DynamicColumns, TableLoading):
                       time.monotonic() - read_started, filter_index)
             if read_stage["stage"] == "history_write":
                 message = "Nie udało się zapisać historii i stanu filtra."
+            elif isinstance(exc, FilterConditionError):
+                message = self.filter_condition_message(exc)
             elif reason == 'api_timeout':
                 message = 'ServiceNow nie odpowiedział w wyznaczonym czasie.'
             elif reason == 'api_network':
@@ -2141,8 +2178,16 @@ class App(DynamicColumns, TableLoading):
                 report('filter_error', (message, reason))
             else:
                 report('status', message)
-            if not outside_schedule and health.failure(part.target):
-                report('interruption', f'Lista „{filter_name}”: trzy kolejne odczyty nie powiodły się. Otwórz aplikację i sprawdź sesję lub połączenie. Automatyczne próby będą kontynuowane.')
+            if not outside_schedule and not (definition_only or layout_only) and health.failure(part.target):
+                try:
+                    self.request_filter_save(
+                        'save_filter_disable_after_failures', stop=stop, url=url, revision=revision,
+                        generation=generation, layout_generation=layout_generation, diagnostics=read_diagnostics)
+                except Cancelled:
+                    pass
+                finally:
+                    # A successful save replaces the revision. A failed save allows a new series.
+                    health.success(part.target)
         finally:
             read_diagnostics.record("filter_read_end", filter_outcome=outcome,
                 filter_stage=read_stage["stage"], page_index=read_stage["page"],
@@ -2170,15 +2215,19 @@ class App(DynamicColumns, TableLoading):
         return read_dashboard_request(page, request=request, stop=stop, events=self.events, schedule=schedule,
                                       restore=lambda: self.session.authenticate(page, stop))
 
+    def filter_save_is_current(self, request):
+        return (not request['done'].is_set() and not request['stop'].is_set() and not self.quitting
+                and request['generation'] is self.monitor_generation
+                and request['revision'] is self.filter_revisions.get(request['url'])
+                and request['layout_generation'] is self.session.layout_generation)
+
     def save_discovered_filter_definition(self, request):
         from neto_incident_monitor.dashboard import measured_record
         diagnostics = request['diagnostics']
         try:
             with self.filter_config_lock:
                 url = request['url']
-                if (request['done'].is_set() or request['stop'].is_set() or self.quitting
-                        or request['generation'] is not self.monitor_generation
-                        or request['revision'] is not self.filter_revisions.get(url)):
+                if not self.filter_save_is_current(request):
                     return
                 index = self.event_filter_index(url)
                 if index is None:
@@ -2187,8 +2236,7 @@ class App(DynamicColumns, TableLoading):
                 entry = dict(proposed[index - 1], list_definition=request['definition'])
                 if is_short_url(url):
                     entry['resolved_list_url'] = request['direct']
-                if (request['layout_generation'] is not self.session.layout_generation
-                        or self.session.layout_account is None
+                if (self.session.layout_account is None
                         or saved_query(entry, self.session.layout_account.key) is None):
                     return
                 proposed[index - 1] = entry
@@ -2203,6 +2251,31 @@ class App(DynamicColumns, TableLoading):
             self.update_session_filters()
             self.schedule.request()
             self.update_filter_info_button()
+        finally:
+            request['done'].set()
+
+    def save_filter_disable_after_failures(self, request):
+        diagnostics = request['diagnostics']
+        action = 'disable_failures'
+        title = 'ServiceNow — harmonogram filtrów'
+        try:
+            index = self.event_filter_index(request['url'])
+            if (not self.filter_save_is_current(request) or index is None
+                    or not self.filters[index - 1].get('enabled', True)):
+                diagnostics.record('filter_config_change', filter_change=action, outcome='cancelled')
+                return
+            name = self.filters[index - 1]['name']
+            try:
+                self.disable_filter_schedule(index, action, diagnostics=diagnostics)
+            except (OSError, ValueError):
+                self.interruption(
+                    f'Nie udało się zapisać wyłączenia filtra „{name}”. Filtr pozostaje w harmonogramie.',
+                    title=title)
+                return
+            request['saved'] = True
+            self.interruption(
+                f'Filtr „{name}” został wyłączony z harmonogramu po trzech kolejnych nieudanych odczytach.',
+                title=title)
         finally:
             request['done'].set()
 
@@ -2230,7 +2303,7 @@ class App(DynamicColumns, TableLoading):
             self.session_state = 'waiting'
             self.session_status.set('Sprawdzanie sesji…')
             if hasattr(self, 'reconnect_button'):
-                self.reconnect_button.pack_forget()
+                self.set_footer_action_visible(self.reconnect_button, False)
             self.update_refresh_controls()
         elif kind == 'session_cancel_prepared':
             scope, request = value
@@ -2247,10 +2320,7 @@ class App(DynamicColumns, TableLoading):
         elif kind == 'session_activity':
             _, _, manual = value
             self.session_status.set('Wymagane logowanie' if manual else 'Łączenie…')
-            if manual:
-                self.login_window_button.pack(side='left', padx=4)
-            else:
-                self.login_window_button.pack_forget()
+            self.set_footer_action_visible(self.login_window_button, manual)
             self.update_tray()
         elif kind == 'session_password_save':
             self.show_password_save_prompt(value)
@@ -2281,12 +2351,12 @@ class App(DynamicColumns, TableLoading):
         elif kind == 'session_ready':
             self.session_state = 'ready'
             self.session_status.set('Połączono')
-            self.login_window_button.pack_forget()
+            self.set_footer_action_visible(self.login_window_button, False)
             if self.connection_dialog:
                 self.connection_dialog.destroy()
                 self.connection_dialog = None
             if hasattr(self, 'reconnect_button'):
-                self.reconnect_button.pack_forget()
+                self.set_footer_action_visible(self.reconnect_button, False)
             if self.window_restoring:
                 self.set_phase('Gotowy do uruchomienia')
                 if self.apply_startup and self.start_minimized.get():
@@ -2304,7 +2374,7 @@ class App(DynamicColumns, TableLoading):
         elif kind == 'session_problem':
             self.session_state = 'failed'
             self.session_status.set('Brak połączenia')
-            self.login_window_button.pack_forget()
+            self.set_footer_action_visible(self.login_window_button, False)
             self.cancel_stopped_threatened_read()
             self.update_refresh_controls()
             if not self.quitting:
@@ -2440,13 +2510,23 @@ class App(DynamicColumns, TableLoading):
                       primary=True, background=BG).pack(side='right')
         RoundedButton(panel, text='Zamknij', command=close, background=BG).pack(side='right', padx=8)
 
+    def set_footer_action_visible(self, button, visible):
+        if visible:
+            button.pack(side='left', padx=4)
+        else:
+            button.pack_forget()
+        if self.footer_actions.pack_slaves():
+            self.footer_actions.grid()
+        else:
+            self.footer_actions.grid_remove()
+
     def show_reconnect_action(self):
         from neto_incident_monitor.widgets import RoundedButton
         if not hasattr(self, 'reconnect_button'):
             self.reconnect_button = RoundedButton(self.footer_actions, text='Połącz ponownie',
                                                    command=self.session.retry,
                                                    background=self.footer_actions.cget('background'), compact=True)
-        self.reconnect_button.pack(side='left', padx=4)
+        self.set_footer_action_visible(self.reconnect_button, True)
 
     def drain(self):
         if getattr(self, "reset_data_on_exit", False) is True:
@@ -2467,6 +2547,9 @@ class App(DynamicColumns, TableLoading):
                 kind, value = self.events.get_nowait()
                 if kind == 'save_filter_definition':
                     self.save_discovered_filter_definition(value)
+                    continue
+                if kind == 'save_filter_disable_after_failures':
+                    self.save_filter_disable_after_failures(value)
                     continue
                 if kind.startswith('session_') and self.handle_session_event(kind, value):
                     continue

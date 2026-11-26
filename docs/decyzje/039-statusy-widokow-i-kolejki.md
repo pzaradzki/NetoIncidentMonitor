@@ -12,6 +12,6 @@
 
 **Komunikaty pod danymi** Wiersz metadanych skraca etykietę czasu do „Dane z”, a dashboard używa „Pełny odczyt”. Rozwinięta belka pokazuje nagłówek, przyczynę i akcję w tym samym widoku. Ponowienie i edycja używają istniejących poleceń oraz ich dostępności. Odczyty, przyjęcie do kolejki i zapisy konfiguracji zachowują dotychczasową korelację w diagnostyce.
 
-**Wspólna dolna belka** Jedna linia u góry rozciąga się pod oboma panelami. Stan sesji i „Aktywność” zajmują jeden wiersz na tle głównego okna. Treść korzysta z kolumn tego samego układu co panele, więc przesunięcie separatora zachowuje wyrównanie. Akcje logowania i ponownego połączenia są po prawej. Gdy kolejka nie pracuje, belka pokazuje oczekiwanie na odczyt lub brak zleceń.
+**Wspólna dolna belka** Jedna linia u góry rozciąga się pod oboma panelami. Stan sesji i „Aktywność” zajmują jeden wiersz na tle głównego okna. Wysokość wyznaczają tekst, widoczne przyciski i ewentualny komunikat wymagający uwagi. Treść korzysta z kolumn tego samego układu co panele, więc przesunięcie separatora zachowuje wyrównanie. Akcje logowania i ponownego połączenia są po prawej. Gdy kolejka nie pracuje, belka pokazuje oczekiwanie na odczyt lub brak zleceń.
 
 **Ograniczenia** Po ponownym uruchomieniu historia filtra pozostaje dostępna, a belkę uzupełnia pierwszy zaakceptowany odczyt bieżącej listy. Dashboard nadal zachowuje trzy niezależne migawki. Wynik częściowy może pokazać świeższe dane sekcji przy zachowaniu godziny ostatniego pełnego odczytu.

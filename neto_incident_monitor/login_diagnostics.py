@@ -54,7 +54,8 @@ WINDOW_EXPOSURE = {'hidden', 'minimized', 'unavailable', 'off_screen', 'exposed'
 TEXT_FIELDS = {
     'queue_scope': {'all', 'dashboard', 'threatened', 'filter', 'filter_definition', 'favorites'},
     'queue_state': {'queued', 'merged', 'running', 'waiting_login', 'finished', 'cancelled', 'filter_changed'},
-    'filter_change': {'add', 'rename', 'replace', 'remove', 'disable_limit', 'enable_schedule', 'disable_schedule'},
+    'filter_change': {'add', 'rename', 'replace', 'remove', 'disable_limit', 'disable_failures',
+                      'enable_schedule', 'disable_schedule'},
     'visibility_reason': {'initial_login', 'login_required', 'reconnect', 'session_confirmed', 'initial_main_window',
                           'recovered_main_window', 'main_window_observed', 'debug_browser_toggled'},
     'window_exposure': WINDOW_EXPOSURE,
@@ -92,7 +93,8 @@ TEXT_FIELDS = {
         'document_changed', 'navigation_interrupted', 'ambiguous_locator', 'element_unavailable', 'file_access', 'unexpected'},
     'delivery': {'observed', 'not_observed', 'unknown'},
     'error_type': {'Error', 'TimeoutError', 'TargetClosedError', 'RuntimeError',
-                   'ValueError', 'OSError', 'PermissionError', 'LoginTargetUnavailable'},
+                   'ValueError', 'OSError', 'PermissionError', 'LoginTargetUnavailable',
+                   'FilterConditionError'},
     'reason': {'wykryto ręczną obsługę formularza', 'wymagany wybór spośród wielu kont',
         'logowanie w osobnym oknie wymaga obsługi użytkownika',
         'formularz zawiera wiele pól hasła', 'formularz logowania został zastąpiony',
@@ -172,7 +174,8 @@ TEXT_FIELDS['scope_state'] = {'present', 'missing', 'unavailable'}
 EVENTS.update({'filter_definition', 'filter_definition_discovery'})
 EVENTS.update({'filter_layout_read', 'filter_layout_cache', 'filter_layout_preview'})
 TEXT_FIELDS['filter_url_kind'] = {'short', 'direct'}
-EVENTS.add('filter_api_page')
+EVENTS.update({'filter_api_page', 'filter_query_prepared'})
+NUMERIC_FIELDS.add('assigned_to_empty_aliases')
 EVENTS.add('password_save_prompt')
 TEXT_FIELDS['password_save_choice'] = {'waiting', 'saved', 'disabled', 'cancelled', 'save_error'}
 TEXT_FIELDS['data_area'] = {'configuration', 'history'}
