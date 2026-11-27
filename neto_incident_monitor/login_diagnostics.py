@@ -143,6 +143,11 @@ TEXT_FIELDS['interval_stage'] = {'rejected', 'saving', 'error', 'saved', 'applie
 TEXT_FIELDS['schedule_kind'] = {'inc', 'task', 'dashboard', 'threatened'}
 TEXT_FIELDS['schedule_trigger'] = {'periodic', 'manual', 'full'}
 EVENTS.add('startup_validation')
+EVENTS.add('release_check')
+TEXT_FIELDS['source'].add('release_check')
+TEXT_FIELDS['release_trigger'] = {'startup', 'manual'}
+TEXT_FIELDS['release_error'] = {'rate_limit', 'http', 'tls', 'timeout', 'network', 'invalid_response', 'unexpected'}
+NUMERIC_FIELDS.update({'release_newer', 'release_fallback_status'})
 EVENTS.add('dashboard_ui_state')
 EVENTS.update({'analytics_api_request', 'analytics_api_snapshot'})
 NUMERIC_FIELDS.update({'api_call', 'optional_field_omissions'})

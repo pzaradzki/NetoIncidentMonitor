@@ -70,7 +70,7 @@ def validate_config(settings):
     # Reject values that Tcl BooleanVar cannot represent; retain legacy 0/1.
     boolean_keys = ('notify', 'teams_enabled', 'google_chat_enabled', 'notify_threatened',
                     'auto_login', 'dashboard_auto_refresh', 'minimize_to_tray',
-                    'start_monitoring', 'start_minimized', 'minimize_browser', 'hide_browser')
+                    'start_monitoring', 'check_updates_on_startup', 'start_minimized', 'minimize_browser', 'hide_browser')
     for key in boolean_keys:
         if key in settings:
             _require(type(settings[key]) in (bool, int) and settings[key] in (0, 1))

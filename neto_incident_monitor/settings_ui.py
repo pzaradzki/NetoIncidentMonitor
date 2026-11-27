@@ -66,6 +66,7 @@ def build_settings(app, settings):
 
     def close_settings(_event=None):
         if interval_autosave is None or interval_autosave.flush():
+            app.release_check.detach(window)
             window.withdraw()
         return 'break'
 
@@ -83,9 +84,8 @@ def build_settings(app, settings):
     footer = ttk.Frame(window, style="White.TFrame", padding=(28, 12, 28, 24))
     footer.pack(fill="x", side="bottom")
     RoundedButton(footer, text="Zamknij", command=close_settings).pack(side="right")
-    from neto_incident_monitor.release_check import check_updates
     update_button = RoundedButton(footer, text="Sprawdź aktualizacje",
-                                  command=lambda: check_updates(window, update_button))
+                                  command=lambda: app.release_check.check_updates(window, update_button))
     update_button.pack(side="left")
     viewport = ttk.Frame(window, style="White.TFrame")
     viewport.pack(fill="both", expand=True)
@@ -197,12 +197,16 @@ def build_settings(app, settings):
     app.start_with_windows = tk.BooleanVar(value=app.windows_startup in ("current", "repaired"))
     app.startup_status_text = tk.StringVar(value=app.windows_startup_description())
     # Keep registration support internally; Windows autostart is not exposed in UI.
-    for key, title, description in (
-        ("start_monitoring", "Uruchom monitoring przy starcie aplikacji", "Wymaga włączonego filtra; może wymagać zalogowania do ServiceNow."),
-        ("start_minimized", "Uruchom aplikację zminimalizowaną", "Rozpoczynaj pracę ze zminimalizowanym oknem."),
+    for key, title, description, default in (
+        ("start_monitoring", "Uruchom monitoring przy starcie aplikacji",
+         "Wymaga włączonego filtra; może wymagać zalogowania do ServiceNow.", False),
+        ("check_updates_on_startup", "Sprawdzaj dostępność aktualizacji przy starcie aplikacji",
+         "Sprawdź na GitHubie, czy jest dostępna nowsza wersja.", True),
+        ("start_minimized", "Uruchom aplikację zminimalizowaną",
+         "Rozpoczynaj pracę ze zminimalizowanym oknem.", False),
     ):
         controls = row(startup, title, description)
-        variable = tk.BooleanVar(value=settings.get(key, False))
+        variable = tk.BooleanVar(value=settings.get(key, default))
         setattr(app, key, variable)
         Toggle(controls, variable).pack(side="right")
     controls = row(startup, "Minimalizacja do zasobnika", "Ukrywaj zminimalizowane okno w zasobniku systemowym.")

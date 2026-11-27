@@ -135,6 +135,8 @@ class App(DynamicColumns, TableLoading):
         self.password_save_dialog = None
         self.syncing_auto_login = False
         self.apply_startup = apply_startup
+        from neto_incident_monitor.release_check import ReleaseCheck
+        self.release_check = ReleaseCheck(root)
         settings = config_io.initialize_default_filters(config_io.read_json(config_io.CONFIG, {}))
         from neto_incident_monitor.browser_policy import BrowserOptions
         browser_settings = dict(settings, auto_login=settings.get('auto_login', True),
@@ -187,7 +189,7 @@ class App(DynamicColumns, TableLoading):
         self.saved_minimize = self.minimize_to_tray.get()
         self.minimize_to_tray.trace_add("write", self.save_minimize_preference)
         self.saving_startup = False
-        for key in ("start_monitoring", "start_with_windows", "start_minimized"):
+        for key in ("start_monitoring", "start_with_windows", "start_minimized", "check_updates_on_startup"):
             getattr(self, key).trace_add("write", lambda *_, key=key: self.save_startup_preference(key))
         self.refresh_history()
         self.update_counts()
@@ -2816,6 +2818,7 @@ class App(DynamicColumns, TableLoading):
         if not reset_data:
             self.save_window_layout()
         self.quitting = True
+        self.release_check.close()
         self.dashboard_view.cache_writer.close(discard=reset_data)
         self.main_window.release()
         self.stop.set()
@@ -2934,6 +2937,8 @@ def main(instance=None):
         app = App(window, instance=instance, windows_startup=startup_status)
         app.update_refresh_controls()
         app.session.thread.start()
+        if app.apply_startup and app.check_updates_on_startup.get():
+            app.release_check.schedule_startup()
         window.mainloop()
         reset_requested = getattr(app, "reset_data_ready", False)
         if owns_instance and reset_requested:

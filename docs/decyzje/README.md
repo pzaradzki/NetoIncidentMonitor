@@ -30,6 +30,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[050 — Sprawdzanie aktualizacji przy starcie](050-aktualizacje-przy-starcie.md) opisuje wspólne sprawdzenie z przyciskiem i widoczność monitu przy ukrytym oknie.
+
 [049 — Puste przypisanie w filtrach INC](049-puste-przypisanie-w-inc.md) opisuje zakres zgodności z klasyczną listą ADEO.
 
 [048 — Wyłączenie filtra po błędach odczytu](048-wylaczenie-filtra-po-bledach.md) opisuje próg błędów, trwały zapis i ręczne ponowienie.

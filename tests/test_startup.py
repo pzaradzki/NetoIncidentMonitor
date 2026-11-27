@@ -3,6 +3,8 @@ import unittest
 import tempfile
 import tkinter as tk
 from pathlib import Path
+from threading import Event
+from time import monotonic, sleep
 from unittest.mock import Mock, patch
 
 from neto_incident_monitor.startup import set_windows_startup, startup_command
@@ -70,6 +72,8 @@ class StartupTests(unittest.TestCase):
                         self.assertFalse(any(w.variable is app.start_with_windows for w in toggles))
                         self.assertTrue(any(w.variable is app.start_monitoring for w in toggles))
                         self.assertTrue(any(w.variable is app.start_minimized for w in toggles))
+                        self.assertTrue(any(w.variable is app.check_updates_on_startup for w in toggles))
+                        self.assertTrue(app.check_updates_on_startup.get())
                         self.assertEqual(app.start_with_windows.get(), status in ('current', 'repaired'))
                         write.assert_not_called()
                 finally:
@@ -129,6 +133,133 @@ class StartupTests(unittest.TestCase):
                     for timer in root.tk.call('after', 'info'):
                         # Child widgets unregister their own Tcl callbacks when destroyed.
                         root.tk.call('after', 'cancel', timer)
+                    root.destroy()
+
+    def test_startup_entry_schedules_only_for_primary_and_enabled_startup(self):
+        from neto_incident_monitor import app as module
+
+        for primary, apply_startup, enabled, scheduled in ((True, True, True, True),
+                                                          (True, True, False, False),
+                                                          (True, False, True, False),
+                                                          (False, True, True, False)):
+            with self.subTest(primary=primary, apply_startup=apply_startup, enabled=enabled), \
+                    patch.object(module.tk, 'Tk') as tk_root, patch.object(module, 'App') as create_app, \
+                    patch('neto_incident_monitor.data_validation.preflight'), \
+                    patch('neto_incident_monitor.startup.reconcile_windows_startup'):
+                instance = Mock(primary=primary)
+                app = create_app.return_value
+                app.apply_startup = apply_startup
+                app.check_updates_on_startup.get.return_value = enabled
+                app.reset_data_ready = False
+                module.main(instance)
+                self.assertEqual(app.release_check.schedule_startup.call_count, int(scheduled))
+                if primary:
+                    app.session.thread.start.assert_called_once()
+                    tk_root.return_value.mainloop.assert_called_once()
+                else:
+                    instance.request_show.assert_called_once()
+                    create_app.assert_not_called()
+
+    def test_update_preference_persists_rolls_back_and_leaves_manual_check_available(self):
+        from neto_incident_monitor import config_io
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.data_validation import validate_config
+        from neto_incident_monitor.widgets import RoundedButton
+
+        for value in (True, False, 1, 0):
+            validate_config({'check_updates_on_startup': value})
+        for value in ('false', None, 2):
+            with self.assertRaises(ValueError):
+                validate_config({'check_updates_on_startup': value})
+
+        def find_button(widget):
+            if isinstance(widget, RoundedButton) and widget.text == 'Sprawdź aktualizacje':
+                return widget
+            return next((button for child in widget.winfo_children() if (button := find_button(child))), None)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            config = path / 'config.json'
+            with patch.object(config_io, 'CONFIG', config):
+                config_io.save_json(config, {'filters': [], 'start_minimized': True})
+                for initial, choice in ((True, False), (False, True)):
+                    root = tk.Tk()
+                    root.withdraw()
+                    try:
+                        app = App(root, history_path=path / 'history.json', enable_tray=False, apply_startup=False)
+                        self.assertIs(app.check_updates_on_startup.get(), initial)
+                        app.check_updates_on_startup.set(choice)
+                        saved = config_io.read_json(config, {})
+                        self.assertIs(saved['check_updates_on_startup'], choice)
+                        self.assertTrue(saved['start_minimized'])
+                        with patch.object(config_io, 'save_json', side_effect=OSError('synthetic write failure')), \
+                                patch('neto_incident_monitor.app.messagebox.showerror') as report:
+                            app.check_updates_on_startup.set(not choice)
+                            self.assertIs(app.check_updates_on_startup.get(), choice)
+                            report.assert_called_once()
+                        if not choice:
+                            update = find_button(app.settings_window)
+                            with patch.object(app.release_check, 'check_updates') as check:
+                                update.invoke()
+                                check.assert_called_once_with(app.settings_window, update)
+                        with patch.object(app.release_check, 'check_updates') as startup_check:
+                            app.handle_session_event('session_ready', False)
+                            app.handle_session_event('session_ready', True)
+                            root.update()
+                            startup_check.assert_not_called()
+                    finally:
+                        root.destroy()
+
+    def test_update_prompt_is_visible_during_login_and_after_native_startup(self):
+        from neto_incident_monitor.app import App
+        from neto_incident_monitor.release_check import RELEASES
+        from neto_incident_monitor.window_style import MainWindowPresentation
+
+        for minimized, tray, expected in ((False, False, 'normal'), (True, False, 'iconic'), (True, True, 'withdrawn')):
+            with self.subTest(minimized=minimized, tray=tray), tempfile.TemporaryDirectory() as directory:
+                root = tk.Tk()
+                root.withdraw()
+                contacted = Event()
+                try:
+                    settings = {'filters': [], 'start_minimized': minimized, 'minimize_to_tray': tray}
+
+                    def latest_release(**_):
+                        contacted.set()
+                        return True, RELEASES + 'v2.0.0'
+
+                    with patch('neto_incident_monitor.config_io.read_json', return_value=settings), \
+                            patch('neto_incident_monitor.tray.Tray'), \
+                            patch('neto_incident_monitor.release_check.latest_release', side_effect=latest_release) as fetch:
+                        app = App(root, history_path=Path(directory) / 'history.json')
+                        app.release_check.schedule_startup()
+                        deadline = monotonic() + 3
+                        while app.release_check.dialog is None and monotonic() < deadline:
+                            root.update()
+                            sleep(.01)
+                        dialog = app.release_check.dialog
+                        self.assertTrue(contacted.is_set())
+                        self.assertIsNotNone(dialog)
+                        self.assertTrue(dialog.winfo_viewable())
+                        self.assertEqual(app.session_state, 'starting')
+                        self.assertEqual(root.state(), 'withdrawn')
+
+                        app.handle_session_event('session_problem', None)
+                        root.update()
+                        self.assertTrue(dialog.winfo_viewable())
+                        if tray:
+                            app.events.put(('tray_ready', None))
+                            app.drain()
+                        app.session.ready_once = True
+                        app.handle_session_event('session_ready', None)
+                        root.update()
+                        self.assertEqual(root.state(), expected)
+                        self.assertIs(app.release_check.dialog, dialog)
+                        self.assertTrue(dialog.winfo_viewable())
+                        self.assertEqual(str(dialog.transient()), str(root) if expected == 'normal' else '')
+                        exposure = MainWindowPresentation(dialog).inspect().exposure
+                        self.assertIn(exposure, ('exposed', 'partly_covered', 'covered', 'covered_topmost'))
+                        fetch.assert_called_once()
+                finally:
                     root.destroy()
 
     def test_frozen_command_quotes_executable_with_spaces(self):
