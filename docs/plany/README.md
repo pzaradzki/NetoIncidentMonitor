@@ -1,6 +1,6 @@
 # Plany i pozostałe prace
 
-Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to [1.13.1](../wersje/v1.13.1.md). [Indeks wersji](../wersje/README.md)
+Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to [1.13.4](../wersje/v1.13.4.md). [Indeks wersji](../wersje/README.md)
 
 ## Pozostałe tematy
 
@@ -11,6 +11,7 @@ Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.13.4](zakonczone/wydanie-1.13.4.md) | Opublikowano najnowsze stabilne wydanie. 596 zaliczonych testów, 2 pominięcia, cztery próby uruchomienia offline i zgodność ZIP-a pobranego z GitHuba. |
 | [Puste przypisanie w filtrach INC](zakonczone/puste-przypisanie-w-filtrach-inc.md) | Wdrożono interpretację pustego przypisania i potwierdzono zgodność na ADEO. Regresja Windows z odrębnym powtórzeniem potwierdziła 596 zaliczeń i dwa pominięcia. |
 | [Komunikaty o błędnych warunkach filtrów](zakonczone/komunikaty-bledow-warunkow-filtrow.md) | Wdrożono wybór etykiety, nazwy technicznej lub komunikatu ogólnego w istniejącej belce. Regresja Windows zaliczyła 589 testów, a 2 pominięto. |
 | [Wydanie 1.13.1](zakonczone/wydanie-1.13.1.md) | Opublikowano stabilną poprawkę wyrównania ikon. Cztery próby offline i zgodność publicznie pobranego ZIP-a. |
