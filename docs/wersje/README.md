@@ -1,5 +1,6 @@
 # Opisy wersji
 
+- [1.13.5](v1.13.5.md) — stabilne wydanie z automatycznym sprawdzaniem aktualizacji przy starcie.
 - [1.13.4](v1.13.4.md) — stabilne wydanie z obsługą pustego przypisania w filtrach INC, precyzyjniejszymi komunikatami i wyłączeniem filtra po trzech błędach.
 - [1.13.3](v1.13.3.md) — lokalna paczka z wyłączaniem filtrów po trzech błędach oraz poprawkami dolnej belki i wyrównania widoków.
 - [1.13.2](v1.13.2.md) — lokalna paczka z precyzyjniejszymi komunikatami o błędnych warunkach filtrów.

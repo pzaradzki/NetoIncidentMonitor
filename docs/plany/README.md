@@ -1,6 +1,6 @@
 # Plany i pozostałe prace
 
-Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to [1.13.4](../wersje/v1.13.4.md). [Indeks wersji](../wersje/README.md)
+Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie odnotowane wydanie publiczne to [1.13.5](../wersje/v1.13.5.md). [Indeks wersji](../wersje/README.md)
 
 ## Pozostałe tematy
 
@@ -11,6 +11,7 @@ Ostatnia odnotowana paczka eksperymentalna to 1.12.0-experimental.5, a ostatnie 
 
 | Plan | Wynik / dowody |
 | --- | --- |
+| [Wydanie 1.13.5](zakonczone/wydanie-1.13.5.md) | Opublikowano najnowsze stabilne wydanie. 605 zaliczonych testów, dwa pominięcia, cztery próby uruchomienia offline i zgodność ZIP-a pobranego z GitHuba. |
 | [Sprawdzanie aktualizacji przy starcie](zakonczone/sprawdzanie-aktualizacji-przy-starcie.md) | Wdrożono domyślnie włączony przełącznik i wspólny odczyt z ręcznym przyciskiem. Potwierdzono monit przy ukrytym oknie. Regresja Windows zaliczyła 604 testy, dwa pominięto. |
 | [Wydanie 1.13.4](zakonczone/wydanie-1.13.4.md) | Opublikowano najnowsze stabilne wydanie. 596 zaliczonych testów, 2 pominięcia, cztery próby uruchomienia offline i zgodność ZIP-a pobranego z GitHuba. |
 | [Puste przypisanie w filtrach INC](zakonczone/puste-przypisanie-w-filtrach-inc.md) | Wdrożono interpretację pustego przypisania i potwierdzono zgodność na ADEO. Regresja Windows z odrębnym powtórzeniem potwierdziła 596 zaliczeń i dwa pominięcia. |
