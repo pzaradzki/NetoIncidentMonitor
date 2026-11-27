@@ -233,7 +233,7 @@ class ReleaseCheck:
         owner = self._release_button()
         if owner is not None and window_visible(owner):
             self._present(owner, newer, url, error, modal=True)
-        elif self.automatic:
+        elif self.automatic and (newer or error):
             if newer or window_visible(self.root):
                 self._present(self.root, newer, url, error, modal=False)
             else:

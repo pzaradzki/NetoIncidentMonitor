@@ -138,25 +138,43 @@ class ReleaseCheckTests(unittest.TestCase):
                 finally:
                     root.destroy()
 
-    def test_nonurgent_startup_result_waits_for_main_window(self):
-        for newer, failure, text in ((False, None, 'Najnowsza wersja aplikacji jest zainstalowana'),
-                                     (False, OSError('offline'), 'Nie udało się połączyć z GitHubem.')):
-            with self.subTest(failure=failure):
+    def test_startup_up_to_date_is_silent_even_after_restoring_window(self):
+        for hidden in (False, True):
+            with self.subTest(hidden=hidden):
                 root = tk.Tk()
-                root.withdraw()
                 try:
+                    if hidden:
+                        root.withdraw()
+                    root.update()
                     checker = checks.ReleaseCheck(root)
-                    with patch.object(checks, 'latest_release', return_value=(newer, None), side_effect=failure):
+                    with patch.object(checks, 'latest_release', return_value=(False, None)) as fetch:
                         checker.check_updates()
-                        self.wait_for(root, lambda: checker.deferred is not None)
+                        self.wait_for(root, lambda: checker.results is None)
+                        fetch.assert_called_once()
                     self.assertIsNone(checker.dialog)
-                    root.deiconify()
-                    self.wait_for(root, lambda: checker.dialog is not None and checker.dialog.winfo_viewable())
-                    labels = [w.cget('text') for w in descendants(checker.dialog) if w.winfo_class() == 'TLabel']
-                    self.assertIn(text, labels[0])
                     self.assertIsNone(checker.deferred)
+                    root.deiconify()
+                    root.update()
+                    self.assertIsNone(checker.dialog)
                 finally:
                     root.destroy()
+
+    def test_startup_error_waits_for_main_window(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            checker = checks.ReleaseCheck(root)
+            with patch.object(checks, 'latest_release', side_effect=OSError('offline')):
+                checker.check_updates()
+                self.wait_for(root, lambda: checker.deferred is not None)
+            self.assertIsNone(checker.dialog)
+            root.deiconify()
+            self.wait_for(root, lambda: checker.dialog is not None and checker.dialog.winfo_viewable())
+            labels = [w.cget('text') for w in descendants(checker.dialog) if w.winfo_class() == 'TLabel']
+            self.assertIn('Nie udało się połączyć z GitHubem.', labels[0])
+            self.assertIsNone(checker.deferred)
+        finally:
+            root.destroy()
 
     def test_manual_joins_startup_and_next_click_starts_fresh(self):
         root = tk.Tk()
@@ -181,6 +199,8 @@ class ReleaseCheckTests(unittest.TestCase):
                 self.wait_for(root, lambda: checker.dialog is not None)
                 first = checker.dialog
                 self.assertIs(first.master, settings)
+                labels = [w.cget('text') for w in descendants(first) if w.winfo_class() == 'TLabel']
+                self.assertIn('Najnowsza wersja aplikacji jest zainstalowana', labels)
                 self.assertTrue(button.enabled)
                 fetch.assert_called_once()
                 first.destroy()

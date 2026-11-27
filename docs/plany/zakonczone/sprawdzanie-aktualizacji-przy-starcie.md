@@ -2,6 +2,8 @@
 
 **Status.** Zakończono. Wdrożono w źródłach i zweryfikowano na Windows.
 
+Po zakończeniu planu automatyczne potwierdzenie aktualnej wersji przestało otwierać okno. Ręczne sprawdzenie nadal pokazuje komunikat. [Decyzja 051](../../decyzje/051-cichy-wynik-sprawdzenia-przy-starcie.md)
+
 ## Oczekiwane zachowanie
 
 W sekcji **Ustawienia → Uruchamianie i okno aplikacji** pojawi się przełącznik **„Sprawdzaj dostępność aktualizacji przy starcie aplikacji”**. Domyślnie będzie włączony również dla istniejącej konfiguracji bez tego ustawienia. Zmiana wyboru zapisze się od razu i wpłynie na następne uruchomienie. Główna instancja wykona jedno sprawdzenie podczas zwykłego startu, niezależnie od logowania i monitoringu ServiceNow.

@@ -30,6 +30,8 @@ Krótkie uzasadnienia rozwiązań wpływających na wiele funkcji. Dokumentują 
 
 ## Format i utrzymanie
 
+[051 — Cichy wynik sprawdzenia przy starcie](051-cichy-wynik-sprawdzenia-przy-starcie.md) opisuje prezentację wyniku o aktualnej wersji po ręcznym sprawdzeniu.
+
 [050 — Sprawdzanie aktualizacji przy starcie](050-aktualizacje-przy-starcie.md) opisuje wspólne sprawdzenie z przyciskiem i widoczność monitu przy ukrytym oknie.
 
 [049 — Puste przypisanie w filtrach INC](049-puste-przypisanie-w-inc.md) opisuje zakres zgodności z klasyczną listą ADEO.
